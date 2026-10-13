@@ -1,0 +1,28 @@
+# Secrets: never commit
+.env
+.env.*
+!.env.example
+
+# Spec docs are local-only (contain third-party names)
+docs/spec/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+
+# Node
+node_modules/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
