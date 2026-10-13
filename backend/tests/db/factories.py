@@ -1,5 +1,6 @@
 """Valid-by-default rows. Tests override one field to violate one rule."""
 
+import uuid
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -97,3 +98,18 @@ def audit_log(**overrides: Any) -> AuditLog:
 def add_event(session: Session, event_id: str = "evt-1") -> None:
     session.add(webhook_event(event_id=event_id))
     session.flush()
+
+
+def add_installment(session: Session, contract_id: str = "c-1") -> uuid.UUID:
+    row = installment(contract_id=contract_id)
+    session.add(row)
+    session.flush()
+    return row.id
+
+
+def add_auto_save_parents(
+    session: Session, event_id: str = "evt-1", contract_id: str = "c-1"
+) -> uuid.UUID:
+    """An event and its installment, the two rows every auto_save must reference."""
+    session.add(webhook_event(event_id=event_id, contract_id=contract_id))
+    return add_installment(session, contract_id)
