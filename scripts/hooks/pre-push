@@ -1,0 +1,13 @@
+#!/bin/sh
+# Reject any push that targets main (CLAUDE.md rule 11).
+# Enable once per clone: git config core.hooksPath scripts/hooks
+# stdin lines: <local ref> <local sha> <remote ref> <remote sha>
+protected="refs/heads/main"
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+    if [ "$remote_ref" = "$protected" ]; then
+        echo "pre-push: pushing to main is not allowed. Push a branch and open a PR." >&2
+        status=1
+    fi
+done
+exit $status
