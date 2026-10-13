@@ -95,6 +95,20 @@ def test_INV_6_paid_amount_le_principal_plus_fee(db_session: Session) -> None:
     )
 
 
+def test_L41_fields_accept_zero(db_session: Session) -> None:
+    # L41 fields are required (no default) but 0 is valid, e.g. 0% BNPL with no late fee.
+    row = installment(
+        min_payment=Decimal("0.00"),
+        late_fee_per_period=Decimal("0.00"),
+        monthly_rate=Decimal("0.000000"),
+    )
+    assert_accepted(db_session, row)
+    db_session.refresh(row)
+    assert row.min_payment == Decimal("0.00")
+    assert row.late_fee_per_period == Decimal("0.00")
+    assert row.monthly_rate == Decimal("0.000000")
+
+
 # --- Idempotency keys (05 section 4.4) ---------------------------------------------
 
 
