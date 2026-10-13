@@ -14,7 +14,7 @@ installed by uv if needed).
 ```bash
 git config core.hooksPath scripts/hooks   # enables the pre-push guard (no pushes to main)
 cp .env.example .env          # fill in values; .env is git-ignored
-docker compose up -d          # Postgres 16 on 127.0.0.1, databases buffer + buffer_test
+docker compose up -d          # Postgres 16 on 127.0.0.1, databases lumen + lumen_test
 
 cd backend
 uv sync                       # create .venv from uv.lock
