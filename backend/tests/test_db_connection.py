@@ -4,7 +4,7 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.db import make_engine
 
-EXPECTED_DB = "buffer_test"
+EXPECTED_DB = "lumen_test"
 
 
 @pytest.mark.db
