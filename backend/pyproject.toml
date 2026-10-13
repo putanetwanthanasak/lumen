@@ -47,6 +47,11 @@ addopts = "--strict-markers --strict-config"
 markers = [
     "db: needs a real Postgres test database (TEST_DATABASE_URL)",
 ]
+# Keep httpx (no new package): silence only Starlette's httpx -> httpx2 TestClient notice.
+# StarletteDeprecationWarning subclasses UserWarning, so it must be named explicitly.
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
 
 [tool.coverage.run]
 branch = true
