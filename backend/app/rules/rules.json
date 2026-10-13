@@ -1,0 +1,19 @@
+{
+  "auto_save": {
+    "default_rate": "0.05",
+    "min_rate": "0.03",
+    "max_rate": "0.10",
+    "default_per_item_cap": "100.00",
+    "min_saving": "10.00",
+    "rounding": "ROUND_HALF_UP",
+    "applies_to_kinds": ["purchase"]
+  },
+  "safety_net": {
+    "protected_min_balance": "500.00"
+  },
+  "alerts": {
+    "notify_on": ["installment_created", "cash_withdrawal_created", "cash_loan_created"],
+    "strong_alert_kinds": ["cash_withdrawal", "cash_loan"],
+    "push_max_attempts": 3
+  }
+}

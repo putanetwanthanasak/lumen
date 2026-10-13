@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session
 
 from app.db import Base
 from tests.db.factories import (
+    add_auto_save_parents,
     add_event,
+    add_installment,
     installment,
     notification,
     savings_tx,
@@ -52,19 +54,21 @@ def test_INV_2_savings_balance_never_negative(db_session: Session) -> None:
 
 
 def test_INV_3_auto_save_unique_per_event(db_session: Session) -> None:
-    add_event(db_session, "evt-1")
-    assert_accepted(db_session, savings_tx(source_event_id="evt-1"))
+    first = add_auto_save_parents(db_session, "evt-1", "c-1")
+    other = add_installment(db_session, "c-2")  # different installment: only the event repeats
+    assert_accepted(db_session, savings_tx(source_event_id="evt-1", installment_id=first))
     assert_rejected(
         db_session,
-        savings_tx(source_event_id="evt-1", amount=Decimal("10.00")),
+        savings_tx(source_event_id="evt-1", installment_id=other, amount=Decimal("10.00")),
         "uq_savings_transactions_auto_save_source_event_id",
     )
 
 
 def test_INV_3_auto_save_requires_source_event(db_session: Session) -> None:
+    inst = add_installment(db_session)
     assert_rejected(
         db_session,
-        savings_tx(source_event_id=None),
+        savings_tx(source_event_id=None, installment_id=inst),
         "ck_savings_transactions_auto_save_has_source_event",
     )
 
@@ -76,9 +80,10 @@ def test_INV_3_withdrawals_are_not_limited_per_event(db_session: Session) -> Non
 
 
 def test_auto_save_source_event_must_exist(db_session: Session) -> None:
+    inst = add_installment(db_session)
     assert_rejected(
         db_session,
-        savings_tx(source_event_id="evt-missing"),
+        savings_tx(source_event_id="evt-missing", installment_id=inst),
         "fk_savings_transactions_source_event_id_webhook_events",
     )
 
@@ -93,6 +98,20 @@ def test_INV_6_paid_amount_le_principal_plus_fee(db_session: Session) -> None:
         installment(paid_amount=Decimal("2100.01"), **total),
         "ck_installments_paid_le_total",
     )
+
+
+def test_L41_fields_accept_zero(db_session: Session) -> None:
+    # L41 fields are required (no default) but 0 is valid, e.g. 0% BNPL with no late fee.
+    row = installment(
+        min_payment=Decimal("0.00"),
+        late_fee_per_period=Decimal("0.00"),
+        monthly_rate=Decimal("0.000000"),
+    )
+    assert_accepted(db_session, row)
+    db_session.refresh(row)
+    assert row.min_payment == Decimal("0.00")
+    assert row.late_fee_per_period == Decimal("0.00")
+    assert row.monthly_rate == Decimal("0.000000")
 
 
 # --- Idempotency keys (05 section 4.4) ---------------------------------------------
@@ -196,7 +215,7 @@ def test_check_constraint_rejects_bad_value(
     db_session: Session, factory: Any, overrides: dict[str, Any], constraint: str
 ) -> None:
     if factory is savings_tx:
-        add_event(db_session)
+        overrides = {"installment_id": add_auto_save_parents(db_session)} | overrides
     assert_rejected(db_session, factory(**overrides), constraint)
 
 

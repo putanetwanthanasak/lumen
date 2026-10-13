@@ -52,10 +52,12 @@ jobs:
         run: uv run ruff format --check .
       - name: Mypy (strict)
         run: uv run mypy app
-      # TODO: add a 90% coverage gate for app/rules, app/savings, app/webhooks
-      # once those modules exist (per-module floor on top of the 80% app-wide floor).
       - name: Pytest with coverage (80% floor)
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=80
+      # Money-critical modules get a stricter floor, read from the same coverage data.
+      # TODO: add app/savings and app/webhooks to this gate once those modules exist.
+      - name: Coverage gate app/rules (90% floor)
+        run: uv run coverage report --include='app/rules/*' --fail-under=90
 
   pip-audit:
     name: Dependency audit
