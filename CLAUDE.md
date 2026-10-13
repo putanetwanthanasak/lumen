@@ -45,7 +45,13 @@ Spec docs are written in Thai. Read them for requirements; write everything you 
 - One branch = one coherent unit of work = one PR. A session may produce more than one PR if it covers separate units.
 - Commit messages follow the same types: `feat: add compute_saving with min/max clamp`.
 - CI runs on `pull_request` and on `push` to `main`.
-- PR description: what changed, test IDs covered, break tests performed, and anything the reviewer should look at closely (money, SQL, auth, migrations).
+- Keep each PR small enough to read in about 30 minutes: aim for under ~400 changed lines excluding tests and lock files. Split otherwise.
+- PR description: what changed, test IDs covered, break tests performed, then a **Reading guide**:
+  1. Files in the order to read them, tests first (they describe the behavior), one line each on what the file does.
+  2. "Must read" vs "skim": money, SQL, transactions, migrations, and security are must-read; config and boilerplate are skim.
+  3. For each must-read file, the specific functions or line ranges that matter and why.
+  4. Two or three self-check questions the reader should be able to answer after reading (e.g. "What stops the same event from saving twice?").
+- When the user leaves review comments on a PR, read them with `gh pr view --comments`, address each one, and reply to it.
 
 ## Definition of Done for every session
 From `backend/`, all of these pass:
