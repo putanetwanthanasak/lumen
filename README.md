@@ -18,6 +18,7 @@ docker compose up -d          # Postgres 16 on 127.0.0.1, databases lumen + lume
 
 cd backend
 uv sync                       # create .venv from uv.lock
+uv run alembic upgrade head      # create/upgrade the schema (never create_all)
 uv run uvicorn app.main:app --reload   # http://127.0.0.1:8000/health
 ```
 

@@ -1,16 +1,25 @@
 """Database engine and session handling. Nothing connects at import time."""
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from functools import lru_cache
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, MetaData, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
 
+# Deterministic constraint names: migrations, tests, and reviews all refer to these.
+NAMING_CONVENTION = {
+    "ix": "ix_%(table_name)s_%(column_0_N_name)s",
+    "uq": "uq_%(table_name)s_%(column_0_N_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
 
 class Base(DeclarativeBase):
-    pass
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
 def make_engine(url: str) -> Engine:
@@ -30,7 +39,7 @@ def get_sessionmaker() -> sessionmaker[Session]:
     return sessionmaker(bind=get_engine(), expire_on_commit=False)
 
 
-def get_session() -> Iterator[Session]:
+def get_session() -> Generator[Session]:
     """FastAPI dependency: one session per request."""
     with get_sessionmaker()() as session:
         yield session
