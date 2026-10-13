@@ -2,6 +2,7 @@
 
 from decimal import ROUND_HALF_UP, Decimal
 
+from app.models import InstallmentKind
 from app.rules.config import AutoSaveRules, decimal_places
 
 CENT = Decimal("0.01")
@@ -22,6 +23,7 @@ def _require_decimal(name: str, value: object, max_places: int) -> Decimal:
 
 def compute_saving(
     *,
+    kind: str,
     item_value: Decimal,
     rate: Decimal,
     per_item_cap: Decimal,
@@ -33,6 +35,8 @@ def compute_saving(
 
     saving = clamp(round_half_up(item_value * rate, 0.01), min_saving, per_item_cap)
     All or nothing: if saving would leave bank_balance below protected_min, save 0.00.
+    Kinds outside rules.applies_to_kinds save 0.00 (INV-5: cash_withdrawal and
+    cash_loan never auto-save); the engine enforces this, not each caller.
 
     Keyword-only because every argument is a Decimal and a positional swap would be
     silent. Raises ValueError on invalid input; never returns a partial amount.
@@ -45,6 +49,10 @@ def compute_saving(
     ):
         _require_decimal(name, money, max_places=2)
     _require_decimal("rate", rate, max_places=6)
+    try:
+        installment_kind = InstallmentKind(kind)
+    except ValueError:
+        raise ValueError(f"unknown installment kind: {kind!r}") from None
 
     if item_value <= 0:
         raise ValueError("item_value must be > 0")
@@ -52,6 +60,9 @@ def compute_saving(
         raise ValueError(f"rate must be within [{rules.min_rate}, {rules.max_rate}]")
     if per_item_cap < rules.min_saving:
         raise ValueError(f"per_item_cap must be >= min_saving ({rules.min_saving})")
+
+    if installment_kind not in rules.applies_to_kinds:
+        return ZERO
 
     raw = (item_value * rate).quantize(CENT, rounding=ROUND_HALF_UP)
     # min_saving > 0 is guaranteed by AutoSaveRules, so saving is always positive here.

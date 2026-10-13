@@ -60,6 +60,7 @@ def saving_inputs(draw: st.DrawFn) -> tuple[Decimal, Decimal, Decimal, Decimal]:
 
 def run(item_value: Decimal, rate: Decimal, cap: Decimal, balance: Decimal) -> Decimal:
     return compute_saving(
+        kind="purchase",
         item_value=item_value,
         rate=rate,
         per_item_cap=cap,
@@ -97,3 +98,19 @@ def test_PB_02_saving_never_breaches_protected_min(inputs: tuple[Decimal, ...]) 
     else:
         # All or nothing: a skip happens only when the full amount would breach.
         assert balance - oracle(item_value, rate, cap) < PROTECTED_MIN
+
+
+@settings(max_examples=EXAMPLES, deadline=None)
+@given(saving_inputs(), st.sampled_from(["cash_withdrawal", "cash_loan"]))
+def test_INV_5_cash_kinds_never_save_property(inputs: tuple[Decimal, ...], kind: str) -> None:
+    item_value, rate, cap, balance = inputs
+    saving = compute_saving(
+        kind=kind,
+        item_value=item_value,
+        rate=rate,
+        per_item_cap=cap,
+        bank_balance=balance,
+        rules=AUTO_SAVE,
+        protected_min=PROTECTED_MIN,
+    )
+    assert saving == Decimal("0.00")

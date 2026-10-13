@@ -11,12 +11,14 @@ PROTECTED_MIN = RULES.safety_net.protected_min_balance
 def save(
     item_value: str,
     *,
+    kind: str = "purchase",
     rate: str = "0.05",
     per_item_cap: str = "100.00",
     bank_balance: str = "10000.00",
 ) -> Decimal:
     """compute_saving with the shipped rules; string inputs keep floats out of tests."""
     return compute_saving(
+        kind=kind,
         item_value=Decimal(item_value),
         rate=Decimal(rate),
         per_item_cap=Decimal(per_item_cap),

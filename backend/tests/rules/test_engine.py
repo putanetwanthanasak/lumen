@@ -56,6 +56,28 @@ def test_rounding_is_half_up_at_half_cent(item: str, expected: str) -> None:
     assert save(item) == Decimal(expected)
 
 
+@pytest.mark.parametrize("kind", ["cash_withdrawal", "cash_loan"])
+def test_INV_5_cash_kinds_never_save(kind: str) -> None:
+    # SV-03 / SV-03a: ample balance and a normal item, but cash kinds never auto-save.
+    assert save("2000.00", kind=kind) == Decimal("0.00")
+
+
+def test_INV_5_purchase_saves() -> None:
+    assert save("2000.00", kind="purchase") == Decimal("100.00")
+
+
+@pytest.mark.parametrize("kind", ["credit_card", "", "PURCHASE"])
+def test_unknown_kind_rejected(kind: str) -> None:
+    with pytest.raises(ValueError, match="unknown installment kind"):
+        save("500.00", kind=kind)
+
+
+def test_cash_kind_still_validates_inputs() -> None:
+    # Skipping a cash kind must not bypass input validation (no float sneaks through).
+    with pytest.raises(ValueError, match="item_value must be > 0"):
+        save("0.00", kind="cash_loan")
+
+
 def test_RE_05d_cap_below_min_saving_rejected() -> None:
     # Engine level; the /settings 422 test is carry-over (no API yet).
     with pytest.raises(ValueError, match="per_item_cap must be >= min_saving"):
@@ -109,6 +131,7 @@ def test_RE_11_result_is_decimal_with_two_places(item: str, balance: str) -> Non
 
 
 VALID: dict[str, Any] = {
+    "kind": "purchase",
     "item_value": Decimal("500.00"),
     "rate": Decimal("0.05"),
     "per_item_cap": Decimal("100.00"),
@@ -117,7 +140,7 @@ VALID: dict[str, Any] = {
 }
 
 
-@pytest.mark.parametrize("field", list(VALID))
+@pytest.mark.parametrize("field", [f for f in VALID if f != "kind"])
 def test_RE_11_float_input_rejected(field: str) -> None:
     # The only float in the codebase, on purpose: proving floats are rejected needs one.
     args = VALID | {field: float(VALID[field])}
@@ -155,7 +178,7 @@ def test_rate_with_more_than_six_places_rejected() -> None:
 
 def test_arguments_are_keyword_only() -> None:
     with pytest.raises(TypeError):
-        compute_saving(*VALID.values(), AUTO_SAVE)  # type: ignore[misc]
+        compute_saving(*VALID.values(), AUTO_SAVE)  # type: ignore[call-arg, misc]
 
 
 def test_negative_balance_skips_saving() -> None:
