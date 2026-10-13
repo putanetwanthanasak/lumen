@@ -184,6 +184,18 @@ class SavingsTransaction(Base):
             unique=True,
             postgresql_where=text("type = 'auto_save'"),
         ),
+        # ID-05: one installment gets at most one auto_save, even if the platform
+        # resends the same contract under a new event_id.
+        CheckConstraint(
+            "type <> 'auto_save' OR installment_id IS NOT NULL",
+            name="auto_save_has_installment",
+        ),
+        Index(
+            "uq_savings_transactions_auto_save_installment_id",
+            "installment_id",
+            unique=True,
+            postgresql_where=text("type = 'auto_save'"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -193,6 +205,9 @@ class SavingsTransaction(Base):
     type: Mapped[str] = mapped_column(Text)
     amount: Mapped[Decimal] = mapped_column(Money)  # always positive; direction from type
     source_event_id: Mapped[str | None] = mapped_column(Text, ForeignKey("webhook_events.event_id"))
+    installment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("installments.id")
+    )
     created_at: Mapped[datetime] = created_at_column()
 
 
