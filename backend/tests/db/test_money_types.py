@@ -85,3 +85,14 @@ def test_money_overflow_rejected(db_session: Session) -> None:
     db_session.add(installment(principal=Decimal("10000000000.00")))  # 11 integer digits
     with pytest.raises(DataError):
         db_session.flush()
+
+
+def test_L3_postgres_rounds_extra_decimals_on_insert(db_session: Session) -> None:
+    # Documents a hazard, not a feature: Numeric(12,2) rounds 123.455 to 123.46 with
+    # no error. This is why app.money rejects a third decimal place before any insert.
+    db_session.add(installment(principal=Decimal("123.455")))
+    db_session.flush()
+    stored = db_session.execute(
+        text("SELECT principal FROM installments WHERE contract_id = :cid"), {"cid": "c-1"}
+    ).scalar_one()
+    assert stored == Decimal("123.46")
