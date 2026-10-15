@@ -13,7 +13,7 @@ from tests.db.factories import installment, user_settings
 
 pytestmark = pytest.mark.db
 
-RATE_COLUMNS = {("installments", "monthly_rate"), ("user_settings", "save_rate")}
+RATE_COLUMNS = {("installments", "monthly_rate")}
 
 
 def _numeric_columns() -> list[tuple[str, str, Numeric[Decimal]]]:
@@ -28,7 +28,7 @@ def _numeric_columns() -> list[tuple[str, str, Numeric[Decimal]]]:
 
 def test_money_columns_are_numeric_12_2_and_rates_7_6() -> None:
     cols = _numeric_columns()
-    assert len(cols) == 12  # installments 7, user_settings 3, savings 1, balances 1
+    assert len(cols) == 10  # installments 7, user_settings 1, savings 1, balances 1
     for table, name, typ in cols:
         expected = (7, 6) if (table, name) in RATE_COLUMNS else (12, 2)
         assert (typ.precision, typ.scale) == expected, f"{table}.{name}"
@@ -49,25 +49,36 @@ def test_money_and_rate_roundtrip_as_decimal(db_session: Session) -> None:
 
 
 def test_raw_driver_returns_decimal(db_session: Session) -> None:
-    db_session.add(user_settings(save_rate=Decimal("0.035"), per_item_cap=Decimal("75.50")))
+    db_session.add(installment(monthly_rate=Decimal("0.035"), fee_total=Decimal("75.50")))
     db_session.flush()
-    rate, cap = db_session.execute(
-        text("SELECT save_rate, per_item_cap FROM user_settings WHERE user_id = :uid"),
-        {"uid": "user-1"},
+    rate, fee = db_session.execute(
+        text("SELECT monthly_rate, fee_total FROM installments WHERE contract_id = :cid"),
+        {"cid": "c-1"},
     ).one()
     assert type(rate) is Decimal
     assert rate == Decimal("0.035000")
-    assert type(cap) is Decimal
-    assert cap == Decimal("75.50")
+    assert type(fee) is Decimal
+    assert fee == Decimal("75.50")
 
 
 def test_server_default_money_is_decimal(db_session: Session) -> None:
-    db_session.add(user_settings())
+    row = installment()
+    del row.fee_total, row.paid_amount  # let the server defaults apply
+    db_session.add(row)
+    db_session.flush()
+    db_session.expire_all()
+    loaded = db_session.get_one(Installment, row.id)
+    assert type(loaded.fee_total) is Decimal
+    assert type(loaded.paid_amount) is Decimal
+
+
+def test_nullable_money_roundtrips_as_decimal(db_session: Session) -> None:
+    db_session.add(user_settings(monthly_installment_cap=Decimal("3000.00")))
     db_session.flush()
     db_session.expire_all()
     row = db_session.get_one(UserSettings, "user-1")
-    assert type(row.per_item_cap) is Decimal
-    assert type(row.save_rate) is Decimal
+    assert type(row.monthly_installment_cap) is Decimal
+    assert row.monthly_installment_cap == Decimal("3000.00")
 
 
 def test_money_overflow_rejected(db_session: Session) -> None:

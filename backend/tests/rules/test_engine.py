@@ -1,6 +1,11 @@
-"""RE-xx unit tests for compute_saving (05 section 4.1)."""
+"""RE-xx unit tests for compute_saving (05 section 4.1).
 
-from decimal import Decimal
+The rule is fixed by L46 + L52: 10% of item value, min 10.00, max 500.00 per purchase.
+These values replace the 5% / 100.00 examples in 05; RE-05d and RE-10 (user-set
+rate and cap via /settings) are dropped because the rule is no longer configurable.
+"""
+
+from decimal import Decimal, localcontext
 from typing import Any
 
 import pytest
@@ -9,50 +14,76 @@ from app.rules.engine import compute_saving
 from tests.rules.helpers import AUTO_SAVE, PROTECTED_MIN, save
 
 
-def test_RE_01_five_percent_of_item() -> None:
-    assert save("500.00") == Decimal("25.00")
+def test_RE_01_ten_percent_of_item() -> None:
+    assert save("500.00") == Decimal("50.00")
 
 
 def test_RE_02_exactly_at_cap() -> None:
-    assert save("2000.00") == Decimal("100.00")
+    # 10% of 5,000.00 = 500.00, exactly max_saving
+    assert save("5000.00") == Decimal("500.00")
 
 
 def test_RE_03_cap_hit_just_above_boundary() -> None:
-    # 5% of 2,000.20 = 100.01, capped to 100.00
-    assert save("2000.20") == Decimal("100.00")
+    # 10% of 5,000.10 = 500.01, capped to 500.00
+    assert save("5000.10") == Decimal("500.00")
 
 
 def test_RE_04_large_item_capped() -> None:
-    assert save("20000.00") == Decimal("100.00")
+    assert save("20000.00") == Decimal("500.00")
 
 
 def test_RE_05_small_item_raised_to_min_saving() -> None:
     assert save("50.00") == Decimal("10.00")
 
 
-def test_RE_05a_below_min_raised_to_min_saving() -> None:
-    # 5% of 106 = 5.30 < 10
-    assert save("106.00") == Decimal("10.00")
+def test_RE_05a_just_below_min_raised_to_min_saving() -> None:
+    # 10% of 99.90 = 9.99 < 10.00
+    assert save("99.90") == Decimal("10.00")
 
 
 def test_RE_05b_exactly_at_min_saving() -> None:
-    assert save("200.00") == Decimal("10.00")
+    # 10% of 100.00 = 10.00, exactly min_saving
+    assert save("100.00") == Decimal("10.00")
 
 
 def test_RE_05c_just_above_min_saving() -> None:
-    assert save("201.00") == Decimal("10.05")
+    assert save("100.10") == Decimal("10.01")
+
+
+def test_RE_06_safety_net_allows_exact_protected_min() -> None:
+    # saving 50, balance 550 -> 500 left, exactly protected_min: still saves
+    assert save("500.00", bank_balance="550.00") == Decimal("50.00")
+
+
+def test_RE_07_safety_net_skips_when_below_protected_min() -> None:
+    assert save("500.00", bank_balance="549.99") == Decimal("0.00")
+
+
+def test_RE_08_insufficient_balance_saves_nothing_not_partial() -> None:
+    # saving would be 25.00; the balance cannot cover it, and no partial amount is saved
+    assert save("250.00", bank_balance="30.00") == Decimal("0.00")
+
+
+def test_RE_09_rate_is_fixed_at_ten_percent() -> None:
+    assert save("1234.50") == Decimal("123.45")
+
+
+@pytest.mark.parametrize("extra", [{"rate": Decimal("0.05")}, {"per_item_cap": Decimal("100")}])
+def test_RE_09_rate_and_cap_are_not_inputs(extra: dict[str, Decimal]) -> None:
+    with pytest.raises(TypeError):
+        compute_saving(rules=AUTO_SAVE, **(VALID | extra))
 
 
 @pytest.mark.parametrize(
     ("item", "expected"),
     [
-        ("201.10", "10.06"),  # 10.055: HALF_UP 10.06, DOWN 10.05
-        ("1000.10", "50.01"),  # 50.005: HALF_UP 50.01, DOWN and HALF_EVEN 50.00
-        ("201.09", "10.05"),  # 10.0545: below half, rounds down in every mode
+        ("100.05", "10.01"),  # 10.005: HALF_UP 10.01, DOWN and HALF_EVEN 10.00
+        ("100.15", "10.02"),  # 10.015: HALF_UP 10.02, DOWN 10.01
+        ("4999.95", "500.00"),  # 499.995: HALF_UP 500.00, DOWN 499.99 (below the cap)
+        ("100.04", "10.00"),  # 10.004: below half, rounds down in every mode
     ],
 )
 def test_rounding_is_half_up_at_half_cent(item: str, expected: str) -> None:
-    # Added after break test 3: only PB-01 (probabilistically) caught ROUND_DOWN.
     assert save(item) == Decimal(expected)
 
 
@@ -63,7 +94,7 @@ def test_INV_5_cash_kinds_never_save(kind: str) -> None:
 
 
 def test_INV_5_purchase_saves() -> None:
-    assert save("2000.00", kind="purchase") == Decimal("100.00")
+    assert save("2000.00", kind="purchase") == Decimal("200.00")
 
 
 @pytest.mark.parametrize("kind", ["credit_card", "", "PURCHASE"])
@@ -78,48 +109,13 @@ def test_cash_kind_still_validates_inputs() -> None:
         save("0.00", kind="cash_loan")
 
 
-def test_RE_05d_cap_below_min_saving_rejected() -> None:
-    # Engine level; the /settings 422 test is carry-over (no API yet).
-    with pytest.raises(ValueError, match="per_item_cap must be >= min_saving"):
-        save("500.00", per_item_cap="5.00")
-
-
-def test_RE_05d_cap_equal_to_min_saving_allowed() -> None:
-    assert save("500.00", per_item_cap="10.00") == Decimal("10.00")
-
-
-def test_RE_06_safety_net_allows_exact_protected_min() -> None:
-    # saving 50, balance 550 -> 500 left, exactly protected_min: still saves
-    assert save("1000.00", bank_balance="550.00") == Decimal("50.00")
-
-
-def test_RE_07_safety_net_skips_when_below_protected_min() -> None:
-    assert save("1000.00", bank_balance="549.99") == Decimal("0.00")
-
-
-def test_RE_08_insufficient_balance_saves_nothing_not_partial() -> None:
-    assert save("500.00", bank_balance="30.00") == Decimal("0.00")
-
-
-@pytest.mark.parametrize(("rate", "expected"), [("0.03", "15.00"), ("0.10", "50.00")])
-def test_RE_09_rate_range_bounds(rate: str, expected: str) -> None:
-    assert save("500.00", rate=rate) == Decimal(expected)
-
-
-@pytest.mark.parametrize("rate", ["0.02", "0.029999", "0.100001", "0.11"])
-def test_RE_10_rate_outside_bounds_rejected(rate: str) -> None:
-    # Engine level; the /settings 422 test is carry-over (no API yet).
-    with pytest.raises(ValueError, match="rate must be within"):
-        save("500.00", rate=rate)
-
-
 RE_CASES = [
     ("500.00", "10000.00"),
-    ("2000.00", "10000.00"),
-    ("2000.20", "10000.00"),
+    ("5000.00", "10000.00"),
+    ("5000.10", "10000.00"),
     ("50.00", "10000.00"),
-    ("201.00", "10000.00"),
-    ("1000.00", "549.99"),
+    ("100.10", "10000.00"),
+    ("500.00", "549.99"),
 ]
 
 
@@ -133,8 +129,6 @@ def test_RE_11_result_is_decimal_with_two_places(item: str, balance: str) -> Non
 VALID: dict[str, Any] = {
     "kind": "purchase",
     "item_value": Decimal("500.00"),
-    "rate": Decimal("0.05"),
-    "per_item_cap": Decimal("100.00"),
     "bank_balance": Decimal("10000.00"),
     "protected_min": PROTECTED_MIN,
 }
@@ -171,14 +165,40 @@ def test_money_with_more_than_two_places_rejected() -> None:
         save("500.005")
 
 
-def test_rate_with_more_than_six_places_rejected() -> None:
-    with pytest.raises(ValueError, match="rate has more than 6 decimal places"):
-        save("500.00", rate="0.0500001")
+@pytest.mark.parametrize("field", ["item_value", "bank_balance", "protected_min"])
+@pytest.mark.parametrize("bad", ["1E+30", "1E+10", "10000000000.00", "-10000000000.00"])
+def test_money_beyond_numeric_12_2_rejected(field: str, bad: str) -> None:
+    # Review M4: 1E+30 has no decimal places, so it used to pass and then raise
+    # decimal.InvalidOperation in quantize instead of ValueError.
+    with pytest.raises(ValueError, match=f"{field} must be below"):
+        compute_saving(rules=AUTO_SAVE, **(VALID | {field: Decimal(bad)}))
+
+
+def test_largest_numeric_12_2_money_accepted() -> None:
+    assert save("9999999999.99", bank_balance="9999999999.99") == Decimal("500.00")
+
+
+def test_result_ignores_callers_decimal_context() -> None:
+    # Review M4: under a 2-digit global context, 5000.00 * 0.10 cannot be quantized
+    # to cents. The engine computes in its own context, so the caller cannot break it.
+    with localcontext(prec=2):
+        assert save("5000.00") == Decimal("500.00")
+
+
+def test_negative_protected_min_rejected() -> None:
+    # Review L1.
+    with pytest.raises(ValueError, match="protected_min must be >= 0"):
+        compute_saving(rules=AUTO_SAVE, **(VALID | {"protected_min": Decimal("-0.01")}))
+
+
+def test_zero_protected_min_allowed() -> None:
+    args = VALID | {"protected_min": Decimal("0.00"), "bank_balance": Decimal("50.00")}
+    assert compute_saving(rules=AUTO_SAVE, **args) == Decimal("50.00")
 
 
 def test_arguments_are_keyword_only() -> None:
     with pytest.raises(TypeError):
-        compute_saving(*VALID.values(), AUTO_SAVE)  # type: ignore[call-arg, misc]
+        compute_saving(*VALID.values(), AUTO_SAVE)  # type: ignore[misc]
 
 
 def test_negative_balance_skips_saving() -> None:

@@ -224,10 +224,10 @@ class UserBalance(Base):
 
 
 class UserSettings(Base):
+    """The saving rule is fixed (L46 + L52); users only switch auto-save and consent."""
+
     __tablename__ = "user_settings"
     __table_args__ = (
-        CheckConstraint("save_rate BETWEEN 0.03 AND 0.10", name="save_rate_range"),
-        CheckConstraint("per_item_cap >= 10.00", name="per_item_cap_ge_min_saving"),
         CheckConstraint(
             "monthly_installment_cap IS NULL OR monthly_installment_cap >= 0",
             name="monthly_cap_nonneg",
@@ -237,8 +237,6 @@ class UserSettings(Base):
     user_id: Mapped[str] = mapped_column(Text, primary_key=True)
     auto_save_enabled: Mapped[bool] = mapped_column(server_default=text("false"))
     consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    save_rate: Mapped[Decimal] = mapped_column(Rate, server_default=text("0.05"))
-    per_item_cap: Mapped[Decimal] = mapped_column(Money, server_default=text("100.00"))
     monthly_installment_cap: Mapped[Decimal | None] = mapped_column(Money)
 
 
