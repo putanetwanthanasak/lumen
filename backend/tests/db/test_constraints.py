@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+from sqlalchemy import Engine, inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -135,25 +136,10 @@ def test_ID_05_unique_vendor_contract(db_session: Session) -> None:
 # --- Ranges ------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("rate", ["0.03", "0.05", "0.10"])
-def test_save_rate_accepts_bounds(db_session: Session, rate: str) -> None:
-    assert_accepted(db_session, user_settings(save_rate=Decimal(rate)))
-
-
-@pytest.mark.parametrize("rate", ["0.029999", "0.100001", "0.00"])
-def test_save_rate_rejects_out_of_range(db_session: Session, rate: str) -> None:
-    assert_rejected(
-        db_session, user_settings(save_rate=Decimal(rate)), "ck_user_settings_save_rate_range"
-    )
-
-
-def test_per_item_cap_at_least_min_saving(db_session: Session) -> None:
-    assert_accepted(db_session, user_settings(user_id="u-cap", per_item_cap=Decimal("10.00")))
-    assert_rejected(
-        db_session,
-        user_settings(per_item_cap=Decimal("9.99")),
-        "ck_user_settings_per_item_cap_ge_min_saving",
-    )
+def test_user_settings_hold_no_saving_rule(engine: Engine) -> None:
+    # L46 + L52: the rule is fixed, so there is no per-user rate or cap to store.
+    columns = {c["name"] for c in inspect(engine).get_columns("user_settings")}
+    assert columns == {"user_id", "auto_save_enabled", "consent_at", "monthly_installment_cap"}
 
 
 def test_user_settings_defaults(db_session: Session) -> None:
@@ -162,8 +148,6 @@ def test_user_settings_defaults(db_session: Session) -> None:
     db_session.refresh(row)
     assert row.auto_save_enabled is False
     assert row.consent_at is None
-    assert row.save_rate == Decimal("0.05")
-    assert row.per_item_cap == Decimal("100.00")
     assert row.monthly_installment_cap is None
 
 
