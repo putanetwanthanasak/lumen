@@ -51,6 +51,7 @@ testpaths = ["tests"]
 addopts = "--strict-markers --strict-config"
 markers = [
     "db: needs a real Postgres test database (TEST_DATABASE_URL)",
+    "concurrency: real threads and committed transactions; run alone with -m concurrency",
 ]
 # Keep httpx (no new package): silence only Starlette's httpx -> httpx2 TestClient notice.
 # StarletteDeprecationWarning subclasses UserWarning, so it must be named explicitly.
