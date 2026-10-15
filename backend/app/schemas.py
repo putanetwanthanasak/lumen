@@ -15,8 +15,12 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter, m
 from app.models import InstallmentKind
 from app.money import MoneyStr, RateStr
 
-Id = Annotated[str, Field(min_length=1, max_length=128)]
-Text = Annotated[str, Field(min_length=1, max_length=500)]
+# No C0 control characters (U+0000..U+001F) in any free-text field. Postgres JSONB
+# cannot store U+0000, so without this an authenticated NUL would be a 500, not a 422;
+# no field in the contract needs tabs or newlines either.
+NO_CONTROL_CHARS = r"^[^\x00-\x1f]*$"
+Id = Annotated[str, Field(min_length=1, max_length=128, pattern=NO_CONTROL_CHARS)]
+Text = Annotated[str, Field(min_length=1, max_length=500, pattern=NO_CONTROL_CHARS)]
 
 
 class _Payload(BaseModel):

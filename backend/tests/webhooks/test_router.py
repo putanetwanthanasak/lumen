@@ -152,6 +152,13 @@ def test_WH_04_invalid_payload_rejected(webhook: Webhook, case: str) -> None:
     assert all("input" not in e for e in errors)  # the payload is not echoed back
 
 
+def test_WH_04_nul_in_string_field_rejected_not_500(webhook: Webhook) -> None:
+    # Found in this session: the schema used to accept U+0000, and Postgres JSONB
+    # cannot store it, so a signed request with a NUL raised DataError (500).
+    response = webhook.post(with_contract(item_name="Head\u0000phones"))
+    assert_rejected(webhook, response, 422)
+
+
 # --- WH-05 (L49: one policy, reject) ------------------------------------------------
 
 
