@@ -199,3 +199,44 @@ def test_L3_schema_rejects_what_postgres_would_round() -> None:
     # Postgres stores 123.455 as 123.46 without error (see test_money_types), so the
     # schema is the only place that can refuse it.
     _rejected(encode(with_contract(principal="123.455")), "plain decimal string")
+
+
+# --- Control characters in string fields ------------------------------------------
+
+# Every free-text field in every event type: (event_type, path).
+STRING_FIELDS = [
+    ("installment_created", ("event_id",)),
+    ("installment_created", ("user_ref",)),
+    ("installment_created", ("contract", "contract_id")),
+    ("installment_created", ("contract", "item_name")),
+    ("installment_payment_collected", ("contract_id",)),
+    ("installment_overdue", ("contract_id",)),
+    ("installment_cancelled", ("contract_id",)),
+    ("installment_cancelled", ("reason",)),
+]
+C0_SAMPLES = ["\x00", "\x01", "\t", "\n", "\r", "\x1b", "\x1f"]
+
+
+def _set(data: dict[str, Any], path: tuple[str, ...], value: str) -> None:
+    target = data
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+
+
+@pytest.mark.parametrize(("event_type", "path"), STRING_FIELDS)
+@pytest.mark.parametrize("char", C0_SAMPLES, ids=[f"U+{ord(c):04X}" for c in C0_SAMPLES])
+def test_control_characters_rejected_in_every_string_field(
+    event_type: str, path: tuple[str, ...], char: str
+) -> None:
+    data = payload(event_type)
+    _set(data, path, f"ab{char}cd")
+    _rejected(encode(data), "should match pattern")
+
+
+@pytest.mark.parametrize("value", ["หูฟังไร้สาย", "Café 50% off", "a\x7fb", "x" * 500])
+def test_printable_and_non_ascii_text_still_accepted(value: str) -> None:
+    # Only C0 is refused: Thai text, punctuation and DEL (not C0) are fine.
+    event = parse_event(encode(with_contract(item_name=value)))
+    assert isinstance(event, InstallmentCreated)
+    assert event.contract.item_name == value

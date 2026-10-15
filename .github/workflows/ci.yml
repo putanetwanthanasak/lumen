@@ -55,9 +55,12 @@ jobs:
       - name: Pytest with coverage (80% floor)
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=80
       # Money-critical modules get a stricter floor, read from the same coverage data.
-      # TODO: add app/savings and app/webhooks to this gate once those modules exist.
+      # One step per module, so a weak module cannot hide behind a strong one.
+      # TODO: add app/savings once it exists.
       - name: Coverage gate app/rules (90% floor)
         run: uv run coverage report --include='app/rules/*' --fail-under=90
+      - name: Coverage gate app/webhooks (90% floor)
+        run: uv run coverage report --include='app/webhooks/*' --fail-under=90
 
   pip-audit:
     name: Dependency audit
