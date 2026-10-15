@@ -54,26 +54,22 @@ class _Frozen(BaseModel):
 
 
 class AutoSaveRules(_Frozen):
-    default_rate: RateStr
-    min_rate: RateStr
-    max_rate: RateStr
-    default_per_item_cap: MoneyStr
+    """The fixed saving rule (L46 + L52). Not user-configurable."""
+
+    rate: RateStr
     min_saving: MoneyStr
+    max_saving: MoneyStr
     rounding: Literal["ROUND_HALF_UP"]
     applies_to_kinds: tuple[InstallmentKind, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
-        if self.min_rate <= 0:
-            raise ValueError("min_rate must be > 0")
-        if self.min_rate >= self.max_rate:
-            raise ValueError("rate bounds inverted: min_rate must be < max_rate")
-        if not self.min_rate <= self.default_rate <= self.max_rate:
-            raise ValueError("default_rate must be within [min_rate, max_rate]")
+        if not 0 < self.rate <= 1:
+            raise ValueError("rate must be within (0, 1]")
         if self.min_saving <= 0:
             raise ValueError("min_saving must be > 0")
-        if self.default_per_item_cap < self.min_saving:
-            raise ValueError("default_per_item_cap must be >= min_saving")
+        if self.max_saving < self.min_saving:
+            raise ValueError("max_saving must be >= min_saving")
         if NEVER_SAVE_KINDS & set(self.applies_to_kinds):
             raise ValueError("cash_withdrawal and cash_loan must never trigger auto-save (INV-5)")
         return self

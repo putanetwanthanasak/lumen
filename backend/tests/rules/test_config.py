@@ -24,15 +24,14 @@ def with_auto_save(**overrides: Any) -> str:
 def test_shipped_rules_load_as_decimal() -> None:
     rules = load_rules()
     a = rules.auto_save
-    assert (a.default_rate, a.min_rate, a.max_rate) == (
-        Decimal("0.05"),
-        Decimal("0.03"),
+    # L46 + L52: the fixed rule. A change here is a spec change, not a tuning knob.
+    assert (a.rate, a.min_saving, a.max_saving) == (
         Decimal("0.10"),
+        Decimal("10.00"),
+        Decimal("500.00"),
     )
-    assert a.min_saving == Decimal("10.00")
-    assert a.default_per_item_cap == Decimal("100.00")
     assert rules.safety_net.protected_min_balance == Decimal("500.00")
-    for value in (a.default_rate, a.min_saving, rules.safety_net.protected_min_balance):
+    for value in (a.rate, a.min_saving, a.max_saving, rules.safety_net.protected_min_balance):
         assert type(value) is Decimal
     assert a.applies_to_kinds == ("purchase",)
     assert set(rules.alerts.strong_alert_kinds) == {"cash_withdrawal", "cash_loan"}
@@ -47,26 +46,19 @@ def test_rules_are_frozen() -> None:
         load_rules().auto_save.min_saving = Decimal("0.01")  # type: ignore[misc]
 
 
-def test_RE_05d_config_cap_below_min_saving_rejected() -> None:
-    with pytest.raises(ValidationError, match="default_per_item_cap must be >= min_saving"):
-        parse_rules(with_auto_save(default_per_item_cap="5.00"))
+def test_max_saving_below_min_saving_rejected() -> None:
+    with pytest.raises(ValidationError, match="max_saving must be >= min_saving"):
+        parse_rules(with_auto_save(max_saving="9.99"))
 
 
-@pytest.mark.parametrize("rate", ["0.02", "0.11"])
-def test_RE_10_config_default_rate_outside_bounds_rejected(rate: str) -> None:
-    with pytest.raises(ValidationError, match="default_rate must be within"):
-        parse_rules(with_auto_save(default_rate=rate))
+def test_max_saving_equal_to_min_saving_allowed() -> None:
+    assert parse_rules(with_auto_save(max_saving="10.00")).auto_save.max_saving == Decimal("10.00")
 
 
-@pytest.mark.parametrize(("lo", "hi"), [("0.10", "0.03"), ("0.05", "0.05")])
-def test_inverted_or_empty_rate_bounds_rejected(lo: str, hi: str) -> None:
-    with pytest.raises(ValidationError, match="rate bounds inverted"):
-        parse_rules(with_auto_save(min_rate=lo, max_rate=hi, default_rate=lo))
-
-
-def test_non_positive_min_rate_rejected() -> None:
-    with pytest.raises(ValidationError, match="min_rate must be > 0"):
-        parse_rules(with_auto_save(min_rate="0.00"))
+@pytest.mark.parametrize("rate", ["0.00", "-0.10", "1.01"])
+def test_rate_outside_zero_to_one_rejected(rate: str) -> None:
+    with pytest.raises(ValidationError, match=r"rate must be within \(0, 1\]"):
+        parse_rules(with_auto_save(rate=rate))
 
 
 def test_non_positive_min_saving_rejected() -> None:
@@ -74,7 +66,14 @@ def test_non_positive_min_saving_rejected() -> None:
         parse_rules(with_auto_save(min_saving="0.00"))
 
 
-@pytest.mark.parametrize("field", ["default_rate", "min_saving"])
+@pytest.mark.parametrize("key", ["default_rate", "min_rate", "max_rate", "default_per_item_cap"])
+def test_legacy_adjustable_rule_keys_rejected(key: str) -> None:
+    # The old user-adjustable shape (5%, 3-10%, per-item cap) must not load silently.
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        parse_rules(with_auto_save(**{key: "0.05"}))
+
+
+@pytest.mark.parametrize("field", ["rate", "min_saving", "max_saving"])
 def test_json_number_instead_of_string_rejected(field: str) -> None:
     # Unquote the value in the JSON text to make it a JSON number (no Python float).
     value = shipped()["auto_save"][field]
@@ -91,7 +90,8 @@ def test_json_number_instead_of_string_rejected(field: str) -> None:
         ("min_saving", "NaN", "must be finite"),
         ("min_saving", "Infinity", "must be finite"),
         ("min_saving", "10.001", "at most 2 decimal places"),
-        ("default_rate", "0.0500001", "at most 6 decimal places"),
+        ("max_saving", "500.001", "at most 2 decimal places"),
+        ("rate", "0.1000001", "at most 6 decimal places"),
     ],
 )
 def test_bad_decimal_strings_rejected(field: str, value: str, message: str) -> None:
@@ -118,7 +118,7 @@ def test_rounding_must_be_half_up() -> None:
 
 def test_unknown_key_rejected() -> None:
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-        parse_rules(with_auto_save(max_saving="100.00"))
+        parse_rules(with_auto_save(per_user_rate="0.05"))
 
 
 def test_negative_protected_min_rejected() -> None:
