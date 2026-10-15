@@ -1,12 +1,13 @@
 """Webhook processing (04 section 6), inside the caller's single transaction.
 
 Step 4 records the event idempotently, step 5 dispatches the three contract-created
-events (5a installment, 5b/5c auto-save), step 6 audits. Reconcile (step 7), payment,
+events (5a installment, 5b/5c auto-save), step 6 audits, step 7 reconciles. Payment,
 overdue and cancel dispatch (Session 8) and notifications (Session 9) come later.
 """
 
 import hashlib
 import json
+import logging
 from enum import StrEnum
 from typing import Any
 
@@ -15,6 +16,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.audit import service as audit
+from app.ledger import reconcile
 from app.ledger import service as ledger
 from app.models import Actor, EventStatus, WebhookEvent
 from app.providers import get_bank_provider
@@ -23,6 +25,8 @@ from app.rules.engine import ZERO
 from app.savings import service as savings
 from app.schemas import CashLoanCreated, CashWithdrawalCreated, InstallmentCreated
 from app.schemas import WebhookEvent as Event
+
+logger = logging.getLogger(__name__)
 
 
 class Outcome(StrEnum):
@@ -54,7 +58,10 @@ def process_event(
     payload: dict[str, Any],
     bank: BankAccountProvider | None = None,
 ) -> Outcome:
-    """Record and apply one verified, validated event. The caller commits."""
+    """Record and apply one verified, validated event. The caller commits.
+
+    Raises reconcile.InvariantViolationError after rolling the session back (RS-02).
+    """
     bank = bank if bank is not None else get_bank_provider()
     # Step 4: the DB decides. Of N concurrent copies, exactly one gets a row back (L47).
     inserted = session.execute(
@@ -120,7 +127,20 @@ def process_event(
         },
     )
 
-    # Step 5c, last: money moves only after every ledger write has succeeded.
+    # Step 7: a violation is a bug. Nothing of this event may persist.
+    try:
+        reconcile.assert_user_invariants(session, event.user_ref)
+    except reconcile.InvariantViolationError as exc:
+        session.rollback()
+        logger.error(
+            "reconcile failed, event rolled back: %s (vendor=%s event_id=%s)",
+            exc,
+            vendor,
+            event.event_id,
+        )
+        raise
+
+    # Step 5c, last: money moves only once the ledger rows have passed reconcile.
     if saving > ZERO:
         bank.transfer_to_savings(event.user_ref, saving)
     return Outcome.PROCESSED
