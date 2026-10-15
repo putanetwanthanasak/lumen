@@ -1,6 +1,6 @@
 import pytest
 from alembic import command
-from sqlalchemy import Engine, inspect, text
+from sqlalchemy import Connection, Engine, inspect, text
 
 from app.db import Base
 from tests.conftest import alembic_config
@@ -20,6 +20,29 @@ def test_upgrade_downgrade_upgrade_roundtrip(engine: Engine) -> None:
         command.upgrade(alembic_config(conn), "head")
     with engine.connect() as conn:
         assert set(Base.metadata.tables) <= set(inspect(conn).get_table_names())
+
+
+def _columns(conn: Connection, table: str) -> set[str]:
+    return {c["name"] for c in inspect(conn).get_columns(table)}
+
+
+def test_vendor_key_and_late_fees_downgrade_one_step(engine: Engine) -> None:
+    # The L47/L48 revision must undo cleanly: old single-column key, no late fees.
+    with engine.begin() as conn:
+        command.downgrade(alembic_config(conn), "-1")
+    with engine.connect() as conn:
+        assert "late_fees_accrued" not in _columns(conn, "installments")
+        assert "source_vendor" not in _columns(conn, "savings_transactions")
+        pk = inspect(conn).get_pk_constraint("webhook_events")
+        assert pk["constrained_columns"] == ["event_id"]
+
+    with engine.begin() as conn:
+        command.upgrade(alembic_config(conn), "head")
+    with engine.connect() as conn:
+        assert "late_fees_accrued" in _columns(conn, "installments")
+        assert "source_vendor" in _columns(conn, "savings_transactions")
+        pk = inspect(conn).get_pk_constraint("webhook_events")
+        assert pk["constrained_columns"] == ["vendor", "event_id"]
 
 
 def test_alembic_check_no_drift(engine: Engine) -> None:

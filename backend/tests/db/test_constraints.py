@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Base
 from tests.db.factories import (
+    VENDOR,
     add_auto_save_parents,
     add_event,
     add_installment,
@@ -24,6 +25,8 @@ from tests.db.factories import (
     user_settings,
     webhook_event,
 )
+
+OTHER_VENDOR = "othervendor"
 
 pytestmark = pytest.mark.db
 
@@ -61,42 +64,102 @@ def test_INV_3_auto_save_unique_per_event(db_session: Session) -> None:
     assert_rejected(
         db_session,
         savings_tx(source_event_id="evt-1", installment_id=other, amount=Decimal("10.00")),
-        "uq_savings_transactions_auto_save_source_event_id",
+        "uq_savings_transactions_auto_save_source_event",
     )
 
 
-def test_INV_3_auto_save_requires_source_event(db_session: Session) -> None:
-    inst = add_installment(db_session)
+def test_INV_3_same_event_id_under_two_vendors_saves_once_each(db_session: Session) -> None:
+    # L47: INV-3 is per (vendor, event_id); another vendor's evt-1 is a different event.
+    ours = add_auto_save_parents(db_session, "evt-1", "c-1")
+    theirs = add_auto_save_parents(db_session, "evt-1", "c-1", vendor=OTHER_VENDOR)
+    assert_accepted(db_session, savings_tx(source_event_id="evt-1", installment_id=ours))
+    assert_accepted(
+        db_session,
+        savings_tx(source_vendor=OTHER_VENDOR, source_event_id="evt-1", installment_id=theirs),
+    )
+
+
+@pytest.mark.parametrize(("vendor", "event_id"), [(None, None), (VENDOR, None), (None, "evt-1")])
+def test_INV_3_auto_save_requires_source_event(
+    db_session: Session, vendor: str | None, event_id: str | None
+) -> None:
+    inst = add_auto_save_parents(db_session)
     assert_rejected(
         db_session,
-        savings_tx(source_event_id=None, installment_id=inst),
+        savings_tx(source_vendor=vendor, source_event_id=event_id, installment_id=inst),
         "ck_savings_transactions_auto_save_has_source_event",
+    )
+
+
+@pytest.mark.parametrize(("vendor", "event_id"), [(VENDOR, None), (None, "evt-1")])
+def test_source_event_pair_must_be_complete(
+    db_session: Session, vendor: str | None, event_id: str | None
+) -> None:
+    # A composite FK with one NULL column is not checked at all (MATCH SIMPLE).
+    add_event(db_session)
+    assert_rejected(
+        db_session,
+        savings_tx(type="withdrawal", source_vendor=vendor, source_event_id=event_id),
+        "ck_savings_transactions_source_event_pair_complete",
     )
 
 
 def test_INV_3_withdrawals_are_not_limited_per_event(db_session: Session) -> None:
     # The partial index covers auto_save only; withdrawals carry no event.
-    assert_accepted(db_session, savings_tx(type="withdrawal", source_event_id=None))
-    assert_accepted(db_session, savings_tx(type="withdrawal", source_event_id=None))
+    for _ in range(2):
+        assert_accepted(
+            db_session, savings_tx(type="withdrawal", source_vendor=None, source_event_id=None)
+        )
 
 
-def test_auto_save_source_event_must_exist(db_session: Session) -> None:
-    inst = add_installment(db_session)
+@pytest.mark.parametrize(("vendor", "event_id"), [(VENDOR, "evt-missing"), (OTHER_VENDOR, "evt-1")])
+def test_auto_save_source_event_must_exist(db_session: Session, vendor: str, event_id: str) -> None:
+    # (othervendor, evt-1) does not exist even though (shopdemo, evt-1) does.
+    inst = add_auto_save_parents(db_session)
     assert_rejected(
         db_session,
-        savings_tx(source_event_id="evt-missing", installment_id=inst),
-        "fk_savings_transactions_source_event_id_webhook_events",
+        savings_tx(source_vendor=vendor, source_event_id=event_id, installment_id=inst),
+        "fk_savings_transactions_source_vendor_webhook_events",
     )
 
 
-def test_INV_6_paid_amount_le_principal_plus_fee(db_session: Session) -> None:
-    total = {"principal": Decimal("2000.00"), "fee_total": Decimal("100.00")}
+OWED = {
+    "principal": Decimal("2000.00"),
+    "fee_total": Decimal("100.00"),
+    "late_fees_accrued": Decimal("50.00"),
+}
+
+
+def test_INV_6_paid_amount_le_principal_plus_fee_plus_late_fees(db_session: Session) -> None:
     assert_accepted(
-        db_session, installment(contract_id="c-ok", paid_amount=Decimal("2100.00"), **total)
+        db_session, installment(contract_id="c-ok", paid_amount=Decimal("2150.00"), **OWED)
     )
     assert_rejected(
         db_session,
-        installment(paid_amount=Decimal("2100.01"), **total),
+        installment(paid_amount=Decimal("2150.01"), **OWED),
+        "ck_installments_paid_le_total",
+    )
+
+
+def test_INV_6_payment_may_cover_late_fees(db_session: Session) -> None:
+    # 2,120.00 is above principal + fee (2,100.00): only valid because late fees are owed.
+    paid = Decimal("2120.00")
+    assert_accepted(db_session, installment(contract_id="c-late", paid_amount=paid, **OWED))
+    assert_rejected(
+        db_session,
+        installment(paid_amount=paid, **(OWED | {"late_fees_accrued": Decimal("0.00")})),
+        "ck_installments_paid_le_total",
+    )
+
+
+def test_INV_6_without_late_fees_is_principal_plus_fee(db_session: Session) -> None:
+    no_late = OWED | {"late_fees_accrued": Decimal("0.00")}
+    assert_accepted(
+        db_session, installment(contract_id="c-ok", paid_amount=Decimal("2100.00"), **no_late)
+    )
+    assert_rejected(
+        db_session,
+        installment(paid_amount=Decimal("2100.01"), **no_late),
         "ck_installments_paid_le_total",
     )
 
@@ -118,9 +181,17 @@ def test_L41_fields_accept_zero(db_session: Session) -> None:
 # --- Idempotency keys (05 section 4.4) ---------------------------------------------
 
 
-def test_ID_01_webhook_event_id_is_primary_key(db_session: Session) -> None:
+def test_ID_01_webhook_event_key_is_vendor_and_event_id(db_session: Session) -> None:
     add_event(db_session, "evt-dup")
     assert_rejected(db_session, webhook_event(event_id="evt-dup"), "pk_webhook_events")
+
+
+def test_L47_two_vendors_can_reuse_event_id(db_session: Session) -> None:
+    add_event(db_session, "evt-1", vendor=VENDOR)
+    add_event(db_session, "evt-1", vendor=OTHER_VENDOR)
+    assert_rejected(
+        db_session, webhook_event(event_id="evt-1", vendor=OTHER_VENDOR), "pk_webhook_events"
+    )
 
 
 def test_ID_05_unique_vendor_contract(db_session: Session) -> None:
@@ -152,14 +223,15 @@ def test_user_settings_defaults(db_session: Session) -> None:
 
 
 def test_installment_defaults(db_session: Session) -> None:
-    row = installment(fee_total=None, paid_amount=None)
-    del row.fee_total, row.paid_amount  # let the server defaults apply
+    row = installment(fee_total=None, paid_amount=None, late_fees_accrued=None)
+    del row.fee_total, row.paid_amount, row.late_fees_accrued  # let the server defaults apply
     assert_accepted(db_session, row)
     db_session.refresh(row)
     assert row.status == "active"
     assert row.overdue_days == 0
     assert row.fee_total == Decimal("0.00")
     assert row.paid_amount == Decimal("0.00")
+    assert row.late_fees_accrued == Decimal("0.00")
 
 
 # One bad value per CHECK constraint: (factory, overrides, constraint name).
@@ -171,6 +243,11 @@ CHECK_CASES: list[tuple[Any, dict[str, Any], str]] = [
     (installment, {"monthly_amount": Decimal("-1.00")}, "ck_installments_monthly_amount_nonneg"),
     (installment, {"fee_total": Decimal("-1.00")}, "ck_installments_fee_total_nonneg"),
     (installment, {"paid_amount": Decimal("-0.01")}, "ck_installments_paid_amount_nonneg"),
+    (
+        installment,
+        {"late_fees_accrued": Decimal("-0.01")},
+        "ck_installments_late_fees_accrued_nonneg",
+    ),
     (installment, {"min_payment": Decimal("-1.00")}, "ck_installments_min_payment_nonneg"),
     (installment, {"late_fee_per_period": Decimal("-1.00")}, "ck_installments_late_fee_nonneg"),
     (installment, {"monthly_rate": Decimal("-0.000001")}, "ck_installments_monthly_rate_nonneg"),

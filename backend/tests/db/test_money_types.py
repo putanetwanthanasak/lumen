@@ -28,7 +28,7 @@ def _numeric_columns() -> list[tuple[str, str, Numeric[Decimal]]]:
 
 def test_money_columns_are_numeric_12_2_and_rates_7_6() -> None:
     cols = _numeric_columns()
-    assert len(cols) == 10  # installments 7, user_settings 1, savings 1, balances 1
+    assert len(cols) == 11  # installments 8, user_settings 1, savings 1, balances 1
     for table, name, typ in cols:
         expected = (7, 6) if (table, name) in RATE_COLUMNS else (12, 2)
         assert (typ.precision, typ.scale) == expected, f"{table}.{name}"
