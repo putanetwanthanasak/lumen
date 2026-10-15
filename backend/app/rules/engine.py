@@ -11,7 +11,8 @@ from decimal import (
 )
 
 from app.models import InstallmentKind
-from app.rules.config import AutoSaveRules, decimal_places
+from app.money import decimal_places
+from app.rules.config import AutoSaveRules
 
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")

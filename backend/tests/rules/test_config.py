@@ -7,7 +7,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from app.rules.config import RULES_PATH, decimal_places, load_rules, parse_rules
+from app.money import decimal_places
+from app.rules.config import RULES_PATH, load_rules, parse_rules
 
 
 def shipped() -> dict[str, Any]:
@@ -55,7 +56,7 @@ def test_max_saving_equal_to_min_saving_allowed() -> None:
     assert parse_rules(with_auto_save(max_saving="10.00")).auto_save.max_saving == Decimal("10.00")
 
 
-@pytest.mark.parametrize("rate", ["0.00", "-0.10", "1.01"])
+@pytest.mark.parametrize("rate", ["0.00", "1.01"])
 def test_rate_outside_zero_to_one_rejected(rate: str) -> None:
     with pytest.raises(ValidationError, match=r"rate must be within \(0, 1\]"):
         parse_rules(with_auto_save(rate=rate))
@@ -86,9 +87,11 @@ def test_json_number_instead_of_string_rejected(field: str) -> None:
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
-        ("min_saving", "ten", "not a decimal"),
-        ("min_saving", "NaN", "must be finite"),
-        ("min_saving", "Infinity", "must be finite"),
+        # Shared parser (app.money): one message for every malformed string.
+        ("min_saving", "ten", "plain decimal string"),
+        ("min_saving", "NaN", "plain decimal string"),
+        ("min_saving", "Infinity", "plain decimal string"),
+        ("rate", "-0.10", "plain decimal string"),
         ("min_saving", "10.001", "at most 2 decimal places"),
         ("max_saving", "500.001", "at most 2 decimal places"),
         ("rate", "0.1000001", "at most 6 decimal places"),
@@ -124,7 +127,8 @@ def test_unknown_key_rejected() -> None:
 def test_negative_protected_min_rejected() -> None:
     data = shipped()
     data["safety_net"]["protected_min_balance"] = "-1.00"
-    with pytest.raises(ValidationError, match="protected_min_balance must be >= 0"):
+    # No sign is allowed by the money pattern, so negatives fail at parse time.
+    with pytest.raises(ValidationError, match="plain decimal string"):
         parse_rules(json.dumps(data))
 
 
