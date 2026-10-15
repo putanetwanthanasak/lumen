@@ -28,6 +28,8 @@ RESPONSES: dict[Outcome, tuple[int, dict[str, Any]]] = {
     Outcome.PENDING_PARENT: (202, {"status": "pending_parent"}),
     Outcome.CONFLICT: (409, {"detail": "event_id reused with different payload"}),
     Outcome.CONTRACT_CONFLICT: (409, {"detail": "contract_id reused with different contract"}),
+    # Nothing written; the platform retries once dispatch exists (review R1).
+    Outcome.NOT_DISPATCHED: (503, {"detail": "event type not processed yet, retry later"}),
 }
 
 router = APIRouter()
