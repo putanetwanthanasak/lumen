@@ -4,13 +4,14 @@ Every rejection also asserts that nothing reached the database.
 """
 
 import json
+from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.main import app
-from app.models import AuditLog, WebhookEvent
+from app.models import AuditLog, Installment, WebhookEvent
 from app.webhooks.router import MAX_BODY_BYTES
 from app.webhooks.signature import get_vendor_secrets, sign
 from tests.webhooks.conftest import NOW, OTHER_VENDOR, SECRETS, VENDOR, WRONG_SECRET, Webhook
@@ -250,3 +251,26 @@ def test_event_id_reused_with_different_payload_conflicts(webhook: Webhook) -> N
     assert row.payload == original  # the original row is kept
     actions = webhook.session.execute(select(AuditLog.action).order_by(AuditLog.id)).scalars()
     assert list(actions) == ["webhook_received", "webhook_event_id_reused"]
+
+
+# --- ID-05 over HTTP (decision D1) ---------------------------------------------------
+
+
+def test_ID_05_contract_resent_under_new_event_id_is_duplicate(webhook: Webhook) -> None:
+    assert webhook.post(payload()).json() == PROCESSED
+    response = webhook.post(payload(event_id="evt_resent"))
+
+    assert response.status_code == 200
+    assert response.json() == DUPLICATE
+    assert webhook.session.execute(select(func.count()).select_from(Installment)).scalar_one() == 1
+
+
+def test_ID_05_contract_id_reused_with_different_contract_conflicts(webhook: Webhook) -> None:
+    assert webhook.post(payload()).json() == PROCESSED
+    changed = with_contract(principal="99999.00")
+    response = webhook.post(changed | {"event_id": "evt_changed"})
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "contract_id reused with different contract"}
+    row = webhook.session.execute(select(Installment)).scalar_one()
+    assert row.principal == Decimal("20000.00")  # the original installment is kept

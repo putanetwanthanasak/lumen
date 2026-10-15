@@ -27,6 +27,7 @@ RESPONSES: dict[Outcome, tuple[int, dict[str, Any]]] = {
     Outcome.DUPLICATE: (200, {"status": "duplicate"}),  # 200 so the sender stops retrying
     Outcome.PENDING_PARENT: (202, {"status": "pending_parent"}),
     Outcome.CONFLICT: (409, {"detail": "event_id reused with different payload"}),
+    Outcome.CONTRACT_CONFLICT: (409, {"detail": "contract_id reused with different contract"}),
 }
 
 router = APIRouter()
