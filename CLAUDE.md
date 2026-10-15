@@ -16,7 +16,12 @@ Spec docs are written in Thai. Read them for requirements; write everything you 
 - **L41** The webhook contract carries full debt data. In addition to 04 section 5.3, the contract includes `min_payment`, `late_fee_per_period`, `monthly_rate`, and overdue status (`overdue_days`). All of this is an assumption about the platform API.
 - **L42** "Not me" = installment becomes `disputed` + audit log entry + signal sent back to the platform via a mock provider + contact-channel info returned. Never claim the system stops the platform transaction.
 - **L43** Every new-debt notification includes the user's current total monthly installment amount.
-- Saving rule: 5% of item value, minimum 10 THB, maximum 100 THB per item. Never save a partial amount. Safety net: skip saving if the bank balance would drop below 500 THB (system-set, not user-configurable).
+- **L46 + L52** Saving rule is fixed and not user-configurable: **10%** of item value, minimum **10 THB**, maximum **500 THB** per purchase (hard limits). This replaces the 5% / 100 THB rule that appears in docs/spec and older tests. Never save a partial amount. Safety net: skip saving if the bank balance would drop below 500 THB. Users can only turn auto-save on or off and give consent. This supersedes 03 and the per-user rate/cap in 04 section 4.5.
+- **L47** Idempotency key is `(vendor, event_id)`, not `event_id` alone.
+- **L48** Late fees live in a separate `late_fees_accrued` column. INV-6 is `paid_amount <= principal + fee_total + late_fees_accrued`.
+- **L49** Webhook money must be a JSON string with at most 2 decimal places. JSON numbers and extra decimals are rejected with 422, never rounded (single policy for WH-05).
+- **L50** `cash_withdrawal` and `cash_loan` both get the strong alert (05 SV-03a).
+- **L51** INV-5 and "auto-save user = event user" are enforced in the service and checked in `reconcile.assert_user_invariants()`, not by DB triggers or composite FKs.
 - Installment `kind`: `purchase`, `cash_withdrawal`, `cash_loan` (the last two never trigger saving).
 - Python 3.14 locally and in CI. If a package does not support it, stop and report. Do not downgrade on your own.
 
