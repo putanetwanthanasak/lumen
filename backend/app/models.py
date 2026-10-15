@@ -23,6 +23,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Identity,
     Index,
     Numeric,
@@ -114,9 +115,10 @@ class WebhookEvent(Base):
         one_of("status", EventStatus),
     )
 
-    # Platform event id = idempotency key (ID-01, ID-02).
+    # Idempotency key is (vendor, event_id) (L47; ID-01, ID-02): event ids are only
+    # unique within one platform, so two vendors may reuse the same id.
+    vendor: Mapped[str] = mapped_column(Text, primary_key=True)
     event_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    vendor: Mapped[str] = mapped_column(Text)
     event_type: Mapped[str] = mapped_column(Text)
     user_id: Mapped[str] = mapped_column(Text, index=True)
     contract_id: Mapped[str] = mapped_column(Text)
@@ -136,7 +138,11 @@ class Installment(Base):
         CheckConstraint("monthly_amount >= 0", name="monthly_amount_nonneg"),
         CheckConstraint("fee_total >= 0", name="fee_total_nonneg"),
         CheckConstraint("paid_amount >= 0", name="paid_amount_nonneg"),
-        CheckConstraint("paid_amount <= principal + fee_total", name="paid_le_total"),  # INV-6
+        CheckConstraint("late_fees_accrued >= 0", name="late_fees_accrued_nonneg"),
+        # INV-6 (L48): late fees are owed too, so a payment may cover them.
+        CheckConstraint(
+            "paid_amount <= principal + fee_total + late_fees_accrued", name="paid_le_total"
+        ),
         CheckConstraint("min_payment >= 0", name="min_payment_nonneg"),
         CheckConstraint("late_fee_per_period >= 0", name="late_fee_nonneg"),
         CheckConstraint("monthly_rate >= 0", name="monthly_rate_nonneg"),
@@ -156,6 +162,8 @@ class Installment(Base):
     monthly_amount: Mapped[Decimal] = mapped_column(Money)
     fee_total: Mapped[Decimal] = mapped_column(Money, server_default=text("0"))
     paid_amount: Mapped[Decimal] = mapped_column(Money, server_default=text("0"))
+    # L48: kept apart from fee_total because the payoff planner needs them separately.
+    late_fees_accrued: Mapped[Decimal] = mapped_column(Money, server_default=text("0"))
     status: Mapped[str] = mapped_column(Text, server_default=text("'active'"))
     first_due_date: Mapped[date] = mapped_column(Date)
     # L41: full debt data from the platform contract (an assumption about its API).
@@ -172,14 +180,25 @@ class SavingsTransaction(Base):
     __table_args__ = (
         one_of("type", SavingsType),
         CheckConstraint("amount > 0", name="amount_positive"),
+        # The source event is the pair (vendor, event_id) (L47).
+        ForeignKeyConstraint(
+            ["source_vendor", "source_event_id"],
+            ["webhook_events.vendor", "webhook_events.event_id"],
+        ),
+        # A composite FK is MATCH SIMPLE: a half-NULL pair would skip it entirely.
+        CheckConstraint(
+            "(source_vendor IS NULL) = (source_event_id IS NULL)",
+            name="source_event_pair_complete",
+        ),
         # NULLs never collide in a UNIQUE index, so INV-3 needs auto_save to carry its event.
         CheckConstraint(
-            "type <> 'auto_save' OR source_event_id IS NOT NULL",
+            "type <> 'auto_save' OR (source_vendor IS NOT NULL AND source_event_id IS NOT NULL)",
             name="auto_save_has_source_event",
         ),
         # INV-3: one event creates at most one auto_save.
         Index(
-            "uq_savings_transactions_auto_save_source_event_id",
+            "uq_savings_transactions_auto_save_source_event",
+            "source_vendor",
             "source_event_id",
             unique=True,
             postgresql_where=text("type = 'auto_save'"),
@@ -204,7 +223,8 @@ class SavingsTransaction(Base):
     user_id: Mapped[str] = mapped_column(Text, index=True)
     type: Mapped[str] = mapped_column(Text)
     amount: Mapped[Decimal] = mapped_column(Money)  # always positive; direction from type
-    source_event_id: Mapped[str | None] = mapped_column(Text, ForeignKey("webhook_events.event_id"))
+    source_vendor: Mapped[str | None] = mapped_column(Text)
+    source_event_id: Mapped[str | None] = mapped_column(Text)
     installment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("installments.id")
     )

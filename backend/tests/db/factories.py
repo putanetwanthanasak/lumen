@@ -18,12 +18,13 @@ from app.models import (
 )
 
 USER = "user-1"
+VENDOR = "shopdemo"
 
 
 def webhook_event(**overrides: Any) -> WebhookEvent:
     fields: dict[str, Any] = {
+        "vendor": VENDOR,
         "event_id": "evt-1",
-        "vendor": "shopdemo",
         "event_type": "installment_created",
         "user_id": USER,
         "contract_id": "c-1",
@@ -36,7 +37,7 @@ def webhook_event(**overrides: Any) -> WebhookEvent:
 def installment(**overrides: Any) -> Installment:
     fields: dict[str, Any] = {
         "user_id": USER,
-        "vendor": "shopdemo",
+        "vendor": VENDOR,
         "contract_id": "c-1",
         "kind": "purchase",
         "item_name": "Headphones",
@@ -45,6 +46,7 @@ def installment(**overrides: Any) -> Installment:
         "monthly_amount": Decimal("500.00"),
         "fee_total": Decimal("0.00"),
         "paid_amount": Decimal("0.00"),
+        "late_fees_accrued": Decimal("0.00"),
         "first_due_date": date(2026, 11, 1),
         "min_payment": Decimal("500.00"),
         "late_fee_per_period": Decimal("50.00"),
@@ -58,6 +60,7 @@ def savings_tx(**overrides: Any) -> SavingsTransaction:
         "user_id": USER,
         "type": "auto_save",
         "amount": Decimal("40.00"),
+        "source_vendor": VENDOR,
         "source_event_id": "evt-1",
     }
     return SavingsTransaction(**(fields | overrides))
@@ -95,21 +98,21 @@ def audit_log(**overrides: Any) -> AuditLog:
     return AuditLog(**(fields | overrides))
 
 
-def add_event(session: Session, event_id: str = "evt-1") -> None:
-    session.add(webhook_event(event_id=event_id))
+def add_event(session: Session, event_id: str = "evt-1", vendor: str = VENDOR) -> None:
+    session.add(webhook_event(event_id=event_id, vendor=vendor))
     session.flush()
 
 
-def add_installment(session: Session, contract_id: str = "c-1") -> uuid.UUID:
-    row = installment(contract_id=contract_id)
+def add_installment(session: Session, contract_id: str = "c-1", vendor: str = VENDOR) -> uuid.UUID:
+    row = installment(contract_id=contract_id, vendor=vendor)
     session.add(row)
     session.flush()
     return row.id
 
 
 def add_auto_save_parents(
-    session: Session, event_id: str = "evt-1", contract_id: str = "c-1"
+    session: Session, event_id: str = "evt-1", contract_id: str = "c-1", vendor: str = VENDOR
 ) -> uuid.UUID:
     """An event and its installment, the two rows every auto_save must reference."""
-    session.add(webhook_event(event_id=event_id, contract_id=contract_id))
-    return add_installment(session, contract_id)
+    session.add(webhook_event(event_id=event_id, contract_id=contract_id, vendor=vendor))
+    return add_installment(session, contract_id, vendor)

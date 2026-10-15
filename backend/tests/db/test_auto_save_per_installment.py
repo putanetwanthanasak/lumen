@@ -50,5 +50,8 @@ def test_withdrawals_need_no_installment(db_session: Session) -> None:
     add_installment(db_session)
     for _ in range(2):
         assert_accepted(
-            db_session, savings_tx(type="withdrawal", source_event_id=None, installment_id=None)
+            db_session,
+            savings_tx(
+                type="withdrawal", source_vendor=None, source_event_id=None, installment_id=None
+            ),
         )
