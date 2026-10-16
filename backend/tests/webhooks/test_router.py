@@ -15,7 +15,14 @@ from app.models import AuditLog, Installment, WebhookEvent
 from app.webhooks.router import MAX_BODY_BYTES
 from app.webhooks.signature import get_vendor_secrets, sign
 from tests.webhooks.conftest import NOW, OTHER_VENDOR, SECRETS, VENDOR, WRONG_SECRET, Webhook
-from tests.webhooks.payloads import EVENT_TYPES, encode, payload, raw_with, with_contract
+from tests.webhooks.payloads import (
+    CREATED_EVENT_TYPES,
+    UNDISPATCHED_EVENT_TYPES,
+    encode,
+    payload,
+    raw_with,
+    with_contract,
+)
 
 pytestmark = pytest.mark.db
 
@@ -32,7 +39,7 @@ def assert_rejected(webhook: Webhook, response: Any, status: int) -> None:
 # --- WH-01 ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("event_type", EVENT_TYPES)
+@pytest.mark.parametrize("event_type", CREATED_EVENT_TYPES)
 def test_WH_01_valid_signature_processed(webhook: Webhook, event_type: str) -> None:
     data = payload(event_type)
     response = webhook.post(data)
@@ -47,6 +54,19 @@ def test_WH_01_valid_signature_processed(webhook: Webhook, event_type: str) -> N
     assert (entry.actor, entry.action) == ("system", "webhook_received")
     assert entry.ref_id == f"{VENDOR}:{data['event_id']}"
     assert entry.detail["event_type"] == event_type
+
+
+@pytest.mark.parametrize("event_type", UNDISPATCHED_EVENT_TYPES)
+def test_undispatched_event_type_not_acknowledged(webhook: Webhook, event_type: str) -> None:
+    """Review R1: an event the processor cannot apply yet must not be stored as
+    processed. A 200 would stop the platform retrying, and every later resend would
+    be a duplicate, so the payment, overdue or cancel would be lost for good. 503
+    with nothing written lets the platform retry once dispatch exists (Session 8)."""
+    response = webhook.post(payload(event_type))
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "event type not processed yet, retry later"}
+    assert webhook.nothing_written()
 
 
 # --- WH-02 ---------------------------------------------------------------------------

@@ -35,6 +35,7 @@ class Outcome(StrEnum):
     PENDING_PARENT = "pending_parent"  # set by dispatch from Session 7 (OR-01)
     CONFLICT = "conflict"  # same (vendor, event_id), different payload
     CONTRACT_CONFLICT = "contract_conflict"  # same (vendor, contract_id), different contract
+    NOT_DISPATCHED = "not_dispatched"  # no dispatch for this event type yet (review R1)
 
 
 def payload_hash(payload: Any) -> str:
@@ -63,6 +64,11 @@ def process_event(
     Raises reconcile.InvariantViolationError after rolling the session back (RS-02).
     """
     bank = bank if bank is not None else get_bank_provider()
+    # Review R1: until Session 8 dispatches payment, overdue and cancel, write nothing.
+    # Recording them as processed would turn every later resend into a duplicate, so
+    # the event could never be applied.
+    if not isinstance(event, InstallmentCreated | CashWithdrawalCreated | CashLoanCreated):
+        return Outcome.NOT_DISPATCHED
     # Step 4: the DB decides. Of N concurrent copies, exactly one gets a row back (L47).
     inserted = session.execute(
         pg_insert(WebhookEvent)
@@ -102,14 +108,12 @@ def process_event(
         return Outcome.CONFLICT
 
     # Step 5
-    saving = ZERO
-    if isinstance(event, InstallmentCreated | CashWithdrawalCreated | CashLoanCreated):
-        installment_id = ledger.create_installment(session, vendor=vendor, event=event)
-        if installment_id is None:
-            return _contract_reused(session, vendor=vendor, event=event, payload=payload)
-        saving = savings.auto_save(
-            session, vendor=vendor, event=event, installment_id=installment_id, bank=bank
-        )
+    installment_id = ledger.create_installment(session, vendor=vendor, event=event)
+    if installment_id is None:
+        return _contract_reused(session, vendor=vendor, event=event, payload=payload)
+    saving = savings.auto_save(
+        session, vendor=vendor, event=event, installment_id=installment_id, bank=bank
+    )
 
     # Step 6
     audit.record(
