@@ -37,6 +37,7 @@ Spec docs are written in Thai. Read them for requirements; write everything you 
 9. Verify every new package exists and is the intended one. Pin versions in a lock file.
 10. Any Thai text (UI copy, notifications) must not use em dashes (—).
 11. **Never push to `main`.** Work on a branch named by what it does (see Git workflow), push that branch, and open a PR with `gh pr create`. **Never merge the PR yourself.** The user reviews and merges.
+12. **Any schema change updates `tests/db/test_schema_snapshot.py` in the same PR**, and every new migration is checked by the snapshot test, not only by `alembic check` (which misses CHECK expressions and partial-index WHERE clauses).
 
 ## Git workflow
 - Start of work: `git switch main && git pull`, then create a branch.
