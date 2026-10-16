@@ -2,6 +2,7 @@
 
 from collections.abc import Generator
 from functools import lru_cache
+from typing import Any
 
 from sqlalchemy import Engine, MetaData, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -22,8 +23,11 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
-def make_engine(url: str) -> Engine:
-    return create_engine(url, pool_pre_ping=True)
+def make_engine(url: str, **pool: Any) -> Engine:
+    # R7: _credit's retry loop needs READ COMMITTED (a losing UPDATE must see the
+    # winner's row, not raise a serialization error), so it does not depend on the
+    # server's default_transaction_isolation.
+    return create_engine(url, pool_pre_ping=True, isolation_level="READ COMMITTED", **pool)
 
 
 @lru_cache
