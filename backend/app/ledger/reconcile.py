@@ -1,8 +1,9 @@
 """Invariant checks run inside the transaction before commit (04 step 7, 05 section 3).
 
 A violation means a bug, not bad input: the caller rolls back the whole transaction
-and logs it (RS-02). INV-5 and "auto-save user = event user" live here, not in the
-DB (L51).
+and logs it (RS-02). INV-1, 2, 3, 5 and 6 are checked; INV-4 is enforced by the rule
+engine and INV-7 needs a before-and-after, so tests check both. INV-5 and "auto-save
+user = event user" live here, not in the DB (L51).
 """
 
 from decimal import Decimal
@@ -115,6 +116,20 @@ def check_user_invariants(session: Session, user_id: str) -> list[str]:
     ).first()
     if other_user is not None:
         violations.append("L51")
+
+    # INV-6 (L48): never paid more than is owed, late fees included. The DB CHECK
+    # paid_le_total enforces it too; this names it in the RS-02 log.
+    inst = Installment
+    overpaid = session.execute(
+        select(inst.id)
+        .where(
+            inst.user_id == user_id,
+            inst.paid_amount > inst.principal + inst.fee_total + inst.late_fees_accrued,
+        )
+        .limit(1)
+    ).first()
+    if overpaid is not None:
+        violations.append("INV-6")
 
     return violations
 

@@ -22,6 +22,11 @@ NO_CONTROL_CHARS = r"^[^\x00-\x1f]*$"
 Id = Annotated[str, Field(min_length=1, max_length=128, pattern=NO_CONTROL_CHARS)]
 Text = Annotated[str, Field(min_length=1, max_length=500, pattern=NO_CONTROL_CHARS)]
 
+# Review R2: an int above int4 was a 500 on every retry. These are far above any real
+# contract and far below 2**31, so out-of-range input is a 422.
+MAX_MONTHS = 600  # 50 years
+MAX_OVERDUE_DAYS = 36_500  # 100 years
+
 
 class _Payload(BaseModel):
     # strict: no lax coercion ("6" -> 6, 1700000000 -> date); JSON strings still
@@ -34,7 +39,7 @@ class Contract(_Payload):
     kind: InstallmentKind
     item_name: Text
     principal: Annotated[MoneyStr, Field(gt=Decimal(0))]
-    months: Annotated[int, Field(gt=0)]
+    months: Annotated[int, Field(gt=0, le=MAX_MONTHS)]
     monthly_amount: MoneyStr
     fee_total: MoneyStr
     first_due_date: date
@@ -42,7 +47,7 @@ class Contract(_Payload):
     min_payment: MoneyStr
     late_fee_per_period: MoneyStr
     monthly_rate: RateStr
-    overdue_days: Annotated[int, Field(ge=0)]
+    overdue_days: Annotated[int, Field(ge=0, le=MAX_OVERDUE_DAYS)]
 
 
 class _Event(_Payload):
@@ -89,12 +94,12 @@ class _ContractEvent(_Event):
 class PaymentCollected(_ContractEvent):
     event_type: Literal["installment_payment_collected"]
     amount: Annotated[MoneyStr, Field(gt=Decimal(0))]
-    installment_no: Annotated[int, Field(ge=1)]
+    installment_no: Annotated[int, Field(ge=1, le=MAX_MONTHS)]
 
 
 class InstallmentOverdue(_ContractEvent):
     event_type: Literal["installment_overdue"]
-    overdue_days: Annotated[int, Field(ge=1)]
+    overdue_days: Annotated[int, Field(ge=1, le=MAX_OVERDUE_DAYS)]
     # The platform's cumulative total, not an increment, so a replay cannot double-count.
     late_fees_accrued: MoneyStr
 
@@ -116,10 +121,22 @@ WebhookEvent = Annotated[
 
 _ADAPTER: TypeAdapter[WebhookEvent] = TypeAdapter(WebhookEvent)
 
+# Only these can be stored as pending_parent and replayed (04 step 5f).
+ContractEvent = Annotated[
+    PaymentCollected | InstallmentOverdue | InstallmentCancelled,
+    Field(discriminator="event_type"),
+]
+_CONTRACT_EVENT_ADAPTER: TypeAdapter[ContractEvent] = TypeAdapter(ContractEvent)
+
 
 def parse_event(raw: bytes) -> WebhookEvent:
     """Validate a raw JSON body. Raises pydantic.ValidationError (-> 422)."""
     return _ADAPTER.validate_json(raw)
+
+
+def parse_contract_event(raw: bytes) -> ContractEvent:
+    """Like parse_event, for a payment, overdue or cancel only."""
+    return _CONTRACT_EVENT_ADAPTER.validate_json(raw)
 
 
 class WebhookAck(BaseModel):

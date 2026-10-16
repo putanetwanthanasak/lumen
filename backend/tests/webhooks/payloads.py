@@ -59,8 +59,8 @@ PAYLOADS: dict[str, dict[str, Any]] = {
 }
 EVENT_TYPES = list(PAYLOADS)
 CREATED_EVENT_TYPES = EVENT_TYPES[:3]
-# No dispatch until Session 8: answered 503, nothing written (review R1).
-UNDISPATCHED_EVENT_TYPES = EVENT_TYPES[3:]
+# Payment, overdue and cancel: they need an installment (pending_parent until then).
+CONTRACT_EVENT_TYPES = EVENT_TYPES[3:]
 
 
 def payload(event_type: str = "installment_created", **overrides: Any) -> dict[str, Any]:

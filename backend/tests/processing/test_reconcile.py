@@ -210,3 +210,28 @@ def test_RS_02_violation_rolls_back_whole_event_and_logs(
     assert "reconcile failed" in record.getMessage()
     assert "INV-1" in record.getMessage()
     assert f"vendor={VENDOR} event_id=evt_1" in record.getMessage()
+
+
+def test_INV_6_paid_more_than_owed(history: Session) -> None:
+    history.execute(text("ALTER TABLE installments DROP CONSTRAINT ck_installments_paid_le_total"))
+    history.execute(
+        update(Installment)
+        .where(Installment.user_id == USER)
+        .values(
+            paid_amount=Installment.principal
+            + Installment.fee_total
+            + Installment.late_fees_accrued
+            + Decimal("0.01")
+        )
+    )
+    assert violations(history) == ["INV-6"]
+
+
+def test_INV_6_paid_exactly_what_is_owed_holds(history: Session) -> None:
+    history.execute(
+        update(Installment)
+        .where(Installment.user_id == USER)
+        .values(late_fees_accrued=Decimal("150.00"))
+        .values(paid_amount=Installment.principal + Installment.fee_total + Decimal("150.00"))
+    )
+    assert violations(history) == []

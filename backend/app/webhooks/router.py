@@ -28,8 +28,9 @@ RESPONSES: dict[Outcome, tuple[int, dict[str, Any]]] = {
     Outcome.PENDING_PARENT: (202, {"status": "pending_parent"}),
     Outcome.CONFLICT: (409, {"detail": "event_id reused with different payload"}),
     Outcome.CONTRACT_CONFLICT: (409, {"detail": "contract_id reused with different contract"}),
-    # Nothing written; the platform retries once dispatch exists (review R1).
-    Outcome.NOT_DISPATCHED: (503, {"detail": "event type not processed yet, retry later"}),
+    # Stored and audited but not applied (OR-05, INV-6, user mismatch). A resend is a
+    # duplicate, as for ID-05.
+    Outcome.REJECTED: (409, {"detail": "event conflicts with the installment"}),
 }
 
 router = APIRouter()
