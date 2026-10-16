@@ -15,6 +15,7 @@ Spec docs are written in Thai. Read them for requirements; write everything you 
 - **L40** Until Oct 19, build core + tests only: Ledger, webhook, idempotency, auto-save, debt summary, new-debt alerts. No Payoff Planner, no AI, no polished frontend yet.
 - **L41** The webhook contract carries full debt data. In addition to 04 section 5.3, the contract includes `min_payment`, `late_fee_per_period`, `monthly_rate`, and overdue status (`overdue_days`). All of this is an assumption about the platform API.
 - **L42** "Not me" = installment becomes `disputed` + audit log entry + signal sent back to the platform via a mock provider + contact-channel info returned. Never claim the system stops the platform transaction.
+- **L58** Product core is one sentence: "See every BNPL debt the moment it happens, including the ones you did not make." Two outcomes: protection (alert on every new debt, strong alert for cash, "Not me" per L42) and saving. "Not me" is core scope, not optional. Payoff Planner and AI are roadmap only.
 - **L43** Every new-debt notification includes the user's current total monthly installment amount.
 - **L46 + L52** Saving rule is fixed and not user-configurable: **10%** of item value, minimum **10 THB**, maximum **500 THB** per purchase (hard limits). This replaces the 5% / 100 THB rule that appears in docs/spec and older tests. Never save a partial amount. Safety net: skip saving if the bank balance would drop below 500 THB. Users can only turn auto-save on or off and give consent. This supersedes 03 and the per-user rate/cap in 04 section 4.5.
 - **L47** Idempotency key is `(vendor, event_id)`, not `event_id` alone.
@@ -30,7 +31,7 @@ Spec docs are written in Thai. Read them for requirements; write everything you 
 2. **No secrets in code or git.** Read from env only. `.env` is in `.gitignore` from the first commit. Never print secret values in chat.
 3. **Write tests together with code.** Test names reference IDs from 05, e.g. `test_RE_07_safety_net_skips_when_below_protected_min`.
 4. **Break before trust:** for critical tests (money, idempotency, invariants), temporarily break the code, confirm the test fails, then restore. Record the result in the progress log.
-5. **Never use the names or logos of KBank, KBTG, Kasikornbank, or Shopee** in code, UI, or mock data. Display name is "Lumen"; the mock vendor is "ShopDemo".
+5. **Never use the names or logos of KBank, KBTG, Kasikornbank, K PLUS, or Shopee** in code, UI, or mock data, or any wording that implies the prototype is an official bank service. Display name is "Lumen"; the mock vendor is "ShopDemo".
 6. **Advisory only, never block:** the system never blocks a transaction or a savings withdrawal.
 7. **Do not make spec decisions on your own.** If the spec is unclear or contradictory, choose the safest option, continue, and log it under "Open questions".
 8. ORM or parameterized queries only. Never build SQL by string concatenation.
@@ -38,6 +39,14 @@ Spec docs are written in Thai. Read them for requirements; write everything you 
 10. Any Thai text (UI copy, notifications) must not use em dashes (—).
 11. **Never push to `main`.** Work on a branch named by what it does (see Git workflow), push that branch, and open a PR with `gh pr create`. **Never merge the PR yourself.** The user reviews and merges.
 12. **Any schema change updates `tests/db/test_schema_snapshot.py` in the same PR**, and every new migration is checked by the snapshot test, not only by `alembic check` (which misses CHECK expressions and partial-index WHERE clauses).
+
+## When a test fails unexpectedly or a bug appears
+Find the root cause before changing code. Never retry, loosen an assertion, add a sleep, or skip a test to make it pass.
+1. **Reproduce:** get a reliable failing case. For flaky or concurrency failures, run the test repeatedly (e.g. 20 times) and record how often it fails.
+2. **Isolate:** narrow it to the smallest input, test, or code path that still fails. Check recent changes first (`git diff main`).
+3. **Explain:** state the root cause in one or two sentences, with evidence (log line, query, failing value). If you cannot explain it, keep investigating; do not fix.
+4. **Fix and prove:** write or keep a test that fails for this exact cause, apply the smallest fix, show the test now passes, and run the full suite.
+Record the bug, its root cause, and the proving test in the progress log under "Bugs found".
 
 ## Git workflow
 - Start of work: `git switch main && git pull`, then create a branch.
