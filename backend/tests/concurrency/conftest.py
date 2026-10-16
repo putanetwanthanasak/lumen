@@ -24,13 +24,14 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
-from sqlalchemy import Engine, create_engine, delete, text
+from sqlalchemy import Engine, delete, text
 from sqlalchemy.orm import Session
 
-from app.db import get_session
+from app.db import get_session, make_engine
 from app.main import app
 from app.models import (
     Installment,
+    Notification,
     SavingsTransaction,
     UserBalance,
     UserSettings,
@@ -48,15 +49,17 @@ MAX_THREADS = 50
 
 @pytest.fixture(scope="session")
 def concurrent_engine(engine: Engine, test_db_url: str) -> Iterator[Engine]:
-    """A pool big enough that every thread holds its own connection at once.
-    Depends on `engine` so migrations have run."""
-    eng = create_engine(test_db_url, pool_size=MAX_THREADS, max_overflow=0, pool_timeout=30)
+    """A pool big enough that every thread holds its own connection at once, built by
+    the app's make_engine so it runs at the app's isolation level (R7). Depends on
+    `engine` so migrations have run."""
+    eng = make_engine(test_db_url, pool_size=MAX_THREADS, max_overflow=0, pool_timeout=30)
     yield eng
     eng.dispose()
 
 
 def _clean_up(eng: Engine, user: str) -> None:
     with eng.begin() as conn:
+        conn.execute(delete(Notification).where(Notification.user_id == user))
         conn.execute(delete(SavingsTransaction).where(SavingsTransaction.user_id == user))
         conn.execute(delete(UserBalance).where(UserBalance.user_id == user))
         conn.execute(delete(UserSettings).where(UserSettings.user_id == user))
@@ -99,9 +102,18 @@ class Race:
             thread.start()
         for thread in threads:
             thread.join(timeout=120)
+        # R6: a thread still alive may yet commit, so nothing below could be trusted.
+        alive = [thread.name for thread in threads if thread.is_alive()]
+        if alive:
+            pytest.fail(f"requests still in flight after 120 s: {alive}")
         assert not errors, errors
         assert all(r is not None for r in responses), "a request did not finish"
         return [r for r in responses if r is not None]
+
+    def id(self, name: str) -> str:
+        """An event or contract id unique to this test (R6): a run killed before its
+        clean-up cannot collide with a later one."""
+        return f"{self.user}_{name}"
 
     def session(self) -> Session:
         return Session(self.engine)

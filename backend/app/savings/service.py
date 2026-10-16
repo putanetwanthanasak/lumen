@@ -45,6 +45,11 @@ def auto_save(
     if settings is None or not settings.auto_save_enabled or settings.consent_at is None:
         return ZERO
 
+    # R3: hold this user's balance row until commit, before reading the bank. A second
+    # purchase for the same user waits here and then reads the bank after the first
+    # one's transfer, so two savings cannot jointly pass the safety net. The version
+    # check in _credit stays as a second layer.
+    _lock_balance(session, user_id)
     rules = load_rules()
     amount = compute_saving(
         kind=contract.kind,
@@ -69,6 +74,18 @@ def auto_save(
     session.flush()
     _credit(session, user_id, amount)
     return amount
+
+
+def _lock_balance(session: Session, user_id: str) -> None:
+    """Create the user's balance row if missing, then SELECT ... FOR UPDATE it.
+
+    Of two concurrent inserts, the second waits on the unique index for the first to
+    commit and then does nothing, so both reach the lock on the same row.
+    """
+    session.execute(pg_insert(UserBalance).values(user_id=user_id).on_conflict_do_nothing())
+    session.execute(
+        select(UserBalance.user_id).where(UserBalance.user_id == user_id).with_for_update()
+    ).one()
 
 
 def _credit(session: Session, user_id: str, amount: Decimal) -> None:
