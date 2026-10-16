@@ -21,6 +21,7 @@ Spec docs are written in Thai. Read them for requirements; write everything you 
 - **L47** Idempotency key is `(vendor, event_id)`, not `event_id` alone.
 - **L48** Late fees live in a separate `late_fees_accrued` column. INV-6 is `paid_amount <= principal + fee_total + late_fees_accrued`.
 - **L49** Webhook money must be a JSON string with at most 2 decimal places. JSON numbers and extra decimals are rejected with 422, never rounded (single policy for WH-05).
+- **L55** Webhook contract details: overdue events carry the *cumulative* late fee (set the value, never add a delta); `kind` must match the event type; `overdue_days` is required; signatures are lowercase hex only; same `(vendor, event_id)` with a different payload returns 409 and writes audit; bodies over 64 KB return 413 before signature checking; any text field with control characters U+0000 to U+001F returns 422.
 - **L50** `cash_withdrawal` and `cash_loan` both get the strong alert (05 SV-03a).
 - **L51** INV-5 and "auto-save user = event user" are enforced in the service and checked in `reconcile.assert_user_invariants()`, not by DB triggers or composite FKs.
 - Installment `kind`: `purchase`, `cash_withdrawal`, `cash_loan` (the last two never trigger saving).
