@@ -105,6 +105,11 @@ def test_missing_contract_field_rejected(field: str) -> None:
         ({"months": -1}, "greater than 0"),
         ({"months": "6"}, "valid integer"),
         ({"overdue_days": -1}, "greater than or equal to 0"),
+        # WH-04, review R2: above the bound, far below int4, so a 422 and not a 500.
+        ({"months": 601}, "less than or equal to 600"),
+        ({"months": 2**40}, "less than or equal to 600"),
+        ({"overdue_days": 36_501}, "less than or equal to 36500"),
+        ({"overdue_days": 2**31}, "less than or equal to 36500"),
         ({"item_name": ""}, "at least 1 character"),
         ({"kind": "credit_card"}, "purchase"),
         ({"first_due_date": 1700000000}, "valid date"),
@@ -126,6 +131,8 @@ def test_months_must_be_a_json_integer(literal: str) -> None:
         ("installment_payment_collected", {"amount": "0.00"}, "greater than"),
         ("installment_payment_collected", {"installment_no": 0}, "greater than or equal to 1"),
         ("installment_overdue", {"overdue_days": 0}, "greater than or equal to 1"),
+        ("installment_overdue", {"overdue_days": 2**31}, "less than or equal to 36500"),
+        ("installment_payment_collected", {"installment_no": 601}, "less than or equal to 600"),
         ("installment_overdue", {"late_fees_accrued": "-5.00"}, "plain decimal string"),
         ("installment_cancelled", {"reason": ""}, "at least 1 character"),
         ("installment_cancelled", {"contract_id": ""}, "at least 1 character"),
@@ -135,6 +142,24 @@ def test_bad_event_values_rejected(
     event_type: str, overrides: dict[str, Any], message: str
 ) -> None:
     _rejected(encode(payload(event_type, **overrides)), message)
+
+
+@pytest.mark.parametrize(
+    ("event_type", "field", "value"),
+    [
+        ("installment_created", "months", 600),
+        ("installment_created", "overdue_days", 36_500),
+        ("installment_overdue", "overdue_days", 36_500),
+        ("installment_payment_collected", "installment_no", 600),
+    ],
+)
+def test_R2_bounds_are_inclusive(event_type: str, field: str, value: int) -> None:
+    data = payload(event_type)
+    if "contract" in data:
+        data["contract"][field] = value
+    else:
+        data[field] = value
+    parse_event(encode(data))
 
 
 def test_naive_occurred_at_rejected() -> None:

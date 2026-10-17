@@ -16,8 +16,8 @@ from app.webhooks.router import MAX_BODY_BYTES
 from app.webhooks.signature import get_vendor_secrets, sign
 from tests.webhooks.conftest import NOW, OTHER_VENDOR, SECRETS, VENDOR, WRONG_SECRET, Webhook
 from tests.webhooks.payloads import (
+    CONTRACT_EVENT_TYPES,
     CREATED_EVENT_TYPES,
-    UNDISPATCHED_EVENT_TYPES,
     encode,
     payload,
     raw_with,
@@ -28,6 +28,7 @@ pytestmark = pytest.mark.db
 
 PROCESSED = {"status": "processed"}
 DUPLICATE = {"status": "duplicate"}
+PENDING_PARENT = {"status": "pending_parent"}
 UNAUTHORIZED = {"detail": "unauthorized"}
 
 
@@ -56,17 +57,52 @@ def test_WH_01_valid_signature_processed(webhook: Webhook, event_type: str) -> N
     assert entry.detail["event_type"] == event_type
 
 
-@pytest.mark.parametrize("event_type", UNDISPATCHED_EVENT_TYPES)
-def test_undispatched_event_type_not_acknowledged(webhook: Webhook, event_type: str) -> None:
-    """Review R1: an event the processor cannot apply yet must not be stored as
-    processed. A 200 would stop the platform retrying, and every later resend would
-    be a duplicate, so the payment, overdue or cancel would be lost for good. 503
-    with nothing written lets the platform retry once dispatch exists (Session 8)."""
-    response = webhook.post(payload(event_type))
+@pytest.mark.parametrize("event_type", CONTRACT_EVENT_TYPES)
+def test_OR_01_event_before_its_installment_stored_as_pending_parent(
+    webhook: Webhook, event_type: str
+) -> None:
+    """Replaces the review R1 guard (503): the event is now stored, answered 202, and
+    applied when the installment arrives. A resend while waiting gets the same 202."""
+    data = payload(event_type)
 
-    assert response.status_code == 503
-    assert response.json() == {"detail": "event type not processed yet, retry later"}
-    assert webhook.nothing_written()
+    first, again = webhook.post(data), webhook.post(data)
+
+    assert (first.status_code, first.json()) == (202, PENDING_PARENT)
+    assert (again.status_code, again.json()) == (202, PENDING_PARENT)
+    row = webhook.session.execute(select(WebhookEvent)).scalar_one()
+    assert (row.event_type, row.status, row.payload) == (event_type, "pending_parent", data)
+
+
+def test_OR_05_payment_over_amount_owed_answered_409(webhook: Webhook) -> None:
+    webhook.post(payload())  # principal 20,000.00, no fees
+    too_much = payload("installment_payment_collected", event_id="evt_pay", amount="20000.01")
+
+    response, again = webhook.post(too_much), webhook.post(too_much)
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "event conflicts with the installment"}
+    assert (again.status_code, again.json()) == (200, DUPLICATE)  # as for ID-05 (D1)
+    paid = webhook.session.execute(select(Installment.paid_amount)).scalar_one()
+    assert paid == Decimal("0.00")
+
+
+@pytest.mark.parametrize(
+    ("event_type", "field", "value"),
+    [
+        ("installment_created", "months", 2**40),
+        ("installment_created", "overdue_days", 2**31),
+        ("installment_overdue", "overdue_days", 2**31),
+    ],
+)
+def test_WH_04_R2_int_out_of_range_is_422_not_500(
+    webhook: Webhook, event_type: str, field: str, value: int
+) -> None:
+    data = payload(event_type)
+    if "contract" in data:
+        data["contract"][field] = value
+    else:
+        data[field] = value
+    assert_rejected(webhook, webhook.post(data), 422)
 
 
 # --- WH-02 ---------------------------------------------------------------------------
