@@ -122,6 +122,9 @@ def test_OR_05_payment_over_amount_owed_rejected_and_audited(
         "event_type": "installment_payment_collected",
         "result": "payment_exceeds_owed",
     }
+    # L59 (1): a resend gets the same rejection and writes nothing.
+    assert run(db_session, pay("evt_p2", "0.02"), bank) == Outcome.REJECTED
+    assert results(db_session, "webhook_event_rejected") == ["payment_exceeds_owed"]
 
 
 def test_OR_05_any_payment_after_paid_off_rejected(

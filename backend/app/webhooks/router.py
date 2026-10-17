@@ -28,8 +28,8 @@ RESPONSES: dict[Outcome, tuple[int, dict[str, Any]]] = {
     Outcome.PENDING_PARENT: (202, {"status": "pending_parent"}),
     Outcome.CONFLICT: (409, {"detail": "event_id reused with different payload"}),
     Outcome.CONTRACT_CONFLICT: (409, {"detail": "contract_id reused with different contract"}),
-    # Stored and audited but not applied (OR-05, INV-6, user mismatch). A resend is a
-    # duplicate, as for ID-05.
+    # Stored and audited but not applied (OR-05, INV-6, user mismatch). A resend gets
+    # this same answer again (L59 1).
     Outcome.REJECTED: (409, {"detail": "event conflicts with the installment"}),
 }
 
@@ -81,7 +81,8 @@ def receive_webhook(
     try:
         event = parse_event(verified.body)
     except ValidationError as exc:
-        errors = exc.errors(include_url=False, include_input=False, include_context=False)
+        # Review R5: type and loc only. msg can quote the caller's input back.
+        errors = [{"type": e["type"], "loc": e["loc"]} for e in exc.errors(include_url=False)]
         return JSONResponse(status_code=422, content={"detail": errors})
 
     outcome = process_event(

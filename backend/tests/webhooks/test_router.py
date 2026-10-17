@@ -29,6 +29,8 @@ pytestmark = pytest.mark.db
 PROCESSED = {"status": "processed"}
 DUPLICATE = {"status": "duplicate"}
 PENDING_PARENT = {"status": "pending_parent"}
+REJECTED = {"detail": "event conflicts with the installment"}
+CONTRACT_CONFLICT = {"detail": "contract_id reused with different contract"}
 UNAUTHORIZED = {"detail": "unauthorized"}
 
 
@@ -80,10 +82,56 @@ def test_OR_05_payment_over_amount_owed_answered_409(webhook: Webhook) -> None:
     response, again = webhook.post(too_much), webhook.post(too_much)
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "event conflicts with the installment"}
-    assert (again.status_code, again.json()) == (200, DUPLICATE)  # as for ID-05 (D1)
+    assert response.json() == REJECTED
+    assert (again.status_code, again.json()) == (409, REJECTED)  # L59 (1)
     paid = webhook.session.execute(select(Installment.paid_amount)).scalar_one()
     assert paid == Decimal("0.00")
+
+
+def _rejected_payment(webhook: Webhook) -> dict[str, Any]:
+    """OR-05: more than the 20,000.00 owed."""
+    return payload("installment_payment_collected", event_id="evt_pay", amount="20000.01")
+
+
+def _rejected_overdue(webhook: Webhook) -> dict[str, Any]:
+    """L59 (5): a later overdue lowers the late fee below what was already paid."""
+    first = payload("installment_overdue", event_id="evt_o1", late_fees_accrued="50.00")
+    assert webhook.post(first).json() == PROCESSED
+    pay = payload("installment_payment_collected", event_id="evt_pay", amount="20050.00")
+    assert webhook.post(pay).json() == PROCESSED
+    return payload(
+        "installment_overdue",
+        event_id="evt_o2",
+        occurred_at="2026-10-12T10:30:00Z",
+        late_fees_accrued="0.00",
+    )
+
+
+@pytest.mark.parametrize("make", [_rejected_payment, _rejected_overdue], ids=["payment", "overdue"])
+def test_L59_1_resend_of_rejected_event_gets_the_same_409(webhook: Webhook, make: Any) -> None:
+    """L59 (1): never a 200 for an event that was not applied, however often it is sent."""
+    webhook.post(payload())
+    rejected = make(webhook)
+    before = webhook.session.execute(select(Installment)).scalar_one()
+    state = (before.paid_amount, before.late_fees_accrued, before.status)
+    first = webhook.post(rejected)
+    audit_rows = webhook.session.execute(select(func.count()).select_from(AuditLog)).scalar_one()
+
+    resends = [webhook.post(rejected) for _ in range(3)]
+
+    assert (first.status_code, first.json()) == (409, REJECTED)
+    assert [(r.status_code, r.json()) for r in resends] == [(409, REJECTED)] * 3
+    webhook.session.expire_all()
+    after = webhook.session.execute(select(Installment)).scalar_one()
+    assert (after.paid_amount, after.late_fees_accrued, after.status) == state
+    status = webhook.session.execute(
+        select(WebhookEvent.status).where(WebhookEvent.event_id == rejected["event_id"])
+    ).scalar_one()
+    assert status == "rejected"
+    # A resend writes nothing, like any other duplicate.
+    assert webhook.session.execute(select(func.count()).select_from(AuditLog)).scalar_one() == (
+        audit_rows
+    )
 
 
 @pytest.mark.parametrize(
@@ -206,7 +254,16 @@ def test_WH_04_invalid_payload_rejected(webhook: Webhook, case: str) -> None:
     assert_rejected(webhook, response, 422)
     errors = response.json()["detail"]
     assert errors
-    assert all("input" not in e for e in errors)  # the payload is not echoed back
+    assert all(set(e) == {"type", "loc"} for e in errors)  # no input or msg (review R5)
+
+
+def test_WH_04_R5_422_does_not_quote_the_input_back(webhook: Webhook) -> None:
+    """Review R5: pydantic's msg quoted the bad discriminator value back to the caller."""
+    response = webhook.post(payload() | {"event_type": "<script>x</script>"})
+
+    assert_rejected(webhook, response, 422)
+    assert response.json() == {"detail": [{"type": "union_tag_invalid", "loc": []}]}
+    assert "script" not in response.text
 
 
 def test_WH_04_nul_in_string_field_rejected_not_500(webhook: Webhook) -> None:
@@ -223,7 +280,8 @@ def test_WH_04_nul_in_string_field_rejected_not_500(webhook: Webhook) -> None:
 def test_WH_05_money_as_json_number_rejected(webhook: Webhook, literal: str) -> None:
     response = webhook.post(raw_with("principal", literal))
     assert_rejected(webhook, response, 422)
-    assert "must be a JSON string" in response.text
+    loc = ["installment_created", "contract", "principal"]
+    assert response.json() == {"detail": [{"type": "value_error", "loc": loc}]}
 
 
 @pytest.mark.parametrize("value", ["123.455", "1e3", "1_000.00", " 1.00", "+1.00"])
@@ -315,9 +373,11 @@ def test_event_id_reused_with_different_payload_conflicts(webhook: Webhook) -> N
 def test_ID_05_contract_resent_under_new_event_id_is_duplicate(webhook: Webhook) -> None:
     assert webhook.post(payload()).json() == PROCESSED
     response = webhook.post(payload(event_id="evt_resent"))
+    again = webhook.post(payload(event_id="evt_resent"))
 
     assert response.status_code == 200
     assert response.json() == DUPLICATE
+    assert (again.status_code, again.json()) == (200, DUPLICATE)  # its first answer (L59 1)
     assert webhook.session.execute(select(func.count()).select_from(Installment)).scalar_one() == 1
 
 
@@ -325,8 +385,10 @@ def test_ID_05_contract_id_reused_with_different_contract_conflicts(webhook: Web
     assert webhook.post(payload()).json() == PROCESSED
     changed = with_contract(principal="99999.00")
     response = webhook.post(changed | {"event_id": "evt_changed"})
+    again = webhook.post(changed | {"event_id": "evt_changed"})
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "contract_id reused with different contract"}
+    assert response.json() == CONTRACT_CONFLICT
+    assert (again.status_code, again.json()) == (409, CONTRACT_CONFLICT)  # L59 (1)
     row = webhook.session.execute(select(Installment)).scalar_one()
     assert row.principal == Decimal("20000.00")  # the original installment is kept
