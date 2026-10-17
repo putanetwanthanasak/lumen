@@ -37,7 +37,9 @@ from app.models import (
     UserSettings,
     WebhookEvent,
 )
+from app.providers import get_push_provider
 from app.providers.mock_bank import MockBankAccountProvider
+from app.providers.mock_push import MockPushProvider
 from app.webhooks import processor
 from app.webhooks.signature import get_now, get_vendor_secrets, sign
 from tests.processing.conftest import CONSENT_AT
@@ -75,6 +77,7 @@ class Race:
     engine: Engine
     client: TestClient
     bank: MockBankAccountProvider
+    push: MockPushProvider
     user: str
 
     def fire(self, bodies: list[dict[str, Any]]) -> list[httpx.Response]:
@@ -123,6 +126,7 @@ class Race:
 def race(concurrent_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[Race]:
     user = f"conc_{uuid.uuid4().hex[:12]}"
     bank = MockBankAccountProvider()
+    push = MockPushProvider()
 
     def fresh_session() -> Iterator[Session]:
         with Session(concurrent_engine) as session:
@@ -132,6 +136,7 @@ def race(concurrent_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator
         get_session: fresh_session,
         get_vendor_secrets: lambda: {v: SecretStr(s) for v, s in SECRETS.items()},
         get_now: lambda: NOW,
+        get_push_provider: lambda: push,
     }
     monkeypatch.setattr(processor, "get_bank_provider", lambda: bank)
     app.dependency_overrides.update(overrides)
@@ -139,7 +144,7 @@ def race(concurrent_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator
         with Session(concurrent_engine) as session, session.begin():
             session.add(UserSettings(user_id=user, auto_save_enabled=True, consent_at=CONSENT_AT))
         with TestClient(app) as client:
-            yield Race(concurrent_engine, client, bank, user)
+            yield Race(concurrent_engine, client, bank, push, user)
     finally:
         app.dependency_overrides.clear()
         _clean_up(concurrent_engine, user)

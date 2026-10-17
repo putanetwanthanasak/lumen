@@ -1,14 +1,16 @@
 """Webhook processing (04 section 6), inside the caller's single transaction.
 
 Step 4 records the event idempotently, step 5 dispatches it (5a installment, 5b/5c
-auto-save, 5f pending events; payment, overdue, cancel), step 6 audits, step 7
-reconciles. Notifications (5d, 5e) come in Session 9.
+auto-save, 5f pending events, then 5e the new-debt alert; payment, overdue, cancel),
+step 6 audits, step 7 reconciles. The caller commits and then pushes the alert
+(step 9). 5d (over_cap) is not built.
 """
 
 import hashlib
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
@@ -20,6 +22,7 @@ from app.audit import service as audit
 from app.ledger import reconcile
 from app.ledger import service as ledger
 from app.models import Actor, EventStatus, Installment, WebhookEvent
+from app.notifications import service as notifications
 from app.providers import get_bank_provider
 from app.providers.base import BankAccountProvider
 from app.rules.engine import ZERO
@@ -44,6 +47,14 @@ class Outcome(StrEnum):
     REJECTED = "rejected"  # stored and audited, not applied (OR-05, user mismatch)
 
 
+@dataclass(frozen=True)
+class Result:
+    outcome: Outcome
+    # The new-debt alert this call stored, to push after commit (step 9). None on
+    # every other path, so a resend never pushes again.
+    notification_id: uuid.UUID | None = None
+
+
 def payload_hash(payload: Any) -> str:
     """SHA-256 of canonical JSON: sorted keys, no whitespace. JSONB keeps neither
     key order nor spacing, so the stored and received payloads compare this way."""
@@ -64,8 +75,9 @@ def process_event(
     event: Event,
     payload: dict[str, Any],
     bank: BankAccountProvider | None = None,
-) -> Outcome:
-    """Record and apply one verified, validated event. The caller commits.
+) -> Result:
+    """Record and apply one verified, validated event. The caller commits, then
+    delivers result.notification_id.
 
     Raises reconcile.InvariantViolationError after rolling the session back (RS-02).
     """
@@ -97,10 +109,10 @@ def process_event(
         if stored_hash == received_hash:
             # Still waiting for its installment: the same answer as the first time.
             if status == EventStatus.PENDING_PARENT:
-                return Outcome.PENDING_PARENT
+                return Result(Outcome.PENDING_PARENT)
             if status == EventStatus.REJECTED:
-                return _rejected_again(session, vendor=vendor, event=event, stored=stored)
-            return Outcome.DUPLICATE
+                return Result(_rejected_again(session, vendor=vendor, event=event, stored=stored))
+            return Result(Outcome.DUPLICATE)
         # Keep the original row untouched; record that the id was reused.
         audit.record(
             session,
@@ -111,19 +123,25 @@ def process_event(
             ref_id=ref_id,
             detail={"stored_hash": stored_hash, "received_hash": received_hash},
         )
-        return Outcome.CONFLICT
+        return Result(Outcome.CONFLICT)
 
     # Step 5
     ledger.lock_contract(session, vendor=vendor, contract_id=event.contract_id)
     saving = ZERO
+    notification_id = None
     if isinstance(event, InstallmentCreated | CashWithdrawalCreated | CashLoanCreated):
         installment_id = ledger.create_installment(session, vendor=vendor, event=event)
         if installment_id is None:
-            return _contract_reused(session, vendor=vendor, event=event, payload=payload)
+            return Result(_contract_reused(session, vendor=vendor, event=event, payload=payload))
         saving = savings.auto_save(
             session, vendor=vendor, event=event, installment_id=installment_id, bank=bank
         )
         _replay_pending(session, vendor=vendor, installment_id=installment_id)
+        # 5e after 5f: the alert's monthly total is the one at commit (L43), and the
+        # alert is stored whatever the replay did to the installment (L58).
+        notification_id = notifications.notify_new_debt(
+            session, vendor=vendor, event=event, installment_id=installment_id
+        )
         outcome = Outcome.PROCESSED
     else:
         found = ledger.find_installment(session, vendor=vendor, contract_id=event.contract_id)
@@ -165,7 +183,7 @@ def process_event(
     # Step 5c, last: money moves only once the ledger rows have passed reconcile.
     if saving > ZERO:
         bank.transfer_to_savings(event.user_ref, saving)
-    return outcome
+    return Result(outcome, notification_id)
 
 
 def _set_status(session: Session, vendor: str, event_id: str, status: EventStatus) -> None:

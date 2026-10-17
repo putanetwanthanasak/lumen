@@ -42,6 +42,7 @@ EXPECTED_CONSTRAINTS: dict[str, dict[str, str]] = {
     },
     "notifications": {
         "ck_notifications_delivery_status_valid": "CHECK ((delivery_status = ANY (ARRAY['pending'::text, 'pushed'::text, 'inbox_only'::text])))",
+        "ck_notifications_new_debt_has_installment": "CHECK (((NOT (kind = ANY (ARRAY['new_debt'::text, 'cash_withdrawal'::text, 'cash_loan'::text]))) OR (installment_id IS NOT NULL)))",
         "ck_notifications_kind_valid": "CHECK ((kind = ANY (ARRAY['new_debt'::text, 'cash_withdrawal'::text, 'cash_loan'::text, 'over_cap'::text])))",
         "ck_notifications_push_attempts_nonneg": "CHECK ((push_attempts >= 0))",
         "ck_notifications_user_response_valid": "CHECK ((user_response = ANY (ARRAY['none'::text, 'not_me'::text])))",
@@ -87,6 +88,7 @@ EXPECTED_INDEXES: dict[str, dict[str, str]] = {
     "notifications": {
         "ix_notifications_user_id": "CREATE INDEX ix_notifications_user_id ON public.notifications USING btree (user_id)",
         "pk_notifications": "CREATE UNIQUE INDEX pk_notifications ON public.notifications USING btree (id)",
+        "uq_notifications_new_debt_installment_id": "CREATE UNIQUE INDEX uq_notifications_new_debt_installment_id ON public.notifications USING btree (installment_id) WHERE (kind = ANY (ARRAY['new_debt'::text, 'cash_withdrawal'::text, 'cash_loan'::text]))",
     },
     "savings_transactions": {
         "ix_savings_transactions_user_id": "CREATE INDEX ix_savings_transactions_user_id ON public.savings_transactions USING btree (user_id)",
