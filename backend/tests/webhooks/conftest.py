@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.main import app
 from app.models import AuditLog, WebhookEvent
-from app.providers import get_push_provider
+from app.providers import get_platform_provider, get_push_provider
+from app.providers.mock_platform import MockPlatformProvider
 from app.providers.mock_push import MockPushProvider
 from app.webhooks.signature import get_now, get_vendor_secrets, sign
 from tests.webhooks.payloads import encode
@@ -37,6 +38,7 @@ class Webhook:
     client: TestClient
     session: Session
     push: MockPushProvider
+    platform: MockPlatformProvider
 
     def post(
         self,
@@ -67,6 +69,11 @@ class Webhook:
         headers = {} if user is None else {"X-Demo-User": user}
         return self.client.get(path, headers=headers)
 
+    def not_me(self, installment_id: object, user: str | None = "user_a") -> httpx.Response:
+        """POST "Not me" for an installment as `user`; None sends no header."""
+        headers = {} if user is None else {"X-Demo-User": user}
+        return self.client.post(f"/debts/{installment_id}/not-me", headers=headers)
+
     def count(self, model: type[WebhookEvent] | type[AuditLog]) -> int:
         return self.session.execute(select(func.count()).select_from(model)).scalar_one()
 
@@ -80,15 +87,17 @@ def webhook(db_session: Session) -> Iterator[Webhook]:
         yield db_session
 
     push = MockPushProvider()
+    platform = MockPlatformProvider()
     overrides: dict[Callable[..., Any], Callable[..., Any]] = {
         get_session: session_override,
         get_vendor_secrets: lambda: {v: SecretStr(s) for v, s in SECRETS.items()},
         get_now: lambda: NOW,
         get_push_provider: lambda: push,
+        get_platform_provider: lambda: platform,
     }
     app.dependency_overrides.update(overrides)
     try:
         with TestClient(app) as client:
-            yield Webhook(client, db_session, push)
+            yield Webhook(client, db_session, push, platform)
     finally:
         app.dependency_overrides.clear()

@@ -15,3 +15,10 @@ class PushProvider(Protocol):
         """True if the push reached the device. May also raise; callers treat both
         a False and an exception as a failed attempt."""
         ...
+
+
+class PlatformProvider(Protocol):
+    def signal_dispute(self, *, vendor: str, contract_id: str, user_id: str) -> None:
+        """Tell the platform the user reported this contract as not theirs (L42). It
+        is a report only: nothing here stops or reverses the platform transaction."""
+        ...

@@ -93,6 +93,9 @@ class UserResponse(StrEnum):
     NOT_ME = "not_me"
 
 
+DISPUTE_ACTION = "installment_disputed"
+
+
 class Actor(StrEnum):
     SYSTEM = "system"
     USER = "user"
@@ -147,6 +150,11 @@ class Installment(Base):
         CheckConstraint("late_fee_per_period >= 0", name="late_fee_nonneg"),
         CheckConstraint("monthly_rate >= 0", name="monthly_rate_nonneg"),
         CheckConstraint("overdue_days >= 0", name="overdue_days_nonneg"),
+        # L42: a disputed installment records when. disputed_at may also be set on a
+        # cancelled one (L59 3: cancelled after the report, or reported after cancel).
+        CheckConstraint(
+            "status <> 'disputed' OR disputed_at IS NOT NULL", name="disputed_has_disputed_at"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -172,6 +180,8 @@ class Installment(Base):
     late_fee_per_period: Mapped[Decimal] = mapped_column(Money)
     monthly_rate: Mapped[Decimal] = mapped_column(Rate)
     overdue_days: Mapped[int] = mapped_column(server_default=text("0"))
+    # Set once by "Not me" and never cleared, so the dispute history survives (L59 3).
+    disputed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at_column()
 
 
@@ -311,7 +321,17 @@ class AuditLog(Base):
     """Append-only. The migration adds a trigger rejecting UPDATE, DELETE, TRUNCATE."""
 
     __tablename__ = "audit_log"
-    __table_args__ = (one_of("actor", Actor),)
+    __table_args__ = (
+        one_of("actor", Actor),
+        # One "Not me" audit row per installment, however often or concurrently the
+        # user taps it (L42).
+        Index(
+            "uq_audit_log_installment_disputed",
+            "ref_id",
+            unique=True,
+            postgresql_where=text(f"action = '{DISPUTE_ACTION}'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     user_id: Mapped[str | None] = mapped_column(Text, index=True)

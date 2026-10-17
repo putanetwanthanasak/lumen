@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select
 
 from app.debts.service import add_months
 from app.models import Installment
@@ -40,11 +40,12 @@ def pay(webhook: Webhook, n: int, amount: str) -> None:
     assert webhook.post(data).status_code == 200
 
 
-def set_status(webhook: Webhook, n: int, status: str) -> None:
-    webhook.session.execute(
-        update(Installment).where(Installment.contract_id == f"c_{n}").values(status=status)
-    )
-    webhook.session.flush()
+def not_me(webhook: Webhook, n: int) -> None:
+    installment_id = webhook.session.execute(
+        select(Installment.id).where(Installment.contract_id == f"c_{n}")
+    ).scalar_one()
+    response = webhook.not_me(installment_id)
+    assert response.status_code == 200, response.text
 
 
 def summary(webhook: Webhook, user: str = "user_a") -> dict[str, Any]:
@@ -91,6 +92,7 @@ def test_summary_one_debt_exact_shape(webhook: Webhook) -> None:
         "late_fees_accrued": "0.00",
         "remaining": "20000.00",
         "status": "active",
+        "disputed_at": None,
         "owed": True,
         "first_due_date": "2026-11-05",
         "last_due_date": "2027-04-05",
@@ -109,7 +111,7 @@ def test_summary_counts_only_owed_debts(webhook: Webhook) -> None:
     open_debt(webhook, 3, monthly_amount="300.00", months=12)  # cancelled
     webhook.post(payload("installment_cancelled", event_id="evt_x3", contract_id="c_3"))
     open_debt(webhook, 4, monthly_amount="50.00", principal="500.00", months=10)  # disputed
-    set_status(webhook, 4, "disputed")
+    not_me(webhook, 4)
     pay(webhook, 1, "1000.00")
 
     body = summary(webhook)
@@ -134,7 +136,7 @@ def test_disputing_a_paid_off_debt_leaves_the_totals_unchanged(webhook: Webhook)
     pay(webhook, 2, "400.00")
     before = summary(webhook)
 
-    set_status(webhook, 2, "disputed")
+    not_me(webhook, 2)
 
     after = summary(webhook)
     assert by_contract(after)["c_2"]["status"] == "disputed"

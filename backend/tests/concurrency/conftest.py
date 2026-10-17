@@ -37,8 +37,9 @@ from app.models import (
     UserSettings,
     WebhookEvent,
 )
-from app.providers import get_push_provider
+from app.providers import get_platform_provider, get_push_provider
 from app.providers.mock_bank import MockBankAccountProvider
+from app.providers.mock_platform import MockPlatformProvider
 from app.providers.mock_push import MockPushProvider
 from app.webhooks import processor
 from app.webhooks.signature import get_now, get_vendor_secrets, sign
@@ -78,29 +79,42 @@ class Race:
     client: TestClient
     bank: MockBankAccountProvider
     push: MockPushProvider
+    platform: MockPlatformProvider
     user: str
 
     def fire(self, bodies: list[dict[str, Any]]) -> list[httpx.Response]:
         """POST every body from its own thread, all released at the same instant."""
-        barrier = threading.Barrier(len(bodies))
-        responses: list[httpx.Response | None] = [None] * len(bodies)
+        return self.parallel([lambda data=data: self.post_webhook(data) for data in bodies])
+
+    def post_webhook(self, data: dict[str, Any]) -> httpx.Response:
+        body = encode(data)
+        headers = {
+            "X-Vendor-Id": VENDOR,
+            "X-Timestamp": str(NOW),
+            "X-Signature": sign(SECRETS[VENDOR], str(NOW), body),
+            "Content-Type": "application/json",
+        }
+        return self.client.post("/webhooks/bnpl", content=body, headers=headers)
+
+    def not_me(self, installment_id: uuid.UUID) -> httpx.Response:
+        return self.client.post(
+            f"/debts/{installment_id}/not-me", headers={"X-Demo-User": self.user}
+        )
+
+    def parallel(self, calls: list[Callable[[], httpx.Response]]) -> list[httpx.Response]:
+        """Run every call from its own thread, all released at the same instant."""
+        barrier = threading.Barrier(len(calls))
+        responses: list[httpx.Response | None] = [None] * len(calls)
         errors: list[BaseException] = []
 
-        def send(index: int, data: dict[str, Any]) -> None:
-            body = encode(data)
-            headers = {
-                "X-Vendor-Id": VENDOR,
-                "X-Timestamp": str(NOW),
-                "X-Signature": sign(SECRETS[VENDOR], str(NOW), body),
-                "Content-Type": "application/json",
-            }
+        def send(index: int, call: Callable[[], httpx.Response]) -> None:
             try:
                 barrier.wait(timeout=30)
-                responses[index] = self.client.post("/webhooks/bnpl", content=body, headers=headers)
+                responses[index] = call()
             except BaseException as exc:  # reported by the main thread
                 errors.append(exc)
 
-        threads = [threading.Thread(target=send, args=(i, data)) for i, data in enumerate(bodies)]
+        threads = [threading.Thread(target=send, args=(i, call)) for i, call in enumerate(calls)]
         for thread in threads:
             thread.start()
         for thread in threads:
@@ -127,6 +141,7 @@ def race(concurrent_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator
     user = f"conc_{uuid.uuid4().hex[:12]}"
     bank = MockBankAccountProvider()
     push = MockPushProvider()
+    platform = MockPlatformProvider()
 
     def fresh_session() -> Iterator[Session]:
         with Session(concurrent_engine) as session:
@@ -137,6 +152,7 @@ def race(concurrent_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator
         get_vendor_secrets: lambda: {v: SecretStr(s) for v, s in SECRETS.items()},
         get_now: lambda: NOW,
         get_push_provider: lambda: push,
+        get_platform_provider: lambda: platform,
     }
     monkeypatch.setattr(processor, "get_bank_provider", lambda: bank)
     app.dependency_overrides.update(overrides)
@@ -144,7 +160,7 @@ def race(concurrent_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator
         with Session(concurrent_engine) as session, session.begin():
             session.add(UserSettings(user_id=user, auto_save_enabled=True, consent_at=CONSENT_AT))
         with TestClient(app) as client:
-            yield Race(concurrent_engine, client, bank, push, user)
+            yield Race(concurrent_engine, client, bank, push, platform, user)
     finally:
         app.dependency_overrides.clear()
         _clean_up(concurrent_engine, user)

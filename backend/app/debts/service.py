@@ -10,7 +10,7 @@ fully paid one that was disputed afterwards is not owed again.
 
 import calendar
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -63,6 +63,8 @@ class InstallmentLine(_Out):
     late_fees_accrued: Decimal
     remaining: Decimal
     status: str
+    # Set once by "Not me" and kept after a later cancel (L59 3).
+    disputed_at: datetime | None
     owed: bool = Field(description="Counts toward monthly_total and total_remaining.")
     first_due_date: date
     last_due_date: date = Field(description="Scheduled final due date from the plan.")
@@ -101,6 +103,7 @@ def summary(session: Session, user_id: str) -> DebtSummary:
             late_fees_accrued=i.late_fees_accrued,
             remaining=remaining(i),
             status=i.status,
+            disputed_at=i.disputed_at,
             owed=still_owed(i),
             first_due_date=i.first_due_date,
             last_due_date=last_due_date(i),
