@@ -83,7 +83,7 @@ def test_ID_05_same_contract_new_event_id_is_duplicate(
         "event_id": "evt_2",
         "same_contract": True,
     }
-    # The rejected event is now a plain duplicate of itself.
+    # A resend of the rejected event gets its first answer again (L59 1).
     assert run(db_session, created("evt_2", "c_1"), bank) == Outcome.DUPLICATE
 
 
@@ -117,6 +117,9 @@ def test_ID_05_same_contract_different_content_is_conflict(
     assert detail["stored_hash"] == contract_hash(original)
     assert detail["received_hash"] == contract_hash(resent)
     assert detail["stored_hash"] != detail["received_hash"]
+    # L59 (1): a resend gets the 409 again and writes nothing (still one reuse entry).
+    assert run(db_session, resent, bank) == Outcome.CONTRACT_CONFLICT
+    assert reuse_entry(db_session).detail == detail
 
 
 def test_ID_05_cash_contract_resent_saves_nothing(

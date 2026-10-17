@@ -98,6 +98,8 @@ def process_event(
             # Still waiting for its installment: the same answer as the first time.
             if status == EventStatus.PENDING_PARENT:
                 return Outcome.PENDING_PARENT
+            if status == EventStatus.REJECTED:
+                return _rejected_again(session, vendor=vendor, event=event, stored=stored)
             return Outcome.DUPLICATE
         # Keep the original row untouched; record that the id was reused.
         audit.record(
@@ -215,6 +217,20 @@ def _replay_pending(session: Session, *, vendor: str, installment_id: uuid.UUID)
         _apply(session, vendor=vendor, installment=installment, event=event)
 
 
+def _rejected_again(
+    session: Session, *, vendor: str, event: Event, stored: dict[str, Any]
+) -> Outcome:
+    """L59 (1): a resend of a rejected event gets the answer its first delivery got, so
+    the platform never reads a 200 as "accepted". Nothing is written."""
+    if isinstance(event, InstallmentCreated | CashWithdrawalCreated | CashLoanCreated):
+        # ID-05: the first answer was duplicate or contract_conflict. The original
+        # contract never changes, so comparing again gives the same answer.
+        *_, original = ledger.find_original(session, vendor=vendor, contract_id=event.contract_id)
+        same = contract_hash(original) == contract_hash(stored)
+        return Outcome.DUPLICATE if same else Outcome.CONTRACT_CONFLICT
+    return Outcome.REJECTED
+
+
 def _contract_reused(
     session: Session,
     *,
@@ -225,7 +241,7 @@ def _contract_reused(
     """ID-05: a new event_id for a contract that already has an installment.
 
     Nothing new is created and nothing is saved. The new event row stays as
-    rejected, so a resend of it is a plain duplicate.
+    rejected, and a resend of it gets this same answer again (_rejected_again).
     """
     session.execute(
         update(WebhookEvent)
