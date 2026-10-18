@@ -2,8 +2,10 @@
 
 Each example draws up to 3 contracts across 2 users. Each contract gets a created
 event (purchase or cash) and up to 4 payment, overdue or cancel events, sometimes for
-the wrong user. Delivery is a random permutation, so events often arrive before their
-installment, and some events are resent at random points.
+the wrong user, and maybe a "Not me" tap (L42), sometimes by the wrong user. Delivery
+is a random permutation, so events often arrive before their installment, and some
+events and taps are repeated at random points. A tap always comes after its created
+event: the user can only report a debt they can see.
 
 PB-03: after every delivered event, all invariants hold:
 - reconcile is clean for both users (INV-1, 2, 3, 5, 6, L51);
@@ -12,7 +14,10 @@ PB-03: after every delivered event, all invariants hold:
 - the ledger matches the stored events: paid_amount is the sum of processed payments,
   late fees come from the latest processed overdue (L55), status follows from them,
   and nothing waits as pending_parent once its installment exists;
-- every installment has exactly one new-debt alert, whatever happened to it (L58).
+- every installment has exactly one new-debt alert, whatever happened to it (L58);
+- the dispute history survives every sequence (L59 3): once set, disputed_at never
+  changes or clears, there is exactly one dispute audit row, the alert stays not_me,
+  and the status is disputed unless a cancel made it cancelled.
 PB-04: the final state with resends equals the final state without them.
 
 Each history runs inside a savepoint that is rolled back, on the shared test DB.
@@ -28,9 +33,10 @@ from hypothesis import strategies as st
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.disputes.service import dispute
 from app.ledger.reconcile import check_user_invariants
 from app.ledger.service import CREATED_EVENT_TYPES
-from app.models import Installment, Notification, SavingsTransaction, WebhookEvent
+from app.models import AuditLog, Installment, Notification, SavingsTransaction, WebhookEvent
 from app.providers.mock_bank import MockBankAccountProvider
 from tests.processing.conftest import balance, created, opt_in, run
 from tests.webhooks.payloads import payload
@@ -75,7 +81,21 @@ def histories(draw: st.DrawFn) -> History:
                 case _:
                     data = payload("installment_cancelled", **common)
             events.append(data)
+        if draw(st.booleans()):
+            user = owner if draw(st.integers(0, 4)) else next(u for u in USERS if u != owner)
+            events.append(
+                {
+                    "not_me": contract,
+                    "user_ref": user,
+                    "event_id": f"pb_d{c}",
+                    "after": f"pb_e{c}_0",
+                }
+            )
     delivery = draw(st.permutations(events))
+    for report in [e for e in delivery if "not_me" in e]:
+        delivery.remove(report)
+        after = next(i for i, e in enumerate(delivery) if e["event_id"] == report["after"])
+        delivery.insert(draw(st.integers(after + 1, len(delivery))), report)
     with_resends = list(delivery)
     for _ in range(draw(st.integers(0, 4))):
         resend = draw(st.sampled_from(delivery))
@@ -98,6 +118,14 @@ def ledger_matches_events(session: Session) -> None:
     installments = {i.contract_id: i for i in session.execute(select(Installment)).scalars()}
     alerted = Counter(session.execute(select(Notification.installment_id)).scalars())
     assert alerted == Counter(i.id for i in installments.values())  # L58, NT-04
+    responses = dict(
+        session.execute(select(Notification.installment_id, Notification.user_response)).all()
+    )
+    disputes = Counter(
+        session.execute(
+            select(AuditLog.ref_id).where(AuditLog.action == "installment_disputed")
+        ).scalars()
+    )
 
     for contract, stored in by_contract.items():
         children = [r for r in stored if r.event_type not in CREATED_EVENT_TYPES]
@@ -118,8 +146,15 @@ def ledger_matches_events(session: Session) -> None:
             assert (inst.late_fees_accrued, inst.overdue_days) == (ZERO, 0)
         owed = inst.principal + inst.fee_total + inst.late_fees_accrued
         assert inst.paid_amount <= owed  # INV-6
+        disputed = disputes[str(inst.id)]
+        assert disputed <= 1  # one audit row, whatever the taps
+        assert (inst.disputed_at is not None) == (disputed == 1)
+        if disputed:
+            assert responses[inst.id] == "not_me"
         if any(r.event_type == "installment_cancelled" for r in processed):
             assert inst.status == "cancelled"
+        elif disputed:
+            assert inst.status == "disputed"  # _settle never changes it
         else:
             assert inst.status == ("paid_off" if inst.paid_amount == owed else "active")
 
@@ -127,13 +162,29 @@ def ledger_matches_events(session: Session) -> None:
 def snapshot(session: Session, bank: MockBankAccountProvider) -> tuple[Any, ...]:
     session.expire_all()
     installments = sorted(
-        (i.contract_id, i.paid_amount, i.late_fees_accrued, i.overdue_days, i.status)
+        (
+            i.contract_id,
+            i.paid_amount,
+            i.late_fees_accrued,
+            i.overdue_days,
+            i.status,
+            i.disputed_at is not None,
+        )
         for i in session.execute(select(Installment)).scalars()
     )
     events = sorted(session.execute(select(WebhookEvent.event_id, WebhookEvent.status)).all())
     saves = sorted(session.execute(select(SavingsTransaction.amount)).scalars())
     alerts = sorted(session.execute(select(Notification.kind, Notification.body)).all())
     return installments, events, saves, alerts, savings_state(session, bank)
+
+
+def tap(session: Session, data: dict[str, Any]) -> None:
+    """A "Not me" tap, through the same service the endpoint calls."""
+    installment_id = session.execute(
+        select(Installment.id).where(Installment.contract_id == data["not_me"])
+    ).scalar_one()
+    result = dispute(session, user_id=data["user_ref"], installment_id=installment_id)
+    event("not_me: " + ("wrong user" if result is None else f"first={result.first_report}"))
 
 
 def deliver(session: Session, delivery: list[dict[str, Any]], *, check: bool) -> tuple[Any, ...]:
@@ -143,18 +194,27 @@ def deliver(session: Session, delivery: list[dict[str, Any]], *, check: bool) ->
         for user in USERS:
             opt_in(session, user)
         seen: set[str] = set()
+        disputed_at: dict[str, Any] = {}
         for data in delivery:
             before = savings_state(session, bank)
-            outcome = run(session, data, bank)
-            event(f"outcome: {outcome}")
-            seen.add(data["event_id"])
+            if "not_me" in data:
+                tap(session, data)
+            else:
+                outcome = run(session, data, bank)
+                event(f"outcome: {outcome}")
+                seen.add(data["event_id"])
             if not check:
                 continue
             session.expire_all()
             for user in USERS:
                 assert check_user_invariants(session, user) == []
-            if data["event_type"] not in CREATED_EVENT_TYPES:
-                assert savings_state(session, bank) == before  # INV-7
+            if data.get("event_type") not in CREATED_EVENT_TYPES:
+                assert savings_state(session, bank) == before  # INV-7, and "Not me"
+            for inst in session.execute(select(Installment)).scalars():
+                if inst.contract_id in disputed_at:  # L59 3: never changed or cleared
+                    assert inst.disputed_at == disputed_at[inst.contract_id]
+                elif inst.disputed_at is not None:
+                    disputed_at[inst.contract_id] = inst.disputed_at
             ledger_matches_events(session)
             assert len(session.execute(select(WebhookEvent.event_id)).all()) == len(seen)
         return snapshot(session, bank)

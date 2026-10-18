@@ -24,6 +24,7 @@ EXPECTED_CONSTRAINTS: dict[str, dict[str, str]] = {
         "pk_audit_log": "PRIMARY KEY (id)",
     },
     "installments": {
+        "ck_installments_disputed_has_disputed_at": "CHECK (((status <> 'disputed'::text) OR (disputed_at IS NOT NULL)))",
         "ck_installments_fee_total_nonneg": "CHECK ((fee_total >= (0)::numeric))",
         "ck_installments_kind_valid": "CHECK ((kind = ANY (ARRAY['purchase'::text, 'cash_withdrawal'::text, 'cash_loan'::text])))",
         "ck_installments_late_fee_nonneg": "CHECK ((late_fee_per_period >= (0)::numeric))",
@@ -79,6 +80,7 @@ EXPECTED_INDEXES: dict[str, dict[str, str]] = {
     "audit_log": {
         "ix_audit_log_user_id": "CREATE INDEX ix_audit_log_user_id ON public.audit_log USING btree (user_id)",
         "pk_audit_log": "CREATE UNIQUE INDEX pk_audit_log ON public.audit_log USING btree (id)",
+        "uq_audit_log_installment_disputed": "CREATE UNIQUE INDEX uq_audit_log_installment_disputed ON public.audit_log USING btree (ref_id) WHERE (action = 'installment_disputed'::text)",
     },
     "installments": {
         "ix_installments_user_id": "CREATE INDEX ix_installments_user_id ON public.installments USING btree (user_id)",

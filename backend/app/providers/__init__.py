@@ -2,8 +2,9 @@
 
 from functools import lru_cache
 
-from app.providers.base import BankAccountProvider, PushProvider
+from app.providers.base import BankAccountProvider, PlatformProvider, PushProvider
 from app.providers.mock_bank import MockBankAccountProvider
+from app.providers.mock_platform import MockPlatformProvider
 from app.providers.mock_push import MockPushProvider
 
 
@@ -18,3 +19,9 @@ def get_bank_provider() -> BankAccountProvider:
 def get_push_provider() -> PushProvider:
     """As get_bank_provider. Also a FastAPI dependency, so tests can swap it."""
     return MockPushProvider()
+
+
+@lru_cache
+def get_platform_provider() -> PlatformProvider:
+    """As get_push_provider."""
+    return MockPlatformProvider()

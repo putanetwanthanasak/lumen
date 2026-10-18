@@ -4,6 +4,7 @@
 because some unrelated constraint (e.g. NOT NULL) fired instead.
 """
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -18,6 +19,7 @@ from tests.db.factories import (
     add_auto_save_parents,
     add_event,
     add_installment,
+    audit_log,
     installment,
     notification,
     savings_tx,
@@ -316,3 +318,33 @@ def test_NT_04_new_debt_notification_needs_an_installment(db_session: Session, k
 def test_over_cap_notifications_are_not_limited_per_installment(db_session: Session) -> None:
     assert_accepted(db_session, notification(kind="over_cap"))
     assert_accepted(db_session, notification(kind="over_cap"))
+
+
+# --- L42 "Not me" -----------------------------------------------------------------
+
+DISPUTED_AT = datetime(2026, 10, 17, 12, 0, tzinfo=UTC)
+
+
+def test_L42_disputed_installment_needs_disputed_at(db_session: Session) -> None:
+    assert_rejected(
+        db_session,
+        installment(status="disputed"),
+        "ck_installments_disputed_has_disputed_at",
+    )
+    assert_accepted(db_session, installment(status="disputed", disputed_at=DISPUTED_AT))
+
+
+@pytest.mark.parametrize("status", ["cancelled", "active", "paid_off"])
+def test_L59_3_disputed_at_may_outlive_the_disputed_status(
+    db_session: Session, status: str
+) -> None:
+    # Cancelled after the report keeps disputed_at (L59 3), and so does any later status.
+    assert_accepted(db_session, installment(status=status, disputed_at=DISPUTED_AT))
+
+
+def test_L42_one_dispute_audit_row_per_installment(db_session: Session) -> None:
+    dispute = {"action": "installment_disputed", "actor": "user", "ref_id": "inst-1"}
+    assert_accepted(db_session, audit_log(**dispute))
+    assert_accepted(db_session, audit_log(**(dispute | {"ref_id": "inst-2"})))
+    assert_accepted(db_session, audit_log(action="webhook_event_applied", ref_id="inst-1"))
+    assert_rejected(db_session, audit_log(**dispute), "uq_audit_log_installment_disputed")
