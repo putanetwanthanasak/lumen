@@ -88,6 +88,36 @@ def test_OR_05_payment_over_amount_owed_answered_409(webhook: Webhook) -> None:
     assert paid == Decimal("0.00")
 
 
+def test_S7_payment_that_would_overflow_paid_amount_answered_409(webhook: Webhook) -> None:
+    """owed() can reach about 3E10, but paid_amount is Numeric(12,2). The second
+    payment passes INV-6 and used to overflow on flush: a 500 on every retry."""
+    big = {"principal": "9999999999.99", "fee_total": "9999999999.99"}
+    created = payload()
+    created["contract"] |= big
+    assert webhook.post(created).json() == PROCESSED
+    first = payload("installment_payment_collected", event_id="evt_p1", amount="9999999999.99")
+    assert webhook.post(first).json() == PROCESSED
+    second = payload("installment_payment_collected", event_id="evt_p2", amount="1.00")
+
+    response, again = webhook.post(second), webhook.post(second)
+
+    assert (response.status_code, response.json()) == (409, REJECTED)
+    assert (again.status_code, again.json()) == (409, REJECTED)  # L59 (1)
+    paid = webhook.session.execute(select(Installment.paid_amount)).scalar_one()
+    assert paid == Decimal("9999999999.99")
+    detail = webhook.session.execute(
+        select(AuditLog.detail).where(AuditLog.action == "webhook_event_rejected")
+    ).scalar_one()
+    assert detail["result"] == "paid_amount_too_large"
+
+
+def test_S7_late_fees_above_the_column_never_reach_the_ledger(webhook: Webhook) -> None:
+    """late_fees_accrued is set, not added (L55), so the parser's cap is enough."""
+    assert webhook.post(payload()).json() == PROCESSED
+    overdue = payload("installment_overdue", event_id="evt_o", late_fees_accrued="10000000000.00")
+    assert webhook.post(overdue).status_code == 422
+
+
 def _rejected_payment(webhook: Webhook) -> dict[str, Any]:
     """OR-05: more than the 20,000.00 owed."""
     return payload("installment_payment_collected", event_id="evt_pay", amount="20000.01")

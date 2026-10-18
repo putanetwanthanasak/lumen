@@ -1,5 +1,7 @@
 """Auto-save (04 section 6, step 5b and 5c; 05 section 4.6)."""
 
+import hashlib
+import json
 import uuid
 from decimal import Decimal
 
@@ -21,6 +23,14 @@ MAX_CREDIT_ATTEMPTS = 100
 
 class BalanceContentionError(Exception):
     pass
+
+
+def transfer_key(vendor: str, event_id: str) -> str:
+    """S1: the bank idempotency key for the auto-save of one event, the same on every
+    delivery of it. Not savings_tx_id: that row is rolled back with a failed commit,
+    so the platform's retry would get a new id and the bank would debit twice."""
+    canonical = json.dumps(["auto_save", vendor, event_id], separators=(",", ":"))
+    return "auto-save-" + hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def auto_save(

@@ -5,10 +5,13 @@
    `paid_off`. Without the contract lock, the payment can read `active`, the dispute
    commits, and the payment's _settle then writes paid_off over it.
 3. A deterministic probe for 2: dispute() must wait on the webhooks' contract lock.
+4. S4: after a failed signal, eight repeat taps at once re-send it exactly once, even
+   with a slow platform; and a deterministic probe that send_signal takes the lock.
 
 Demo:  cd backend && uv run pytest -m concurrency -v
 """
 
+import time
 import uuid
 from collections import Counter
 
@@ -17,7 +20,7 @@ from psycopg.errors import LockNotAvailable
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import OperationalError
 
-from app.disputes.service import dispute
+from app.disputes.service import dispute, send_signal
 from app.ledger.reconcile import check_user_invariants
 from app.models import AuditLog, Installment
 from tests.concurrency.conftest import Race
@@ -98,3 +101,60 @@ def test_L42_dispute_waits_for_the_contract_lock(race: Race) -> None:
             with pytest.raises(OperationalError) as exc:
                 dispute(s, user_id=race.user, installment_id=installment_id)
             assert isinstance(exc.value.orig, LockNotAvailable)
+
+
+def test_S4_eight_concurrent_retries_after_a_failed_signal_send_once(
+    race: Race, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    contract, installment_id = _open_debt(race)
+
+    def down(**_: object) -> None:
+        raise ConnectionError("platform down")
+
+    monkeypatch.setattr(race.platform, "signal_dispute", down)
+    assert race.not_me(installment_id).json()["platform_signal"] == "failed"
+    monkeypatch.undo()
+    real_signal = race.platform.signal_dispute
+
+    def slow(**fields: str) -> None:
+        # A real platform call takes time. With an instant mock, the taps never
+        # overlap inside send_signal and a missing lock went unnoticed (10 of 10).
+        time.sleep(0.2)
+        real_signal(**fields)
+
+    monkeypatch.setattr(race.platform, "signal_dispute", slow)
+
+    responses = race.parallel([lambda: race.not_me(installment_id)] * TAPS)
+
+    assert Counter(r.status_code for r in responses) == {200: TAPS}
+    assert {r.json()["platform_signal"] for r in responses} == {"sent"}
+    assert len({r.text for r in responses}) == 1
+    assert [(s.contract_id, s.user_id) for s in race.platform.signals] == [(contract, race.user)]
+    assert _disputes(race) == 1
+
+
+def test_S4_send_signal_waits_for_the_contract_lock(
+    race: Race, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    contract, installment_id = _open_debt(race)
+
+    def down(**_: object) -> None:
+        raise ConnectionError("platform down")
+
+    monkeypatch.setattr(race.platform, "signal_dispute", down)
+    assert race.not_me(installment_id).json()["platform_signal"] == "failed"
+    monkeypatch.undo()
+    with race.session() as s:
+        report = dispute(s, user_id=race.user, installment_id=installment_id)
+        s.rollback()
+    assert report is not None
+
+    with race.session() as holder, holder.begin():
+        key = func.hashtextextended(f"{VENDOR}:{contract}", 0)
+        holder.execute(select(func.pg_advisory_xact_lock(key)))  # another tap mid-signal
+        with race.session() as s, s.begin():
+            s.execute(text("SET LOCAL lock_timeout = '200ms'"))
+            with pytest.raises(OperationalError) as exc:
+                send_signal(s, report=report, user_id=race.user, platform=race.platform)
+            assert isinstance(exc.value.orig, LockNotAvailable)
+    assert race.platform.signals == []  # it never got as far as the platform

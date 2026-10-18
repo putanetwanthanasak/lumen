@@ -404,3 +404,68 @@ def test_ID_01_same_overdue_twice_applied_once(
 
     assert installment(db_session).late_fees_accrued == Decimal("50.00")
     assert results(db_session, "webhook_event_applied") == ["applied"]
+
+
+# --- S10: audit rows are filed under the owner -------------------------------------------
+
+
+def audit_rows(session: Session, action: str) -> list[tuple[str, dict[str, Any]]]:
+    rows = session.execute(
+        select(AuditLog.user_id, AuditLog.detail).where(AuditLog.action == action)
+    )
+    return [(user_id, detail) for user_id, detail in rows]
+
+
+def no_installment_rows_for(session: Session, user: str) -> bool:
+    """What a per-user audit view would show `user` about installments: nothing."""
+    return not session.execute(
+        select(AuditLog.id).where(AuditLog.user_id == user, AuditLog.ref_type == "installment")
+    ).first()
+
+
+@pytest.mark.parametrize("make", [pay, overdue, cancel])
+def test_S10_user_mismatch_audited_under_the_owner_with_the_claim_in_detail(
+    db_session: Session, bank: MockBankAccountProvider, make: Any
+) -> None:
+    run(db_session, purchase(), bank)
+    args = ("evt_x", "10.00") if make is not cancel else ("evt_x",)
+
+    assert run(db_session, make(*args, user_ref="user_b"), bank) == Outcome.REJECTED
+
+    [(user_id, detail)] = audit_rows(db_session, "webhook_event_rejected")
+    assert (user_id, detail["claimed_user_ref"]) == (USER, "user_b")
+    assert no_installment_rows_for(db_session, "user_b")
+
+
+def test_S10_applied_event_has_no_claim(db_session: Session, bank: MockBankAccountProvider) -> None:
+    run(db_session, purchase(), bank)
+    run(db_session, pay("evt_p", "10.00"), bank)
+
+    [(user_id, detail)] = audit_rows(db_session, "webhook_event_applied")
+    assert user_id == USER
+    assert "claimed_user_ref" not in detail
+
+
+def test_S10_contract_reused_by_another_user_audited_under_the_owner(
+    db_session: Session, bank: MockBankAccountProvider
+) -> None:
+    run(db_session, purchase(), bank)
+
+    outcome = run(db_session, created("evt_c2", CONTRACT, "1000.00", user="user_b"), bank)
+
+    assert outcome == Outcome.CONTRACT_CONFLICT
+    [(user_id, detail)] = audit_rows(db_session, "contract_id_reused")
+    assert (user_id, detail["claimed_user_ref"]) == (USER, "user_b")
+    assert no_installment_rows_for(db_session, "user_b")
+
+
+def test_S10_event_id_reused_audited_under_the_stored_events_user(
+    db_session: Session, bank: MockBankAccountProvider
+) -> None:
+    run(db_session, purchase(), bank)
+    run(db_session, pay("evt_p", "10.00"), bank)
+
+    assert run(db_session, pay("evt_p", "10.00", user_ref="user_b"), bank) == Outcome.CONFLICT
+
+    [(user_id, detail)] = audit_rows(db_session, "webhook_event_id_reused")
+    assert (user_id, detail["claimed_user_ref"]) == (USER, "user_b")

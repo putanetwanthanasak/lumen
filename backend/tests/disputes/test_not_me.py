@@ -21,9 +21,14 @@ from tests.webhooks.payloads import payload
 pytestmark = pytest.mark.db
 
 NOT_FOUND = {"detail": "installment not found"}
-MESSAGE = (
-    "บันทึกแล้วว่ารายการนี้ไม่ใช่คุณ และส่งเรื่องให้ ShopDemo ตรวจสอบแล้ว "
-    "Lumen หยุดหรือยกเลิกรายการแทนไม่ได้ กรุณาติดต่อ ShopDemo โดยตรงตามช่องทางด้านล่าง"
+# L60 (3), exact.
+MESSAGE_SENT = (
+    "บันทึกการแจ้งของคุณแล้ว และส่งเรื่องให้ ShopDemo ตรวจสอบแล้ว Lumen ยกเลิกรายการแทนคุณไม่ได้ "
+    "โปรดติดต่อ ShopDemo โดยตรงเพื่อยืนยันว่าไม่ใช่รายการของคุณ"
+)
+MESSAGE_FAILED = (
+    "บันทึกการแจ้งของคุณแล้ว แต่ยังส่งเรื่องให้ ShopDemo ไม่สำเร็จ Lumen ยกเลิกรายการแทนคุณไม่ได้ "
+    "โปรดติดต่อ ShopDemo โดยตรงโดยเร็ว"
 )
 CONTACT = {
     "mock": True,
@@ -70,11 +75,13 @@ def test_NT_05_not_me_disputes_audits_signals_and_returns_contact(webhook: Webho
     body = response.json()
     inst = installment(webhook.session)
     assert (inst.status, inst.disputed_at is not None) == ("disputed", True)
+    assert inst.dispute_signal_status == "sent"
     assert body == {
         "installment_id": str(installment_id),
         "status": "disputed",
         "disputed_at": body["disputed_at"],
-        "message": MESSAGE,
+        "platform_signal": "sent",
+        "message": MESSAGE_SENT,
         "contact": CONTACT,
     }
     assert body["disputed_at"] == inst.disputed_at.isoformat().replace("+00:00", "Z")
@@ -99,7 +106,7 @@ def test_NT_05_not_me_disputes_audits_signals_and_returns_contact(webhook: Webho
 def test_L42_never_claims_the_platform_transaction_is_stopped(webhook: Webhook) -> None:
     body = webhook.not_me(open_debt(webhook)).json()
 
-    assert "หยุดหรือยกเลิกรายการแทนไม่ได้" in body["message"]  # "cannot stop or cancel it"
+    assert "Lumen ยกเลิกรายการแทนคุณไม่ได้" in body["message"]  # "cannot cancel it for you"
     assert body["contact"]["mock"] is True
     assert "MOCK DATA" in body["contact"]["label"]
     assert ".example/" in body["contact"]["url"]  # a reserved, never-real domain
@@ -231,16 +238,54 @@ def test_settle_never_changes_disputed(
     assert check_user_invariants(webhook.session, "user_a") == []
 
 
-def test_platform_signal_failure_still_records_the_dispute(
-    webhook: Webhook, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    def down(**_: object) -> None:
-        raise ConnectionError("platform down")
+def platform_down(webhook: Webhook, monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Make the platform raise; returns a list that counts the failed calls."""
+    calls: list[int] = []
+
+    def down(**fields: object) -> None:
+        calls.append(1)
+        raise ConnectionError(f"platform down for {fields['user_id']}")
 
     monkeypatch.setattr(webhook.platform, "signal_dispute", down)
+    return calls
 
-    response = webhook.not_me(open_debt(webhook))
+
+def test_L60_2_signal_failure_is_stored_and_the_message_says_not_sent(
+    webhook: Webhook, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    installment_id = open_debt(webhook)
+    platform_down(webhook, monkeypatch)
+
+    response = webhook.not_me(installment_id)
 
     assert response.status_code == 200
-    assert installment(webhook.session).status == "disputed"
+    body = response.json()
+    assert (body["platform_signal"], body["message"]) == ("failed", MESSAGE_FAILED)
+    inst = installment(webhook.session)
+    assert (inst.status, inst.dispute_signal_status) == ("disputed", "failed")
+    assert len(dispute_audits(webhook.session)) == 1  # the report itself is recorded
+    assert "ConnectionError" in caplog.text
+    assert "user_a" not in caplog.text  # S12: not the provider's text
+
+
+def test_S4_repeat_tap_retries_the_signal_until_it_is_sent(
+    webhook: Webhook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installment_id = open_debt(webhook)
+    failed = platform_down(webhook, monkeypatch)
+    first = webhook.not_me(installment_id).json()
+    second = webhook.not_me(installment_id).json()  # still down: tried again
+    assert (first["platform_signal"], second["platform_signal"]) == ("failed", "failed")
+    assert len(failed) == 2
+
+    monkeypatch.undo()  # the platform is back
+    third = webhook.not_me(installment_id).json()
+    fourth = webhook.not_me(installment_id).json()  # sent already: nothing more
+
+    assert (third["platform_signal"], third["message"]) == ("sent", MESSAGE_SENT)
+    assert fourth == third
+    assert webhook.platform.signals == [DisputeSignal("shopdemo", "ctr_88213", "user_a")]
+    assert installment(webhook.session).dispute_signal_status == "sent"
+    # Retries change the signal status only: one report, one disputed_at.
     assert len(dispute_audits(webhook.session)) == 1
+    assert first["disputed_at"] == fourth["disputed_at"]

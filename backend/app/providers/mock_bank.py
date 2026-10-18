@@ -1,7 +1,8 @@
 """In-memory bank account for the demo (04 section 8).
 
 State lives in this process only and resets when the server restarts. A lock guards
-it because concurrent webhooks share one instance.
+it because concurrent webhooks share one instance. Like a real bank API, it applies
+each transfer idempotency key at most once (S1).
 """
 
 import threading
@@ -28,6 +29,7 @@ class MockBankAccountProvider:
     def __init__(self, opening_balance: Decimal = DEFAULT_OPENING_BALANCE) -> None:
         self._opening = _require_amount(opening_balance, positive=False)
         self._balances: dict[str, Decimal] = {}
+        self._applied: dict[str, tuple[str, Decimal]] = {}  # idempotency key -> transfer
         self._lock = threading.Lock()
 
     def set_balance(self, user_id: str, amount: Decimal) -> None:
@@ -39,13 +41,19 @@ class MockBankAccountProvider:
         with self._lock:
             return self._balances.get(user_id, self._opening)
 
-    def transfer_to_savings(self, user_id: str, amount: Decimal) -> None:
+    def transfer_to_savings(self, user_id: str, amount: Decimal, *, idempotency_key: str) -> None:
         amount = _require_amount(amount, positive=True)
         with self._lock:
+            applied = self._applied.get(idempotency_key)
+            if applied is not None:
+                if applied != (user_id, amount):
+                    raise ValueError("idempotency key reused for a different transfer")
+                return  # already applied: a retry moves nothing
             balance = self._balances.get(user_id, self._opening)
             if amount > balance:
                 raise ValueError("insufficient funds")
             self._balances[user_id] = balance - amount
+            self._applied[idempotency_key] = (user_id, amount)
 
     def transfer_from_savings(self, user_id: str, amount: Decimal) -> None:
         amount = _require_amount(amount, positive=True)

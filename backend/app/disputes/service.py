@@ -9,8 +9,13 @@ Status rules (L59 3): active and paid_off become disputed; a cancelled installme
 stays cancelled but still records the report (the debt is not owed, the fraud
 report must not be lost). disputed_at is set once and never cleared, so a later
 cancel keeps the history. There is no undo in this prototype.
+
+L60 (2) / S4: the platform signal has its own status. The report sets it to
+`pending` in the same transaction; send_signal then tries the platform and stores
+`sent` or `failed`. A repeat tap tries again while it is not `sent`.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -20,16 +25,21 @@ from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session
 
 from app.audit import service as audit
+from app.db import describe_db_error
 from app.ledger.service import lock_contract
 from app.models import (
     DISPUTE_ACTION,
     NEW_DEBT_KINDS,
     Actor,
+    DisputeSignalStatus,
     Installment,
     InstallmentStatus,
     Notification,
     UserResponse,
 )
+from app.providers.base import PlatformProvider
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -39,7 +49,8 @@ class Disputed:
     contract_id: str
     status: str
     disputed_at: datetime
-    # True only for the one call that recorded the dispute: it alone signals the platform.
+    signal_status: str
+    # True only for the one call that recorded the dispute (and wrote its audit row).
     first_report: bool
 
 
@@ -71,6 +82,7 @@ def dispute(session: Session, *, user_id: str, installment_id: uuid.UUID) -> Dis
             .where(Installment.id == installment_id, Installment.disputed_at.is_(None))
             .values(
                 disputed_at=func.now(),
+                dispute_signal_status=DisputeSignalStatus.PENDING,
                 status=case(
                     (Installment.status == InstallmentStatus.CANCELLED, Installment.status),
                     else_=InstallmentStatus.DISPUTED,
@@ -101,10 +113,57 @@ def dispute(session: Session, *, user_id: str, installment_id: uuid.UUID) -> Dis
             ref_id=str(installment_id),
             detail={"vendor": vendor, "contract_id": contract_id, "previous_status": previous},
         )
-    status, disputed_at = session.execute(
-        select(Installment.status, Installment.disputed_at).where(Installment.id == installment_id)
+    status, disputed_at, signal_status = session.execute(
+        select(
+            Installment.status, Installment.disputed_at, Installment.dispute_signal_status
+        ).where(Installment.id == installment_id)
     ).one()
     # Not None: set above or by an earlier report, and never cleared.
     return Disputed(
-        installment_id, vendor, contract_id, status, cast(datetime, disputed_at), first_report
+        installment_id,
+        vendor,
+        contract_id,
+        status,
+        cast(datetime, disputed_at),
+        cast(str, signal_status),
+        first_report,
     )
+
+
+def send_signal(
+    session: Session, *, report: Disputed, user_id: str, platform: PlatformProvider
+) -> str:
+    """Signal the platform unless it already has this report, store the outcome, and
+    return the stored status. Runs after the report committed; the caller commits.
+
+    The contract lock is held across the platform call, so of any number of taps
+    exactly one sends, and a tap that waited sees `sent` and sends nothing. The cost:
+    that contract's webhooks wait for the platform call (a real provider needs a
+    timeout; a retry outbox is R4).
+    """
+    lock_contract(session, vendor=report.vendor, contract_id=report.contract_id)
+    current = session.execute(
+        select(Installment.dispute_signal_status).where(Installment.id == report.installment_id)
+    ).scalar_one()
+    if current == DisputeSignalStatus.SENT:
+        return current
+    try:
+        platform.signal_dispute(
+            vendor=report.vendor, contract_id=report.contract_id, user_id=user_id
+        )
+        outcome = DisputeSignalStatus.SENT
+    except Exception as exc:
+        # S12: the class only; the provider's text may echo the user ref.
+        logger.error(
+            "dispute signal failed for installment %s: %s",
+            report.installment_id,
+            describe_db_error(exc),
+        )
+        outcome = DisputeSignalStatus.FAILED
+    session.execute(
+        update(Installment)
+        .where(Installment.id == report.installment_id)
+        .values(dispute_signal_status=outcome)
+        .execution_options(synchronize_session=False)
+    )
+    return outcome
