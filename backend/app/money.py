@@ -18,6 +18,8 @@ from pydantic import BeforeValidator
 # Used with fullmatch, so a trailing newline cannot slip through as it would with $.
 # Money: Numeric(12,2) holds 10 integer digits, so every match is below 1E10.
 MONEY_PATTERN = re.compile(r"[0-9]{1,10}(\.[0-9]{1,2})?")
+# The most a Numeric(12,2) column holds. A sum of parsed amounts can exceed it (S7).
+MONEY_MAX = Decimal("9999999999.99")
 # Rates: Numeric(7,6) holds 1 integer digit and 6 places.
 RATE_PATTERN = re.compile(r"[0-9](\.[0-9]{1,6})?")
 

@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.models import EventStatus, EventType, Installment, InstallmentStatus, WebhookEvent
+from app.money import MONEY_MAX
 from app.schemas import (
     CashLoanCreated,
     CashWithdrawalCreated,
@@ -30,6 +31,9 @@ class Applied(StrEnum):
     USER_MISMATCH = "user_mismatch"
     PAYMENT_EXCEEDS_OWED = "payment_exceeds_owed"  # OR-05, INV-6
     LATE_FEES_BELOW_PAID = "late_fees_below_paid"  # INV-6 from the other side
+    # S7: owed() can pass MONEY_MAX; storing more would overflow Numeric(12,2) (a 500
+    # on every retry). late_fees_accrued is set, not added, and parsed below MONEY_MAX.
+    PAID_AMOUNT_TOO_LARGE = "paid_amount_too_large"
 
 
 REJECTIONS = frozenset(
@@ -37,6 +41,7 @@ REJECTIONS = frozenset(
         Applied.USER_MISMATCH,
         Applied.PAYMENT_EXCEEDS_OWED,
         Applied.LATE_FEES_BELOW_PAID,
+        Applied.PAID_AMOUNT_TOO_LARGE,
     }
 )
 
@@ -136,6 +141,8 @@ def apply_event(
             paid = installment.paid_amount + event.amount
             if paid > owed(installment):
                 return Applied.PAYMENT_EXCEEDS_OWED
+            if paid > MONEY_MAX:
+                return Applied.PAID_AMOUNT_TOO_LARGE
             installment.paid_amount = paid
         case InstallmentOverdue():
             if _is_stale(session, vendor=vendor, event=event):

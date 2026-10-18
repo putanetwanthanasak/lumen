@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import Settings, get_settings
 from app.db import describe_db_error
@@ -11,6 +12,10 @@ from app.disputes.router import router as disputes_router
 from app.webhooks.router import router as webhooks_router
 
 logger = logging.getLogger(__name__)
+
+# S8: loopback names only, so a DNS-rebinding page (Host: evil.example resolving to
+# 127.0.0.1) gets 400 instead of the API. "testserver" is the TestClient's host.
+ALLOWED_HOSTS = ["127.0.0.1", "localhost", "testserver"]
 
 
 async def _db_error(request: Request, exc: Exception) -> JSONResponse:
@@ -31,6 +36,7 @@ def create_app(settings: Settings) -> FastAPI:
         redoc_url="/redoc" if docs else None,
         openapi_url="/openapi.json" if docs else None,
     )
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
     app.add_exception_handler(DBAPIError, _db_error)
     app.include_router(webhooks_router)
     app.include_router(debts_router)

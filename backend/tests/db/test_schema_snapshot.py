@@ -28,6 +28,8 @@ EXPECTED_CONSTRAINTS: dict[str, dict[str, str]] = {
         "pk_audit_log": "PRIMARY KEY (id)",
     },
     "installments": {
+        "ck_installments_dispute_signal_status_valid": "CHECK ((dispute_signal_status = ANY (ARRAY['pending'::text, 'sent'::text, 'failed'::text])))",
+        "ck_installments_dispute_signal_status_with_report": "CHECK (((disputed_at IS NULL) = (dispute_signal_status IS NULL)))",
         "ck_installments_disputed_has_disputed_at": "CHECK (((status <> 'disputed'::text) OR (disputed_at IS NOT NULL)))",
         "ck_installments_fee_total_nonneg": "CHECK ((fee_total >= (0)::numeric))",
         "ck_installments_kind_valid": "CHECK ((kind = ANY (ARRAY['purchase'::text, 'cash_withdrawal'::text, 'cash_loan'::text])))",

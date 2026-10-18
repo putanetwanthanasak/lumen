@@ -325,13 +325,16 @@ def test_over_cap_notifications_are_not_limited_per_installment(db_session: Sess
 DISPUTED_AT = datetime(2026, 10, 17, 12, 0, tzinfo=UTC)
 
 
+REPORTED = {"disputed_at": DISPUTED_AT, "dispute_signal_status": "pending"}
+
+
 def test_L42_disputed_installment_needs_disputed_at(db_session: Session) -> None:
     assert_rejected(
         db_session,
         installment(status="disputed"),
         "ck_installments_disputed_has_disputed_at",
     )
-    assert_accepted(db_session, installment(status="disputed", disputed_at=DISPUTED_AT))
+    assert_accepted(db_session, installment(status="disputed", **REPORTED))
 
 
 @pytest.mark.parametrize("status", ["cancelled", "active", "paid_off"])
@@ -339,7 +342,39 @@ def test_L59_3_disputed_at_may_outlive_the_disputed_status(
     db_session: Session, status: str
 ) -> None:
     # Cancelled after the report keeps disputed_at (L59 3), and so does any later status.
-    assert_accepted(db_session, installment(status=status, disputed_at=DISPUTED_AT))
+    assert_accepted(db_session, installment(status=status, **REPORTED))
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"disputed_at": DISPUTED_AT},  # a report without a signal status
+        {"dispute_signal_status": "sent"},  # a signal status without a report
+    ],
+)
+def test_L60_2_signal_status_exactly_when_reported(
+    db_session: Session, fields: dict[str, object]
+) -> None:
+    assert_rejected(
+        db_session,
+        installment(**fields),
+        "ck_installments_dispute_signal_status_with_report",
+    )
+
+
+def test_L60_2_signal_status_values(db_session: Session) -> None:
+    for value in ("pending", "sent", "failed"):
+        assert_accepted(
+            db_session,
+            installment(
+                contract_id=f"c-{value}", disputed_at=DISPUTED_AT, dispute_signal_status=value
+            ),
+        )
+    assert_rejected(
+        db_session,
+        installment(disputed_at=DISPUTED_AT, dispute_signal_status="delivered"),
+        "ck_installments_dispute_signal_status_valid",
+    )
 
 
 def test_L42_one_dispute_audit_row_per_installment(db_session: Session) -> None:

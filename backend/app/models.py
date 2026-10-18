@@ -88,6 +88,15 @@ class DeliveryStatus(StrEnum):
     INBOX_ONLY = "inbox_only"
 
 
+class DisputeSignalStatus(StrEnum):
+    """L60 (2): whether the platform got the "Not me" report. The message says "sent"
+    only for SENT; PENDING (recorded, not yet tried) and FAILED are re-attempted."""
+
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+
+
 class UserResponse(StrEnum):
     NONE = "none"
     NOT_ME = "not_me"
@@ -155,6 +164,12 @@ class Installment(Base):
         CheckConstraint(
             "status <> 'disputed' OR disputed_at IS NOT NULL", name="disputed_has_disputed_at"
         ),
+        # L60 (2): every report has a signal status, and only a report has one.
+        one_of("dispute_signal_status", DisputeSignalStatus),
+        CheckConstraint(
+            "(disputed_at IS NULL) = (dispute_signal_status IS NULL)",
+            name="dispute_signal_status_with_report",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -182,6 +197,7 @@ class Installment(Base):
     overdue_days: Mapped[int] = mapped_column(server_default=text("0"))
     # Set once by "Not me" and never cleared, so the dispute history survives (L59 3).
     disputed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dispute_signal_status: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
 
 

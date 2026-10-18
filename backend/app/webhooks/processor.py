@@ -100,8 +100,8 @@ def process_event(
     ref_id = f"{vendor}:{event.event_id}"
 
     if inserted is None:
-        stored, status = session.execute(
-            select(WebhookEvent.payload, WebhookEvent.status).where(
+        stored, status, owner = session.execute(
+            select(WebhookEvent.payload, WebhookEvent.status, WebhookEvent.user_id).where(
                 WebhookEvent.vendor == vendor, WebhookEvent.event_id == event.event_id
             )
         ).one()
@@ -113,15 +113,17 @@ def process_event(
             if status == EventStatus.REJECTED:
                 return Result(_rejected_again(session, vendor=vendor, event=event, stored=stored))
             return Result(Outcome.DUPLICATE)
-        # Keep the original row untouched; record that the id was reused.
+        # Keep the original row untouched; record that the id was reused, under the
+        # stored event's user (S10): the resend's user_ref is only a claim.
         audit.record(
             session,
             actor=Actor.SYSTEM,
             action="webhook_event_id_reused",
-            user_id=event.user_ref,
+            user_id=owner,
             ref_type="webhook_event",
             ref_id=ref_id,
-            detail={"stored_hash": stored_hash, "received_hash": received_hash},
+            detail={"stored_hash": stored_hash, "received_hash": received_hash}
+            | _claimed(event.user_ref, owner),
         )
         return Result(Outcome.CONFLICT)
 
@@ -182,7 +184,11 @@ def process_event(
 
     # Step 5c, last: money moves only once the ledger rows have passed reconcile.
     if saving > ZERO:
-        bank.transfer_to_savings(event.user_ref, saving)
+        bank.transfer_to_savings(
+            event.user_ref,
+            saving,
+            idempotency_key=savings.transfer_key(vendor, event.event_id),
+        )
     return Result(outcome, notification_id)
 
 
@@ -205,6 +211,7 @@ def _apply(
     """Apply a payment, overdue or cancel and set its stored status to match."""
     applied = ledger.apply_event(session, vendor=vendor, installment=installment, event=event)
     detail = {"event_id": event.event_id, "event_type": event.event_type, "result": applied}
+    detail |= _claimed(event.user_ref, installment.user_id)
     if applied in ledger.REJECTIONS:
         _set_status(session, vendor, event.event_id, EventStatus.REJECTED)
         action, outcome = "webhook_event_rejected", Outcome.REJECTED
@@ -215,12 +222,19 @@ def _apply(
         session,
         actor=Actor.SYSTEM,
         action=action,
-        user_id=event.user_ref,
+        user_id=installment.user_id,  # S10: the owner, even when the event claims another
         ref_type="installment",
         ref_id=str(installment.id),
         detail=detail,
     )
     return outcome
+
+
+def _claimed(user_ref: str, owner: str) -> dict[str, str]:
+    """S10: an audit row is filed under the owner of what it refers to, so a per-user
+    view never shows one user another's installment. A different claimed user_ref
+    is kept in the detail."""
+    return {} if user_ref == owner else {"claimed_user_ref": user_ref}
 
 
 def _replay_pending(session: Session, *, vendor: str, installment_id: uuid.UUID) -> None:
@@ -281,11 +295,15 @@ def _contract_reused(
     }
     if not same:
         detail |= {"stored_hash": stored_hash, "received_hash": received_hash}
+    owner = session.execute(
+        select(Installment.user_id).where(Installment.id == installment_id)
+    ).scalar_one()
+    detail |= _claimed(event.user_ref, owner)
     audit.record(
         session,
         actor=Actor.SYSTEM,
         action="contract_id_reused",
-        user_id=event.user_ref,
+        user_id=owner,
         ref_type="installment",
         ref_id=str(installment_id),
         detail=detail,
