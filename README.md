@@ -62,6 +62,32 @@ docker compose exec -T -e LUMEN_APP_PASSWORD postgres sh -s < docker/postgres/in
 cd backend && uv run alembic upgrade head
 ```
 
+## Mentor demo (5 minutes, terminal)
+
+From `backend/`, with Postgres up and `.env` filled in (including `MIGRATION_DATABASE_URL`
+and `WEBHOOK_SECRET_SHOPDEMO`):
+
+```bash
+uv run python -m demo                 # six scenes, press Enter between them
+uv run pytest -m concurrency -v       # second command: the race tests
+```
+
+The demo rebuilds its own database (`lumen_demo`; your `lumen` is not touched), starts
+the real app under the pinned uvicorn on `127.0.0.1:8765`, and connects as `lumen_app`.
+It sends webhooks signed exactly as a platform would, with the secret from `.env`, and
+never prints the secret. Scenes:
+
+1. Reset: a clean demo database and one user with a mock bank balance of 10,000.
+2. A ShopDemo purchase, 1,200 THB over 4 months: the installment, the saving of 120,
+   and the Thai alert with the monthly total.
+3. The exact same webhook again: `duplicate`, no second saving, no second alert.
+4. A 3,000 THB cash withdrawal: the strong alert.
+5. "Not me" on it: `disputed`, the platform signal, the honest message, the mock contact.
+6. `GET /debts/summary`: the monthly total, with the disputed debt flagged.
+
+A larger terminal font is fine: the output stays within 64 columns. `NO_COLOR=1`
+turns colors off. CI runs all six scenes unattended (`tests/demo/test_demo_smoke.py`).
+
 ## Quality checks
 
 From `backend/`:
