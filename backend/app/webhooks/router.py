@@ -15,6 +15,9 @@ from pydantic import SecretStr, ValidationError
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.notifications import service as notifications
+from app.providers import get_push_provider
+from app.providers.base import PushProvider
 from app.schemas import parse_event
 from app.webhooks.processor import Outcome, process_event
 from app.webhooks.signature import SignatureError, get_now, get_vendor_secrets, verify
@@ -77,6 +80,7 @@ async def verified_request(
 def receive_webhook(
     verified: Annotated[VerifiedRequest, Depends(verified_request)],
     session: Annotated[Session, Depends(get_session)],
+    push: Annotated[PushProvider, Depends(get_push_provider)],
 ) -> JSONResponse:
     try:
         event = parse_event(verified.body)
@@ -85,9 +89,12 @@ def receive_webhook(
         errors = [{"type": e["type"], "loc": e["loc"]} for e in exc.errors(include_url=False)]
         return JSONResponse(status_code=422, content={"detail": errors})
 
-    outcome = process_event(
+    result = process_event(
         session, vendor=verified.vendor, event=event, payload=json.loads(verified.body)
     )
     session.commit()  # on any exception the session closes and rolls back
-    status_code, content = RESPONSES[outcome]
+    if result.notification_id is not None:
+        # Step 9, after commit. Never raises: the event is already accepted (RS-03).
+        notifications.deliver(session, result.notification_id, push)
+    status_code, content = RESPONSES[result.outcome]
     return JSONResponse(status_code=status_code, content=content)

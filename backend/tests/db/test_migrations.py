@@ -29,7 +29,7 @@ def _columns(conn: Connection, table: str) -> set[str]:
 def test_vendor_key_and_late_fees_downgrade_one_step(engine: Engine) -> None:
     # The L47/L48 revision must undo cleanly: old single-column key, no late fees.
     with engine.begin() as conn:
-        command.downgrade(alembic_config(conn), "-1")
+        command.downgrade(alembic_config(conn), "ec76c45447e9")  # the revision before it
     with engine.connect() as conn:
         assert "late_fees_accrued" not in _columns(conn, "installments")
         assert "source_vendor" not in _columns(conn, "savings_transactions")
@@ -43,6 +43,22 @@ def test_vendor_key_and_late_fees_downgrade_one_step(engine: Engine) -> None:
         assert "source_vendor" in _columns(conn, "savings_transactions")
         pk = inspect(conn).get_pk_constraint("webhook_events")
         assert pk["constrained_columns"] == ["vendor", "event_id"]
+
+
+def _indexes(conn: Connection, table: str) -> set[str]:
+    return {i["name"] for i in inspect(conn).get_indexes(table)}
+
+
+def test_new_debt_notification_guard_downgrade_one_step(engine: Engine) -> None:
+    index = "uq_notifications_new_debt_installment_id"
+    with engine.begin() as conn:
+        command.downgrade(alembic_config(conn), "223146e7868a")
+    with engine.connect() as conn:
+        assert index not in _indexes(conn, "notifications")
+    with engine.begin() as conn:
+        command.upgrade(alembic_config(conn), "head")
+    with engine.connect() as conn:
+        assert index in _indexes(conn, "notifications")
 
 
 def test_alembic_check_no_drift(engine: Engine) -> None:

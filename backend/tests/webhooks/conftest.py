@@ -20,6 +20,8 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.main import app
 from app.models import AuditLog, WebhookEvent
+from app.providers import get_push_provider
+from app.providers.mock_push import MockPushProvider
 from app.webhooks.signature import get_now, get_vendor_secrets, sign
 from tests.webhooks.payloads import encode
 
@@ -34,6 +36,7 @@ WRONG_SECRET = secrets.token_hex(32)  # signs with a key no vendor has
 class Webhook:
     client: TestClient
     session: Session
+    push: MockPushProvider
 
     def post(
         self,
@@ -59,6 +62,11 @@ class Webhook:
             del headers[drop]
         return self.client.post("/webhooks/bnpl", content=body, headers=headers)
 
+    def get(self, path: str, user: str | None = "user_a") -> httpx.Response:
+        """GET an app API path as `user` (X-Demo-User); None sends no header."""
+        headers = {} if user is None else {"X-Demo-User": user}
+        return self.client.get(path, headers=headers)
+
     def count(self, model: type[WebhookEvent] | type[AuditLog]) -> int:
         return self.session.execute(select(func.count()).select_from(model)).scalar_one()
 
@@ -71,14 +79,16 @@ def webhook(db_session: Session) -> Iterator[Webhook]:
     def session_override() -> Iterator[Session]:
         yield db_session
 
+    push = MockPushProvider()
     overrides: dict[Callable[..., Any], Callable[..., Any]] = {
         get_session: session_override,
         get_vendor_secrets: lambda: {v: SecretStr(s) for v, s in SECRETS.items()},
         get_now: lambda: NOW,
+        get_push_provider: lambda: push,
     }
     app.dependency_overrides.update(overrides)
     try:
         with TestClient(app) as client:
-            yield Webhook(client, db_session)
+            yield Webhook(client, db_session, push)
     finally:
         app.dependency_overrides.clear()

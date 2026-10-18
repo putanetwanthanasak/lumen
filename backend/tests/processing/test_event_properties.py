@@ -11,7 +11,8 @@ PB-03: after every delivered event, all invariants hold:
   payment, overdue or cancel);
 - the ledger matches the stored events: paid_amount is the sum of processed payments,
   late fees come from the latest processed overdue (L55), status follows from them,
-  and nothing waits as pending_parent once its installment exists.
+  and nothing waits as pending_parent once its installment exists;
+- every installment has exactly one new-debt alert, whatever happened to it (L58).
 PB-04: the final state with resends equals the final state without them.
 
 Each history runs inside a savepoint that is rolled back, on the shared test DB.
@@ -29,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.ledger.reconcile import check_user_invariants
 from app.ledger.service import CREATED_EVENT_TYPES
-from app.models import Installment, SavingsTransaction, WebhookEvent
+from app.models import Installment, Notification, SavingsTransaction, WebhookEvent
 from app.providers.mock_bank import MockBankAccountProvider
 from tests.processing.conftest import balance, created, opt_in, run
 from tests.webhooks.payloads import payload
@@ -95,6 +96,8 @@ def ledger_matches_events(session: Session) -> None:
     for row in rows:
         by_contract.setdefault(row.contract_id, []).append(row)
     installments = {i.contract_id: i for i in session.execute(select(Installment)).scalars()}
+    alerted = Counter(session.execute(select(Notification.installment_id)).scalars())
+    assert alerted == Counter(i.id for i in installments.values())  # L58, NT-04
 
     for contract, stored in by_contract.items():
         children = [r for r in stored if r.event_type not in CREATED_EVENT_TYPES]
@@ -129,7 +132,8 @@ def snapshot(session: Session, bank: MockBankAccountProvider) -> tuple[Any, ...]
     )
     events = sorted(session.execute(select(WebhookEvent.event_id, WebhookEvent.status)).all())
     saves = sorted(session.execute(select(SavingsTransaction.amount)).scalars())
-    return installments, events, saves, savings_state(session, bank)
+    alerts = sorted(session.execute(select(Notification.kind, Notification.body)).all())
+    return installments, events, saves, alerts, savings_state(session, bank)
 
 
 def deliver(session: Session, delivery: list[dict[str, Any]], *, check: bool) -> tuple[Any, ...]:

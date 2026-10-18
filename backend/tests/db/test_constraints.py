@@ -277,6 +277,8 @@ def test_check_constraint_rejects_bad_value(
 ) -> None:
     if factory is savings_tx:
         overrides = {"installment_id": add_auto_save_parents(db_session)} | overrides
+    if factory is notification:
+        overrides = {"installment_id": add_installment(db_session)} | overrides
     assert_rejected(db_session, factory(**overrides), constraint)
 
 
@@ -287,4 +289,30 @@ def test_installment_accepts_every_kind(db_session: Session, kind: str) -> None:
 
 @pytest.mark.parametrize("kind", ["new_debt", "cash_withdrawal", "cash_loan", "over_cap"])
 def test_notification_accepts_every_kind(db_session: Session, kind: str) -> None:
-    assert_accepted(db_session, notification(kind=kind))
+    assert_accepted(db_session, notification(kind=kind, installment_id=add_installment(db_session)))
+
+
+@pytest.mark.parametrize("kind", ["new_debt", "cash_withdrawal", "cash_loan"])
+def test_NT_04_one_new_debt_notification_per_installment(db_session: Session, kind: str) -> None:
+    """The DB guard behind 5e: a second new-debt alert for one installment is refused,
+    whichever new-debt kind either row has."""
+    installment_id = add_installment(db_session)
+    assert_accepted(db_session, notification(installment_id=installment_id))
+    assert_rejected(
+        db_session,
+        notification(installment_id=installment_id, kind=kind),
+        "uq_notifications_new_debt_installment_id",
+    )
+
+
+@pytest.mark.parametrize("kind", ["new_debt", "cash_withdrawal", "cash_loan"])
+def test_NT_04_new_debt_notification_needs_an_installment(db_session: Session, kind: str) -> None:
+    # Without it, rows with a NULL installment_id would never collide in the index above.
+    assert_rejected(
+        db_session, notification(kind=kind), "ck_notifications_new_debt_has_installment"
+    )
+
+
+def test_over_cap_notifications_are_not_limited_per_installment(db_session: Session) -> None:
+    assert_accepted(db_session, notification(kind="over_cap"))
+    assert_accepted(db_session, notification(kind="over_cap"))

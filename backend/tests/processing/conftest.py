@@ -16,7 +16,7 @@ from app.db import Base
 from app.models import SavingsTransaction, UserBalance, UserSettings
 from app.providers.mock_bank import MockBankAccountProvider
 from app.schemas import parse_event
-from app.webhooks.processor import Outcome, process_event
+from app.webhooks.processor import Outcome, Result, process_event
 from tests.webhooks.payloads import encode, payload
 
 VENDOR = "shopdemo"
@@ -58,6 +58,12 @@ def created(
 def run(
     session: Session, data: dict[str, Any], bank: MockBankAccountProvider, vendor: str = VENDOR
 ) -> Outcome:
+    return process(session, data, bank, vendor).outcome
+
+
+def process(
+    session: Session, data: dict[str, Any], bank: MockBankAccountProvider, vendor: str = VENDOR
+) -> Result:
     body = encode(data)
     return process_event(session, vendor=vendor, event=parse_event(body), payload=data, bank=bank)
 

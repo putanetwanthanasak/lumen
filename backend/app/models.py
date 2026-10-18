@@ -260,6 +260,15 @@ class UserSettings(Base):
     monthly_installment_cap: Mapped[Decimal | None] = mapped_column(Money)
 
 
+# The new-debt alert kinds (5e): one per installment, whatever the installment kind.
+NEW_DEBT_KINDS = (
+    NotificationKind.NEW_DEBT,
+    NotificationKind.CASH_WITHDRAWAL,
+    NotificationKind.CASH_LOAN,
+)
+NEW_DEBT_KIND_SQL = f"kind IN ({', '.join(f"'{k.value}'" for k in NEW_DEBT_KINDS)})"
+
+
 class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
@@ -267,6 +276,19 @@ class Notification(Base):
         one_of("delivery_status", DeliveryStatus),
         one_of("user_response", UserResponse),
         CheckConstraint("push_attempts >= 0", name="push_attempts_nonneg"),
+        # NULLs never collide in a UNIQUE index, so the index below needs this.
+        CheckConstraint(
+            f"NOT ({NEW_DEBT_KIND_SQL}) OR installment_id IS NOT NULL",
+            name="new_debt_has_installment",
+        ),
+        # Exactly one new-debt alert per installment, however often or however
+        # concurrently its created event arrives (NT-04).
+        Index(
+            "uq_notifications_new_debt_installment_id",
+            "installment_id",
+            unique=True,
+            postgresql_where=text(NEW_DEBT_KIND_SQL),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
