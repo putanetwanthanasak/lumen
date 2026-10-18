@@ -111,6 +111,5 @@ def _credit(session: Session, user_id: str, amount: Decimal) -> None:
         )
         if updated.rowcount == 1:  # type: ignore[attr-defined]
             return
-    raise BalanceContentionError(
-        f"balance for {user_id} still contended after {MAX_CREDIT_ATTEMPTS}"
-    )
+    # S12: no user ref in the message; it reaches the server log.
+    raise BalanceContentionError(f"balance still contended after {MAX_CREDIT_ATTEMPTS} attempts")

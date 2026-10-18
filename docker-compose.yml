@@ -6,6 +6,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: lumen
+      # S2: password of the app's own role, created by docker/postgres/init/02-*.sh
+      LUMEN_APP_PASSWORD: ${LUMEN_APP_PASSWORD:?set LUMEN_APP_PASSWORD in .env}
     ports:
       # Bind to loopback only; never expose the DB on the LAN.
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"

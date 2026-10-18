@@ -15,8 +15,13 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # S2: the app connects as lumen_app; only Alembic uses the superuser URLs.
     database_url: SecretStr | None = None
     test_database_url: SecretStr | None = None
+    migration_database_url: SecretStr | None = None
+    test_migration_database_url: SecretStr | None = None
+    # S12: /docs, /redoc and /openapi.json are served only when DEBUG is true.
+    debug: bool = False
     webhook_secret_shopdemo: SecretStr | None = None
     provider_mode: Literal["mock"] = "mock"
 

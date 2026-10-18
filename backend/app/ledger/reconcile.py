@@ -26,7 +26,8 @@ CASH_EVENT_TYPES = (EventType.CASH_WITHDRAWAL_CREATED, EventType.CASH_LOAN_CREAT
 
 class InvariantViolationError(Exception):
     def __init__(self, user_id: str, violations: list[str]) -> None:
-        super().__init__(f"invariants violated for user {user_id}: {', '.join(violations)}")
+        # S12: the message is logged, so it names the invariants, never the user.
+        super().__init__(f"invariants violated: {', '.join(violations)}")
         self.user_id = user_id
         self.violations = violations
 

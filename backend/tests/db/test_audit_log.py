@@ -1,4 +1,8 @@
-"""audit_log is append-only: a trigger rejects UPDATE, DELETE, and TRUNCATE."""
+"""audit_log is append-only: a trigger rejects UPDATE, DELETE, and TRUNCATE.
+
+The app role cannot even try (no grant, see tests/db/test_app_role.py), so these run
+as the schema owner: the trigger is the guard against the owner itself (S2).
+"""
 
 import pytest
 from sqlalchemy import delete, text, update
@@ -33,37 +37,37 @@ def test_audit_log_insert_allowed(db_session: Session) -> None:
     assert row.created_at is not None
 
 
-def test_audit_log_update_rejected(db_session: Session) -> None:
-    row = _insert(db_session)
+def test_audit_log_update_rejected(owner_session: Session) -> None:
+    row = _insert(owner_session)
     with pytest.raises(DBAPIError) as exc:
-        db_session.execute(update(AuditLog).where(AuditLog.id == row.id).values(action="edited"))
+        owner_session.execute(update(AuditLog).where(AuditLog.id == row.id).values(action="edited"))
     _assert_append_only_error(exc, "UPDATE")
 
 
-def test_audit_log_orm_update_rejected(db_session: Session) -> None:
-    row = _insert(db_session)
+def test_audit_log_orm_update_rejected(owner_session: Session) -> None:
+    row = _insert(owner_session)
     row.detail = {"tampered": True}
     with pytest.raises(DBAPIError) as exc:
-        db_session.flush()
+        owner_session.flush()
     _assert_append_only_error(exc, "UPDATE")
 
 
-def test_audit_log_delete_rejected(db_session: Session) -> None:
-    row = _insert(db_session)
+def test_audit_log_delete_rejected(owner_session: Session) -> None:
+    row = _insert(owner_session)
     with pytest.raises(DBAPIError) as exc:
-        db_session.execute(delete(AuditLog).where(AuditLog.id == row.id))
+        owner_session.execute(delete(AuditLog).where(AuditLog.id == row.id))
     _assert_append_only_error(exc, "DELETE")
 
 
-def test_audit_log_truncate_rejected(db_session: Session) -> None:
-    _insert(db_session)
+def test_audit_log_truncate_rejected(owner_session: Session) -> None:
+    _insert(owner_session)
     with pytest.raises(DBAPIError) as exc:
-        db_session.execute(text("TRUNCATE audit_log"))
+        owner_session.execute(text("TRUNCATE audit_log"))
     _assert_append_only_error(exc, "TRUNCATE")
 
 
-def test_audit_log_actor_check(db_session: Session) -> None:
-    db_session.add(audit_log(actor="admin"))
+def test_audit_log_actor_check(owner_session: Session) -> None:
+    owner_session.add(audit_log(actor="admin"))
     with pytest.raises(DBAPIError) as exc:
-        db_session.flush()
+        owner_session.flush()
     assert exc.value.orig.diag.constraint_name == "ck_audit_log_actor_valid"  # type: ignore[union-attr]

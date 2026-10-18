@@ -5,6 +5,7 @@ from functools import lru_cache
 from typing import Any
 
 from sqlalchemy import Engine, MetaData, create_engine
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
@@ -26,8 +27,28 @@ class Base(DeclarativeBase):
 def make_engine(url: str, **pool: Any) -> Engine:
     # R7: _credit's retry loop needs READ COMMITTED (a losing UPDATE must see the
     # winner's row, not raise a serialization error), so it does not depend on the
-    # server's default_transaction_isolation.
-    return create_engine(url, pool_pre_ping=True, isolation_level="READ COMMITTED", **pool)
+    # server's default_transaction_isolation. S12: hide_parameters keeps user refs and
+    # alert text out of DB error messages, and so out of the logs.
+    return create_engine(
+        url,
+        pool_pre_ping=True,
+        isolation_level="READ COMMITTED",
+        hide_parameters=True,
+        **pool,
+    )
+
+
+def describe_db_error(exc: BaseException) -> str:
+    """S12: what a log may say about an error. For a DB error that is its class,
+    SQLSTATE and constraint, never its text: Postgres's DETAIL quotes the failing
+    row ("Failing row contains (...)"), user ref and alert body included, which
+    hide_parameters does not cover."""
+    if not isinstance(exc, DBAPIError):
+        return type(exc).__name__
+    diag = getattr(exc.orig, "diag", None)
+    sqlstate = getattr(diag, "sqlstate", None)
+    constraint = getattr(diag, "constraint_name", None)
+    return f"{type(exc).__name__} sqlstate={sqlstate} constraint={constraint}"
 
 
 @lru_cache

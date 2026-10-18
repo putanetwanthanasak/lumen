@@ -5,6 +5,7 @@ through their own connections and really commit, or Postgres never arbitrates
 between them. So each test uses a unique user, opts it in with a committed row,
 and deletes everything for that user afterwards, even on failure.
 
+The clean-up runs as the schema owner: the app role has no DELETE anywhere (S2).
 audit_log is append-only (a trigger rejects DELETE). The clean-up disables that
 trigger, deletes this test user's rows and re-enables it inside one transaction:
 Postgres DDL is transactional, so no other session ever sees it off. It only runs
@@ -137,7 +138,9 @@ class Race:
 
 
 @pytest.fixture
-def race(concurrent_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[Race]:
+def race(
+    concurrent_engine: Engine, migration_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Race]:
     user = f"conc_{uuid.uuid4().hex[:12]}"
     bank = MockBankAccountProvider()
     push = MockPushProvider()
@@ -163,4 +166,4 @@ def race(concurrent_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator
             yield Race(concurrent_engine, client, bank, push, platform, user)
     finally:
         app.dependency_overrides.clear()
-        _clean_up(concurrent_engine, user)
+        _clean_up(migration_engine, user)
