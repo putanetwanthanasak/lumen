@@ -11,6 +11,10 @@ The expected values are Postgres's own rendering (pg_get_constraintdef, pg_index
 information_schema). They were captured once from a fresh `upgrade head` and each
 line was checked by hand against app/models.py. A schema change must update this
 file in the same PR, which makes every constraint change visible in review.
+
+It reads the catalogs as the schema owner: information_schema hides from the app
+role whatever it has no grant on. EXPECTED_APP_GRANTS pins what lumen_app may do (S2),
+so a new table without a grant, or a widened grant, shows up here.
 """
 
 import pytest
@@ -148,6 +152,17 @@ EXPECTED_DEFAULTS: dict[str, dict[str, str]] = {
 }
 
 
+EXPECTED_APP_GRANTS: dict[str, str] = {
+    "audit_log": "INSERT, SELECT",
+    "installments": "INSERT, SELECT, UPDATE",
+    "notifications": "INSERT, SELECT, UPDATE",
+    "savings_transactions": "INSERT, SELECT",
+    "user_balances": "INSERT, SELECT, UPDATE",
+    "user_settings": "INSERT, SELECT, UPDATE",
+    "webhook_events": "INSERT, SELECT, UPDATE",
+}
+
+
 def _rows(conn: Connection, sql: str) -> dict[str, dict[str, str]]:
     by_table: dict[str, dict[str, str]] = {}
     for table, name, value in conn.execute(text(sql)):
@@ -155,9 +170,9 @@ def _rows(conn: Connection, sql: str) -> dict[str, dict[str, str]]:
     return by_table
 
 
-def test_M3_constraint_definitions_match(engine: Engine) -> None:
+def test_M3_constraint_definitions_match(migration_engine: Engine) -> None:
     # PK, UNIQUE, FK and CHECK constraints, with their full expressions.
-    with engine.connect() as conn:
+    with migration_engine.connect() as conn:
         actual = _rows(
             conn,
             "SELECT conrelid::regclass::text, conname, pg_get_constraintdef(oid) "
@@ -168,9 +183,9 @@ def test_M3_constraint_definitions_match(engine: Engine) -> None:
     assert actual == EXPECTED_CONSTRAINTS
 
 
-def test_M3_index_definitions_match(engine: Engine) -> None:
+def test_M3_index_definitions_match(migration_engine: Engine) -> None:
     # Includes the WHERE clause of each partial UNIQUE index (INV-3, ID-05).
-    with engine.connect() as conn:
+    with migration_engine.connect() as conn:
         actual = _rows(
             conn,
             "SELECT tablename, indexname, indexdef FROM pg_indexes "
@@ -179,11 +194,27 @@ def test_M3_index_definitions_match(engine: Engine) -> None:
     assert actual == EXPECTED_INDEXES
 
 
-def test_M3_server_defaults_match(engine: Engine) -> None:
-    with engine.connect() as conn:
+def test_M3_server_defaults_match(migration_engine: Engine) -> None:
+    with migration_engine.connect() as conn:
         actual = _rows(
             conn,
             "SELECT table_name, column_name, column_default FROM information_schema.columns "
             "WHERE table_schema = 'public' AND column_default IS NOT NULL",
         )
     assert actual == EXPECTED_DEFAULTS
+
+
+def test_S2_app_role_grants_match(migration_engine: Engine) -> None:
+    # Every relation in public (tables and sequences) with what lumen_app holds on it.
+    with migration_engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT c.relname, string_agg(a.privilege_type, ', ' "
+                "ORDER BY a.privilege_type) "
+                "FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a "
+                "WHERE c.relnamespace = 'public'::regnamespace "
+                "AND a.grantee = 'lumen_app'::regrole GROUP BY c.relname"
+            )
+        )
+        actual = dict(rows.all())  # not dict(rows): a Result has .keys()
+    assert actual == EXPECTED_APP_GRANTS

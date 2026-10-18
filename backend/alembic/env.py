@@ -1,4 +1,5 @@
-"""Alembic environment. The DB URL comes from env (DATABASE_URL), never alembic.ini.
+"""Alembic environment. The DB URL comes from env (MIGRATION_DATABASE_URL), never
+alembic.ini. It is the schema owner; the app itself connects as lumen_app (S2).
 
 Tests pass an open connection via ``config.attributes["connection"]``.
 """
@@ -40,9 +41,9 @@ def run_migrations_online() -> None:
     if connection is not None:
         _configure(connection)
         return
-    url = get_settings().database_url
+    url = get_settings().migration_database_url
     if url is None:
-        raise RuntimeError("DATABASE_URL is not set")
+        raise RuntimeError("MIGRATION_DATABASE_URL is not set")
     engine = make_engine(url.get_secret_value())
     try:
         with engine.connect() as conn:

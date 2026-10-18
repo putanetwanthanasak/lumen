@@ -36,16 +36,26 @@ def violations(session: Session, user: str = USER) -> list[str]:
     return reconcile.check_user_invariants(session, user)
 
 
+def _history(session: Session, bank: MockBankAccountProvider) -> Session:
+    """Purchases, cash events and an ID-05 resend for one user, all through the processor."""
+    opt_in(session)
+    run(session, created("evt_1", "c_1", "800.00"), bank)
+    run(session, created("evt_2", "c_2", "50.00"), bank)
+    run(session, created("evt_3", "c_3", "15000.00", event_type="cash_withdrawal_created"), bank)
+    run(session, created("evt_4", "c_4", "9000.00", event_type="cash_loan_created"), bank)
+    run(session, created("evt_5", "c_1", "800.00"), bank)  # ID-05 resend
+    return session
+
+
 @pytest.fixture
 def history(db_session: Session, bank: MockBankAccountProvider) -> Session:
-    """Purchases, cash events and an ID-05 resend for one user, all through the processor."""
-    opt_in(db_session)
-    run(db_session, created("evt_1", "c_1", "800.00"), bank)
-    run(db_session, created("evt_2", "c_2", "50.00"), bank)
-    run(db_session, created("evt_3", "c_3", "15000.00", event_type="cash_withdrawal_created"), bank)
-    run(db_session, created("evt_4", "c_4", "9000.00", event_type="cash_loan_created"), bank)
-    run(db_session, created("evt_5", "c_1", "800.00"), bank)  # ID-05 resend
-    return db_session
+    return _history(db_session, bank)
+
+
+@pytest.fixture
+def owner_history(owner_session: Session, bank: MockBankAccountProvider) -> Session:
+    """The same history as the schema owner: only the owner can drop a guard (S2)."""
+    return _history(owner_session, bank)
 
 
 def test_INV_1_to_INV_5_hold_after_processing(history: Session) -> None:
@@ -66,6 +76,7 @@ def test_INV_1_cached_balance_must_equal_ledger(history: Session) -> None:
     with pytest.raises(InvariantViolationError) as exc:
         assert_user_invariants(history, USER)
     assert (exc.value.user_id, exc.value.violations) == (USER, ["INV-1"])
+    assert USER not in str(exc.value)  # S12: the message is logged
 
 
 def test_INV_1_ledger_row_without_balance_row(db_session: Session) -> None:
@@ -92,11 +103,11 @@ def test_INV_1_withdrawal_counts_against_ledger(history: Session) -> None:
     assert violations(history) == []
 
 
-def test_INV_2_negative_balance(history: Session) -> None:
-    history.execute(
+def test_INV_2_negative_balance(owner_history: Session) -> None:
+    owner_history.execute(
         text("ALTER TABLE user_balances DROP CONSTRAINT ck_user_balances_savings_balance_nonneg")
     )
-    history.add(
+    owner_history.add(
         savings_tx(
             user_id=USER,
             type="withdrawal",
@@ -105,19 +116,19 @@ def test_INV_2_negative_balance(history: Session) -> None:
             source_event_id=None,
         )
     )
-    history.execute(
+    owner_history.execute(
         update(UserBalance)
         .where(UserBalance.user_id == USER)
         .values(savings_balance=Decimal("-10.00"))
     )
-    assert violations(history) == ["INV-2"]
+    assert violations(owner_history) == ["INV-2"]
 
 
-def test_INV_3_two_auto_saves_from_one_event(history: Session) -> None:
-    history.execute(text("DROP INDEX uq_savings_transactions_auto_save_source_event"))
-    history.execute(text("DROP INDEX uq_savings_transactions_auto_save_installment_id"))
-    [first] = auto_saves(history, USER)[:1]
-    history.add(
+def test_INV_3_two_auto_saves_from_one_event(owner_history: Session) -> None:
+    owner_history.execute(text("DROP INDEX uq_savings_transactions_auto_save_source_event"))
+    owner_history.execute(text("DROP INDEX uq_savings_transactions_auto_save_installment_id"))
+    [first] = auto_saves(owner_history, USER)[:1]
+    owner_history.add(
         savings_tx(
             user_id=USER,
             amount=Decimal("10.00"),
@@ -125,12 +136,12 @@ def test_INV_3_two_auto_saves_from_one_event(history: Session) -> None:
             installment_id=first.installment_id,
         )
     )
-    history.execute(
+    owner_history.execute(
         update(UserBalance)
         .where(UserBalance.user_id == USER)
         .values(savings_balance=Decimal("100.00"))
     )
-    assert violations(history) == ["INV-3"]
+    assert violations(owner_history) == ["INV-3"]
 
 
 def _inst(session: Session, contract_id: str = "c_x", kind: str = "purchase") -> uuid.UUID:
@@ -210,11 +221,14 @@ def test_RS_02_violation_rolls_back_whole_event_and_logs(
     assert "reconcile failed" in record.getMessage()
     assert "INV-1" in record.getMessage()
     assert f"vendor={VENDOR} event_id=evt_1" in record.getMessage()
+    assert USER not in record.getMessage()  # S12: no user ref in the server log
 
 
-def test_INV_6_paid_more_than_owed(history: Session) -> None:
-    history.execute(text("ALTER TABLE installments DROP CONSTRAINT ck_installments_paid_le_total"))
-    history.execute(
+def test_INV_6_paid_more_than_owed(owner_history: Session) -> None:
+    owner_history.execute(
+        text("ALTER TABLE installments DROP CONSTRAINT ck_installments_paid_le_total")
+    )
+    owner_history.execute(
         update(Installment)
         .where(Installment.user_id == USER)
         .values(
@@ -224,7 +238,7 @@ def test_INV_6_paid_more_than_owed(history: Session) -> None:
             + Decimal("0.01")
         )
     )
-    assert violations(history) == ["INV-6"]
+    assert violations(owner_history) == ["INV-6"]
 
 
 def test_INV_6_paid_exactly_what_is_owed_holds(history: Session) -> None:

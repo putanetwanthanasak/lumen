@@ -167,8 +167,9 @@ def test_balance_contention_gives_up_after_max_attempts(
 ) -> None:
     opt_in(db_session)
     monkeypatch.setattr(savings, "MAX_CREDIT_ATTEMPTS", 0)
-    with pytest.raises(savings.BalanceContentionError):
+    with pytest.raises(savings.BalanceContentionError) as exc:
         run(db_session, created("evt_1", "c_1"), bank)
+    assert USER not in str(exc.value)  # S12: the message reaches the server log
     assert bank.get_balance(USER) == OPENING  # raised before any money moved
 
 

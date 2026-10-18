@@ -13,6 +13,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.db import describe_db_error
 from app.debts.service import summary
 from app.ledger.service import ContractCreated
 from app.models import NEW_DEBT_KIND_SQL, DeliveryStatus, Notification
@@ -81,9 +82,14 @@ def deliver(session: Session, notification_id: uuid.UUID, push: PushProvider) ->
             .execution_options(synchronize_session=False)
         )
         session.commit()
-    except Exception:
+    except Exception as exc:
         session.rollback()
-        logger.exception("push delivery failed for notification %s", notification_id)
+        # S12: no traceback; a DB error's text quotes the row (user ref, alert body).
+        logger.error(
+            "push delivery failed for notification %s: %s",
+            notification_id,
+            describe_db_error(exc),
+        )
 
 
 def _try_push(push: PushProvider, user_id: str, title: str, body: str) -> bool:
