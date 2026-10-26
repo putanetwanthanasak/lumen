@@ -51,8 +51,16 @@ Find the root cause before changing code. Never retry, loosen an assertion, add 
 4. **Fix and prove:** write or keep a test that fails for this exact cause, apply the smallest fix, show the test now passes, and run the full suite.
 Record the bug, its root cause, and the proving test in the progress log under "Bugs found".
 
+## Session workflow
+Every session runs: plan -> build -> self-check -> independent review -> summary.
+- **Start:** `/session-start <task>` syncs main, reads the latest progress log, and writes the plan. Then it waits for approval.
+- **Critical tests:** `/break-test` covers money, idempotency, and invariants (Hard rule 4).
+- **Finish:** `/session-finish` runs the Definition of Done (`ruff check`, `ruff format --check`, `mypy app`, and `pytest --cov=app`, from `backend/`). It gets a review from the read-only `independent-reviewer` subagent and writes the progress log (Reporting format). Then it pushes, opens the PR with its Reading guide, and waits for green CI. Never end a session with red CI.
+- **Review comments:** `/pr-comments <PR>`.
+
+The skills live in `.claude/skills/`, and the subagent in `.claude/agents/`.
+
 ## Git workflow
-- Start of work: `git switch main && git pull`, then create a branch.
 - Branch name: `<type>/<short-kebab-topic>` describing the function of the change, not the date. Types:
   - `feat/` new behavior (e.g. `feat/saving-rule-engine`, `feat/webhook-receiver`)
   - `fix/` bug fix (e.g. `fix/duplicate-auto-save`)
@@ -64,27 +72,9 @@ Record the bug, its root cause, and the proving test in the progress log under "
 - Commit messages follow the same types: `feat: add compute_saving with min/max clamp`.
 - CI runs on `pull_request` and on `push` to `main`.
 - Keep each PR small enough to read in about 30 minutes: aim for under ~400 changed lines excluding tests and lock files. Split otherwise.
-- PR description: what changed, test IDs covered, break tests performed, then a **Reading guide**:
-  1. Files in the order to read them, tests first (they describe the behavior), one line each on what the file does.
-  2. "Must read" vs "skim": money, SQL, transactions, migrations, and security are must-read; config and boilerplate are skim.
-  3. For each must-read file, the specific functions or line ranges that matter and why.
-  4. Two or three self-check questions the reader should be able to answer after reading (e.g. "What stops the same event from saving twice?").
-- When the user leaves review comments on a PR, read them with `gh pr view --comments`, address each one, and reply to it.
+- PR description: its format and the Reading guide are defined in `/session-finish`.
+- Review comments on a PR: use `/pr-comments`.
 
-## Definition of Done for every session
-From `backend/`, all of these pass:
-```
-ruff check . && ruff format --check .
-mypy app
-pytest --cov=app
-```
-Then commit, push the session branch, open a PR, and wait for CI on the PR to go green. Do not end a session with red CI. Post the PR link in the final summary.
-
-## Reporting
-At the end of every session, append to `docs/progress/YYYY-MM-DD.md` under `## Session N: <name>`:
-- Done (test IDs passing)
-- Numbers: test count, Hypothesis generated cases, coverage
-- Break tests performed and results
-- **Deviations from docs/spec and why**
-- **Open questions** for the user
-- Carry-over work
+## Definition of Done and Reporting
+- **Definition of Done:** all checks pass and CI is green on the PR. The steps are in `/session-finish`.
+- **Reporting:** the progress log format, in `docs/progress/YYYY-MM-DD.md`, is also in `/session-finish`. It includes the independent review findings and how each was handled.
