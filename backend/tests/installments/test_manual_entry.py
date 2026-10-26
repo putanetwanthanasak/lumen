@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 
 from app.ledger.reconcile import InvariantViolationError
 from app.models import (
@@ -428,3 +429,47 @@ def test_RS_02_violation_rolls_back_the_whole_entry(
     [record] = caplog.records
     assert "manual entry rolled back" in record.getMessage()
     assert USER not in record.getMessage()  # S12
+
+
+# --- S1 for manual entry: the bank moves the saving at most once -----------------------
+
+
+def test_S1_manual_transfer_key_is_stable_per_request_and_distinct() -> None:
+    key = savings.manual_transfer_key(USER, "req-1")
+    assert key == savings.manual_transfer_key(USER, "req-1")
+    assert key != savings.manual_transfer_key(USER, "req-2")
+    assert key != savings.manual_transfer_key("user_b", "req-1")
+    # No separator games: ("a:b", "c") and ("a", "b:c") are different requests.
+    assert savings.manual_transfer_key("a:b", "c") != savings.manual_transfer_key("a", "b:c")
+    # Never the same key as a webhook event's auto-save.
+    assert key != savings.transfer_key(USER, "req-1")
+
+
+def test_S1_manual_commit_fails_after_transfer_retry_debits_the_bank_once(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The transfer runs before COMMIT. If the commit fails, the rows roll back but the
+    # money has moved; the user's retry carries the same client_request_id, so the
+    # same key, and the bank does nothing the second time.
+    opt_in(api.session)
+    api.session.commit()  # kept by the rollback below: only the lost request rolls back
+    session = api.session
+    real_commit = session.commit
+
+    def commit_fails_once() -> None:
+        monkeypatch.setattr(session, "commit", real_commit)
+        raise OperationalError("COMMIT", {}, Exception("connection lost"))
+
+    monkeypatch.setattr(session, "commit", commit_fails_once)
+
+    lost = post(api, entry())
+    session.rollback()  # what get_session's close does after the failed request
+    assert lost.status_code == 500
+    assert installments(api) == []
+    assert api.bank.get_balance(USER) == OPENING - Decimal("120.00")
+
+    retry = post(api, entry())
+
+    assert retry.status_code == 201, retry.text
+    assert api.bank.get_balance(USER) == OPENING - Decimal("120.00")  # debited once
+    assert savings_amounts(api) == [Decimal("120.00")]  # the retry did record the saving

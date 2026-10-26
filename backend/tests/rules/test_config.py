@@ -54,7 +54,7 @@ def test_L63_global_saving_rule_rejected(auto_save: dict[str, str]) -> None:
         parse_rules(json.dumps(data))
 
 
-def test_json_number_instead_of_string_rejected() -> None:
+def test_L49_json_number_instead_of_string_rejected() -> None:
     # Unquote the value in the JSON text to make it a JSON number (no Python float).
     raw = RULES_PATH.read_text().replace(
         '"protected_min_balance": "500.00"', '"protected_min_balance": 500.00'
@@ -74,7 +74,7 @@ def test_json_number_instead_of_string_rejected() -> None:
         ("500.001", "at most 2 decimal places"),
     ],
 )
-def test_bad_decimal_strings_rejected(value: str, message: str) -> None:
+def test_L49_bad_decimal_strings_rejected(value: str, message: str) -> None:
     with pytest.raises(ValidationError, match=message):
         parse_rules(with_safety_net(value))
 
