@@ -9,6 +9,7 @@ from app.config import Settings, get_settings
 from app.db import describe_db_error
 from app.debts.router import router as debts_router
 from app.disputes.router import router as disputes_router
+from app.installments.router import router as installments_router
 from app.user_settings.router import router as settings_router
 from app.webhooks.router import router as webhooks_router
 
@@ -43,6 +44,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(debts_router)
     app.include_router(disputes_router)
     app.include_router(settings_router)
+    app.include_router(installments_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

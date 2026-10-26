@@ -8,6 +8,7 @@ record; the push is only a delivery attempt.
 
 import logging
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -16,8 +17,14 @@ from sqlalchemy.orm import Session
 from app.db import describe_db_error
 from app.debts.service import summary
 from app.ledger.service import ContractCreated
-from app.models import NEW_DEBT_KIND_SQL, DeliveryStatus, Notification
-from app.notifications.copy import new_debt_alert
+from app.models import (
+    NEW_DEBT_KIND_SQL,
+    DeliveryStatus,
+    InstallmentKind,
+    Notification,
+    NotificationKind,
+)
+from app.notifications.copy import manual_entry_alert, new_debt_alert
 from app.providers.base import PushProvider
 from app.rules.config import load_rules
 
@@ -42,11 +49,46 @@ def notify_new_debt(
         months=contract.months,
         monthly_total=summary(session, event.user_ref).monthly_total,
     )
+    return _store(session, event.user_ref, installment_id, kind, title, body)
+
+
+def notify_manual_entry(
+    session: Session,
+    *,
+    user_id: str,
+    installment_id: uuid.UUID,
+    kind: InstallmentKind,
+    item_name: str,
+    item_price: Decimal,
+    months: int,
+    monthly_amount: Decimal,
+) -> uuid.UUID | None:
+    """As notify_new_debt, for an installment the user recorded (L62). The body still
+    carries the monthly total including this installment (L43)."""
+    kind_, title, body = manual_entry_alert(
+        kind=kind,
+        item_name=item_name,
+        item_price=item_price,
+        months=months,
+        monthly_amount=monthly_amount,
+        monthly_total=summary(session, user_id).monthly_total,
+    )
+    return _store(session, user_id, installment_id, kind_, title, body)
+
+
+def _store(
+    session: Session,
+    user_id: str,
+    installment_id: uuid.UUID,
+    kind: NotificationKind,
+    title: str,
+    body: str,
+) -> uuid.UUID | None:
     # The UNIQUE index decides: of any number of attempts, one gets a row back.
     return session.execute(
         pg_insert(Notification)
         .values(
-            user_id=event.user_ref,
+            user_id=user_id,
             installment_id=installment_id,
             kind=kind,
             title=title,

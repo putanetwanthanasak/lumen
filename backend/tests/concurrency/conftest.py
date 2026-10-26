@@ -15,6 +15,7 @@ committed audit rows would break the tests that count every audit row.
 Run them alone for the demo:  uv run pytest -m concurrency -v
 """
 
+import json
 import threading
 import uuid
 from collections.abc import Callable, Iterator
@@ -38,7 +39,7 @@ from app.models import (
     UserSettings,
     WebhookEvent,
 )
-from app.providers import get_platform_provider, get_push_provider
+from app.providers import get_bank_provider, get_platform_provider, get_push_provider
 from app.providers.mock_bank import MockBankAccountProvider
 from app.providers.mock_platform import MockPlatformProvider
 from app.providers.mock_push import MockPushProvider
@@ -97,6 +98,14 @@ class Race:
             "Content-Type": "application/json",
         }
         return self.client.post("/webhooks/bnpl", content=body, headers=headers)
+
+    def post_manual(self, data: dict[str, Any]) -> httpx.Response:
+        """POST /installments as this test's user (L62)."""
+        return self.client.post(
+            "/installments",
+            content=json.dumps(data).encode(),
+            headers={"X-Demo-User": self.user, "Content-Type": "application/json"},
+        )
 
     def not_me(self, installment_id: uuid.UUID) -> httpx.Response:
         return self.client.post(
@@ -157,6 +166,7 @@ def race(
         get_now: lambda: NOW,
         get_push_provider: lambda: push,
         get_platform_provider: lambda: platform,
+        get_bank_provider: lambda: bank,  # manual entry takes it as a dependency
     }
     monkeypatch.setattr(processor, "get_bank_provider", lambda: bank)
     app.dependency_overrides.update(overrides)

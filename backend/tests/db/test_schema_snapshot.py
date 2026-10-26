@@ -35,6 +35,7 @@ EXPECTED_CONSTRAINTS: dict[str, dict[str, str]] = {
         "ck_installments_kind_valid": "CHECK ((kind = ANY (ARRAY['purchase'::text, 'cash_withdrawal'::text, 'cash_loan'::text])))",
         "ck_installments_late_fee_nonneg": "CHECK ((late_fee_per_period >= (0)::numeric))",
         "ck_installments_late_fees_accrued_nonneg": "CHECK ((late_fees_accrued >= (0)::numeric))",
+        "ck_installments_manual_has_client_request_id": "CHECK (((vendor = 'manual'::text) = (client_request_id IS NOT NULL)))",
         "ck_installments_min_payment_nonneg": "CHECK ((min_payment >= (0)::numeric))",
         "ck_installments_monthly_amount_nonneg": "CHECK ((monthly_amount >= (0)::numeric))",
         "ck_installments_monthly_rate_nonneg": "CHECK ((monthly_rate >= (0)::numeric))",
@@ -42,6 +43,7 @@ EXPECTED_CONSTRAINTS: dict[str, dict[str, str]] = {
         "ck_installments_overdue_days_nonneg": "CHECK ((overdue_days >= 0))",
         "ck_installments_paid_amount_nonneg": "CHECK ((paid_amount >= (0)::numeric))",
         "ck_installments_paid_le_total": "CHECK ((paid_amount <= ((principal + fee_total) + late_fees_accrued)))",
+        "ck_installments_platform_debt_data_complete": "CHECK (((vendor = 'manual'::text) OR ((min_payment IS NOT NULL) AND (late_fee_per_period IS NOT NULL) AND (monthly_rate IS NOT NULL))))",
         "ck_installments_principal_positive": "CHECK ((principal > (0)::numeric))",
         "ck_installments_status_valid": "CHECK ((status = ANY (ARRAY['active'::text, 'paid_off'::text, 'cancelled'::text, 'disputed'::text])))",
         "pk_installments": "PRIMARY KEY (id)",
@@ -59,7 +61,6 @@ EXPECTED_CONSTRAINTS: dict[str, dict[str, str]] = {
     "savings_transactions": {
         "ck_savings_transactions_amount_positive": "CHECK ((amount > (0)::numeric))",
         "ck_savings_transactions_auto_save_has_installment": "CHECK (((type <> 'auto_save'::text) OR (installment_id IS NOT NULL)))",
-        "ck_savings_transactions_auto_save_has_source_event": "CHECK (((type <> 'auto_save'::text) OR ((source_vendor IS NOT NULL) AND (source_event_id IS NOT NULL))))",
         "ck_savings_transactions_source_event_pair_complete": "CHECK (((source_vendor IS NULL) = (source_event_id IS NULL)))",
         "ck_savings_transactions_type_valid": "CHECK ((type = ANY (ARRAY['auto_save'::text, 'withdrawal'::text])))",
         "fk_savings_transactions_installment_id_installments": "FOREIGN KEY (installment_id) REFERENCES installments(id)",
@@ -99,6 +100,7 @@ EXPECTED_INDEXES: dict[str, dict[str, str]] = {
     "installments": {
         "ix_installments_user_id": "CREATE INDEX ix_installments_user_id ON public.installments USING btree (user_id)",
         "pk_installments": "CREATE UNIQUE INDEX pk_installments ON public.installments USING btree (id)",
+        "uq_installments_user_client_request_id": "CREATE UNIQUE INDEX uq_installments_user_client_request_id ON public.installments USING btree (user_id, client_request_id) WHERE (client_request_id IS NOT NULL)",
         "uq_installments_vendor_contract_id": "CREATE UNIQUE INDEX uq_installments_vendor_contract_id ON public.installments USING btree (vendor, contract_id)",
     },
     "notifications": {

@@ -1,4 +1,5 @@
-"""Auto-save (04 section 6, step 5b and 5c; 05 section 4.6)."""
+"""Auto-save (04 section 6, step 5b and 5c; 05 section 4.6), for a webhook contract
+or a manual entry (L62)."""
 
 import hashlib
 import json
@@ -9,7 +10,6 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.ledger.service import ContractCreated
 from app.models import SavingMode, SavingsTransaction, SavingsType, UserBalance, UserSettings
 from app.providers.base import BankAccountProvider
 from app.rules.config import NEVER_SAVE_KINDS, load_rules
@@ -33,6 +33,13 @@ def transfer_key(vendor: str, event_id: str) -> str:
     return "auto-save-" + hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def manual_transfer_key(user_id: str, client_request_id: str) -> str:
+    """As transfer_key, for a manual entry (L62): the same on every submit of one
+    request. Not the installment id: a retry after a failed commit gets a new one."""
+    canonical = json.dumps(["auto_save_manual", user_id, client_request_id], separators=(",", ":"))
+    return "auto-save-" + hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def saving_rule(settings: UserSettings) -> SavingRule | None:
     """The user's one rule (L63), or None if they have not set one (a row from before
     L63). The DB CHECKs guarantee the chosen mode's value is present."""
@@ -46,21 +53,22 @@ def saving_rule(settings: UserSettings) -> SavingRule | None:
 def auto_save(
     session: Session,
     *,
-    vendor: str,
-    event: ContractCreated,
+    user_id: str,
+    kind: str,
+    item_price: Decimal,
     installment_id: uuid.UUID,
+    source: tuple[str, str] | None,
     bank: BankAccountProvider,
 ) -> Decimal:
-    """Record the auto-save for a new contract and return its amount (0.00 if none).
+    """Record the auto-save for a new installment and return its amount (0.00 if none).
 
-    The caller moves the money with bank.transfer_to_savings only after the
-    transaction passes reconcile. The saving belongs to the event's user (L51). The
-    amount follows that user's own rule (L63), the same rule as for manual entry.
+    `source` is the (vendor, event_id) of the webhook event that created it, or None
+    for a manual entry. The caller moves the money with bank.transfer_to_savings only
+    after the transaction passes reconcile. The saving belongs to the installment's
+    user (L51), and its amount follows that user's own rule (L63) on either path.
     """
-    contract = event.contract
-    if contract.kind in NEVER_SAVE_KINDS:  # INV-5: decided before anything else
+    if kind in NEVER_SAVE_KINDS:  # INV-5: decided before anything else
         return ZERO
-    user_id = event.user_ref
     settings = session.get(UserSettings, user_id)
     # SV-01, SV-02: a missing row means auto-save was never switched on.
     if settings is None or not settings.auto_save_enabled or settings.consent_at is None:
@@ -75,8 +83,8 @@ def auto_save(
     # check in _credit stays as a second layer.
     _lock_balance(session, user_id)
     amount = compute_saving(
-        kind=contract.kind,
-        item_value=contract.principal,
+        kind=kind,
+        item_value=item_price,
         bank_balance=bank.get_balance(user_id),
         rule=rule,
         protected_min=load_rules().safety_net.protected_min_balance,
@@ -89,8 +97,8 @@ def auto_save(
             user_id=user_id,
             type=SavingsType.AUTO_SAVE,
             amount=amount,
-            source_vendor=vendor,
-            source_event_id=event.event_id,
+            source_vendor=source[0] if source else None,
+            source_event_id=source[1] if source else None,
             installment_id=installment_id,
         )
     )

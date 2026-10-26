@@ -20,6 +20,7 @@ from tests.db.factories import (
     add_installment,
     audit_log,
     installment,
+    manual_installment,
     notification,
     profile,
     savings_tx,
@@ -81,15 +82,17 @@ def test_INV_3_same_event_id_under_two_vendors_saves_once_each(db_session: Sessi
     )
 
 
-@pytest.mark.parametrize(("vendor", "event_id"), [(None, None), (VENDOR, None), (None, "evt-1")])
-def test_INV_3_auto_save_requires_source_event(
-    db_session: Session, vendor: str | None, event_id: str | None
-) -> None:
-    inst = add_auto_save_parents(db_session)
+def test_INV_3_manual_auto_save_needs_no_source_event(db_session: Session) -> None:
+    # L62: a manual entry has no webhook event. One auto_save per installment is
+    # still the DB's rule, through the per-installment partial UNIQUE index.
+    row = manual_installment()
+    assert_accepted(db_session, row)
+    no_event = {"source_vendor": None, "source_event_id": None, "installment_id": row.id}
+    assert_accepted(db_session, savings_tx(**no_event))
     assert_rejected(
         db_session,
-        savings_tx(source_vendor=vendor, source_event_id=event_id, installment_id=inst),
-        "ck_savings_transactions_auto_save_has_source_event",
+        savings_tx(**no_event, amount=Decimal("1.00")),
+        "uq_savings_transactions_auto_save_installment_id",
     )
 
 
@@ -434,3 +437,47 @@ def test_L42_one_dispute_audit_row_per_installment(db_session: Session) -> None:
     assert_accepted(db_session, audit_log(**(dispute | {"ref_id": "inst-2"})))
     assert_accepted(db_session, audit_log(action="webhook_event_applied", ref_id="inst-1"))
     assert_rejected(db_session, audit_log(**dispute), "uq_audit_log_installment_disputed")
+
+
+# --- L62 manual entry -------------------------------------------------------------
+
+
+def test_MI_10_manual_row_with_unknown_debt_data_accepted(db_session: Session) -> None:
+    assert_accepted(db_session, manual_installment())
+
+
+def test_MI_10_same_request_id_twice_for_one_user_rejected(db_session: Session) -> None:
+    # The idempotency key (L62): (user, client_request_id).
+    assert_accepted(db_session, manual_installment())
+    assert_rejected(db_session, manual_installment(), "uq_installments_user_client_request_id")
+
+
+def test_MI_10_same_request_id_for_two_users_accepted(db_session: Session) -> None:
+    assert_accepted(db_session, manual_installment(user_id="user-1"))
+    assert_accepted(db_session, manual_installment(user_id="user-2"))
+
+
+@pytest.mark.parametrize(
+    ("row", "constraint"),
+    [
+        (
+            lambda: manual_installment(client_request_id=None),
+            "ck_installments_manual_has_client_request_id",
+        ),
+        (
+            lambda: installment(client_request_id="req-1"),
+            "ck_installments_manual_has_client_request_id",
+        ),
+        (lambda: installment(min_payment=None), "ck_installments_platform_debt_data_complete"),
+        (
+            lambda: installment(late_fee_per_period=None),
+            "ck_installments_platform_debt_data_complete",
+        ),
+        (lambda: installment(monthly_rate=None), "ck_installments_platform_debt_data_complete"),
+    ],
+    ids=["manual-without-id", "platform-with-id", "min_payment", "late_fee", "monthly_rate"],
+)
+def test_MI_10_manual_and_platform_rows_kept_apart(
+    db_session: Session, row: Any, constraint: str
+) -> None:
+    assert_rejected(db_session, row(), constraint)

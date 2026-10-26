@@ -136,7 +136,13 @@ def process_event(
         if installment_id is None:
             return Result(_contract_reused(session, vendor=vendor, event=event, payload=payload))
         saving = savings.auto_save(
-            session, vendor=vendor, event=event, installment_id=installment_id, bank=bank
+            session,
+            user_id=event.user_ref,
+            kind=event.contract.kind,
+            item_price=event.contract.principal,
+            installment_id=installment_id,
+            source=(vendor, event.event_id),
+            bank=bank,
         )
         _replay_pending(session, vendor=vendor, installment_id=installment_id)
         # 5e after 5f: the alert's monthly total is the one at commit (L43), and the
