@@ -1,104 +1,151 @@
 """Self-check for reviewer_readonly_bash.py.
 
-Run from the repo root: python3 -I .claude/hooks/check_reviewer_hook.py
+Run: python3 -I .claude/hooks/check_reviewer_hook.py (CI runs it on every PR).
 
-Exits 1 if any command is allowed or blocked wrongly. Not collected by pytest
-(it lives outside backend/), so run it by hand after changing the hook.
+Each case feeds the hook the JSON Claude Code sends and checks the exit code:
+0 allows the tool call, 2 blocks it. Exits 1 if any case is wrong.
 """
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 
-H = ".claude/hooks/reviewer_readonly_bash.py"
-allow = [
+HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reviewer_readonly_bash.py")
+
+ALLOW = [
     "git diff main...HEAD",
     "git diff main...HEAD --stat",
     "git log --oneline main..HEAD",
     "git show HEAD:CLAUDE.md",
     "git log -p -3",
-    "cd backend && uv run pytest -q",
-    "cd backend && uv run pytest --cov=app 2>&1 | tail -30",
-    "uv run ruff check .",
-    "uv run ruff format --check .",
-    "uv run mypy app",
-    "grep -rn 'float(' backend/app",
+    "git log --oneline -1 'HEAD~3'",
+    "git branch --show-current",
+    "cd backend && uv run --locked pytest -q",
+    "cd backend && uv run --locked pytest --cov=app 2>&1 | tail -30",
+    "uv run --locked pytest -q -k 'saving and not cash' tests/rules/test_engine.py",
+    "uv run --frozen pytest -x --tb=short -rA",
+    "uv run --locked ruff check .",
+    "uv run --locked ruff check --select E501 .",
+    "uv run --locked ruff format --check .",
+    "uv run --locked mypy app",
+    "grep -n 'float(' backend/app/money.py",
+    "grep -E 'a|b' x.py",
+    "git diff main...HEAD | grep -n 'float' | sort -u | uniq -c",
     "sed -n '1,40p' CLAUDE.md",
     "sed -n '$p' x",
     "find backend -name '*.py'",
     "cat .env.example",
-    "git branch --show-current",
-    "grep -E 'a|b' x.py",
     "ls docs/spec",
 ]
-block = [
+BLOCK = [
+    # Writes, deletes, and git state changes.
     "rm -rf backend",
+    "cp a b",
+    "tee x",
     "git checkout -- x",
     "git commit -m x",
     "git push origin HEAD",
+    "git stash",
+    "git branch -D main",
     "git -c core.pager=sh log",
     "git diff --output=x",
-    "uv run ruff check --fix .",
-    "uv run ruff format .",
-    "ruff format x.py",
-    "sed -i 's/a/b/' x",
-    "sed -n 's/a/b/w out' x",
-    "sed -n '1p;e rm x' x",
+    "git diff --outp=x",
+    "git log --ext-diff",
+    # Shell syntax that writes, chains, or expands.
     "echo hi > x",
     "cat x >> y",
     "git diff; rm x",
     "ls & rm x",
+    "(rm x)",
+    "ls\nrm x",
     "cat $(echo x)",
     "cat `echo x`",
     "echo $SECRET",
-    "cat .env",
-    "grep X backend/.env",
-    "find . -delete",
-    "find . -exec rm {} +",
-    "python -c 'import os'",
+    "cat ~/.ssh/id_rsa",
+    # Linters and tests: only options that cannot write (review round 1, F2 and F3).
+    "uv run --locked ruff check --fix .",
+    "uv run --locked ruff format .",
+    "ruff format x.py",
+    "uv run --locked ruff check -o ../CLAUDE.md .",
+    "uv run --locked ruff check --output-file=../CLAUDE.md .",
+    "uv run --locked ruff check --config 'fix = true' .",
+    "uv run --locked pytest --basetemp=app",
+    "uv run --locked pytest --junitxml=../CLAUDE.md",
+    "uv run --locked pytest --junitx=../CLAUDE.md",
+    "uv run --locked pytest --cov-report=html",
+    "uv run --locked pytest -o cache_dir=app",
+    "uv run --locked pytest -p some_plugin",
+    "uv run --locked mypy --html-report x app",
+    "uv run pytest -q",
     "uv pip install x",
-    "uv run python -c 1",
+    "uv run --locked python -c 1",
+    "python -c 'import os'",
+    "sed -i 's/a/b/' x",
+    "sed -n 's/a/b/w out' x",
+    "sed -n '1p;e rm x' x",
+    "find . -delete",
+    "find . -exec rm '{}' +",
     "sort -o x y",
-    "git branch -D main",
-    "tee x",
-    "cp a b",
-    "git stash",
-    "(rm x)",
-    "ls\nrm x",
+    "sort -uo x y",
+    "sort y",
+    "uniq a b",
+    # .env reads (review round 1, F1).
+    "cat .env",
+    "cat .env*",
+    "cat .e?v",
+    "cat .{env,x}",
+    "grep X backend/.env",
+    "grep -f.env x",
+    "grep -rn PASSWORD .",
+    "grep -Rn PASSWORD .",
+    "grep --recursive PASSWORD .",
+    "grep -d recurse PASSWORD .",
 ]
-bad = 0
 
 
-def run(payload):
+def run(payload: dict[str, object]) -> int:
     return subprocess.run(  # noqa: S603 (fixed argv: this interpreter and the hook path)
-        [sys.executable, "-I", H], input=json.dumps(payload), capture_output=True, text=True
-    )
+        [sys.executable, "-I", HOOK], input=json.dumps(payload), capture_output=True, text=True
+    ).returncode
 
 
-for c in allow:
-    r = run({"tool_name": "Bash", "tool_input": {"command": c}})
-    if r.returncode != 0:
-        bad += 1
-        print("SHOULD ALLOW:", repr(c), r.stderr.strip())
-for c in block:
-    r = run({"tool_name": "Bash", "tool_input": {"command": c}})
-    if r.returncode != 2:
-        bad += 1
-        print("SHOULD BLOCK:", repr(c), r.returncode)
-for p, want in [
-    ("/home/pumon/Documents/Lumen/.env", 2),
-    ("/x/.env.local", 2),
-    ("/x/.env.example", 0),
-    ("/x/CLAUDE.md", 0),
-]:
-    r = run({"tool_name": "Read", "tool_input": {"file_path": p}})
-    if r.returncode != want:
-        bad += 1
-        print("READ WRONG:", p, r.returncode)
-for path, want in [("/x/.env", 2), ("backend", 0)]:
-    r = run({"tool_name": "Grep", "tool_input": {"pattern": "SECRET", "path": path}})
-    if r.returncode != want:
-        bad += 1
-        print("GREP WRONG:", path, r.returncode)
-print(f"{len(allow)} allow, {len(block)} block, 4 read and 2 grep cases; wrong: {bad}")
-sys.exit(1 if bad else 0)
+def main() -> None:
+    wrong = []
+    for command in ALLOW:
+        if run({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": "."}) != 0:
+            wrong.append(f"should allow Bash: {command!r}")
+    for command in BLOCK:
+        if run({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": "."}) != 2:
+            wrong.append(f"should block Bash: {command!r}")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        # A symlink with a harmless name that points at a .env file (no real secret).
+        with open(os.path.join(tmp, ".env"), "w") as f:
+            f.write("PLACEHOLDER=1\n")
+        os.symlink(os.path.join(tmp, ".env"), os.path.join(tmp, "notes.txt"))
+        tool_cases = [
+            ("Read", {"file_path": "/repo/.env"}, 2),
+            ("Read", {"file_path": "/repo/.env.local"}, 2),
+            ("Read", {"file_path": os.path.join(tmp, "notes.txt")}, 2),
+            ("Read", {"file_path": "/repo/.env.example"}, 0),
+            ("Read", {"file_path": "/repo/CLAUDE.md"}, 0),
+            ("Grep", {"pattern": "SECRET", "path": "/repo/.env"}, 2),
+            ("Grep", {"pattern": "SECRET", "path": ".", "glob": ".env*"}, 2),
+            ("Grep", {"pattern": "SECRET", "path": "backend", "glob": "*.py"}, 0),
+            ("Bash", {"command": "cat notes.txt"}, 2),
+        ]
+        for tool, tool_input, want in tool_cases:
+            if run({"tool_name": tool, "tool_input": tool_input, "cwd": tmp}) != want:
+                wrong.append(f"{tool} {tool_input} should exit {want}")
+
+    total = len(ALLOW) + len(BLOCK) + len(tool_cases)
+    print("\n".join(wrong))
+    counts = f"{len(ALLOW)} allow, {len(BLOCK)} block, {len(tool_cases)} tool"
+    print(f"{total} cases ({counts}); wrong: {len(wrong)}")
+    sys.exit(1 if wrong else 0)
+
+
+if __name__ == "__main__":
+    main()

@@ -56,6 +56,10 @@ jobs:
         run: >-
           docker exec -i -e LUMEN_APP_PASSWORD "${{ job.services.postgres.id }}" sh -s
           < ../docker/postgres/init/02-create-app-role.sh
+      # The independent-reviewer subagent's read-only hook (.claude/hooks): every case must hold.
+      - name: Reviewer hook self-check
+        working-directory: .
+        run: uv run --no-project python -I .claude/hooks/check_reviewer_hook.py
       - name: Ruff lint
         run: uv run ruff check .
       - name: Ruff format check

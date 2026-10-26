@@ -49,7 +49,14 @@ uv run pytest --cov=app
    ```
 
    - Do **not** add your summary, your reasoning, what you tested, what you think is risky, or what you already fixed. The reviewer must form its own view from the diff, CLAUDE.md, and the spec.
-   - If the reviewer type is not available in this session, stop and tell the user. Do not use another agent type in its place, because that agent would not be read-only.
+   - **The reviewer type may be missing from the Agent tool.** Claude Code loads `.claude/agents/` at startup, so this happens when the agent was added or changed during the session. In that case, run the same agent headless from the repo root, in a Bash call of its own, with the same two-line prompt:
+
+     ```
+     claude -p --agent independent-reviewer --allowedTools Bash Read Grep Glob "Review branch <branch> against main.
+     Spec files to read: <paths, or "none">."
+     ```
+
+     Its frontmatter hook still applies. Never use another agent type in its place, because that agent would not be read-only.
 3. For each finding, either:
    - **fix it.** A real bug goes through the bug procedure, with a test that fails for that cause. A critical fix also gets a /break-test row. Commit the fix.
    - **or write why not.** Examples: a false positive, with the code line that shows it; out of scope, with the carry-over item; or a Locked decision that overrides it.
