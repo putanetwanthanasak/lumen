@@ -17,6 +17,7 @@ from app.money import MONEY_MAX, MoneyStr
 from app.schemas import MAX_MONTHS, NO_CONTROL_CHARS, Id
 
 MONTH_PATTERN = re.compile(r"([0-9]{4})-(0[1-9]|1[0-2])")
+LAST_MONTH_INDEX = 9999 * 12 + 11  # December 9999, as year * 12 + month - 1
 
 
 def parse_month(value: object) -> date:
@@ -42,11 +43,16 @@ class ManualEntryIn(BaseModel):
     item_name: Annotated[str, Field(max_length=500, pattern=NO_CONTROL_CHARS)] = ""
 
     @model_validator(mode="after")
-    def _schedule_fits_numeric(self) -> Self:
+    def _schedule_fits(self) -> Self:
         # The schedule total (and so fee_total) must fit Numeric(12,2), or the
         # insert would overflow into a 500 (as S7 for payments).
         if self.months * self.monthly_amount > MONEY_MAX:
             raise ValueError("months * monthly_amount is too large")
+        # Review F3: the last due date must exist, or the debt summary cannot compute
+        # it (date.max is 9999-12-31).
+        first = self.first_due_month
+        if first.year * 12 + first.month - 1 + self.months - 1 > LAST_MONTH_INDEX:
+            raise ValueError("the schedule ends after 9999-12")
         return self
 
     @property

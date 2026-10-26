@@ -1,6 +1,7 @@
 """MI-xx: POST /installments, manual entry (L62), saving by the user's rule (L63) and
-the alert with the L43 monthly total. 05 has no IDs for this, so MI-01 to MI-11 are
-new (Session 12). The concurrent double submit (MI-05) is in tests/concurrency."""
+the alert with the L43 monthly total. 05 has no IDs for this, so MI-01 to MI-12 are
+new (Session 12). MI-05 and a committed MI-06 are in tests/concurrency, MI-10 and
+MI-12 in tests/db."""
 
 import json
 import logging
@@ -300,6 +301,19 @@ def test_MI_07_schedule_too_large_for_numeric_rejected(api: Api) -> None:
     response = post(api, entry(months=600, monthly_amount="9999999999.99"))
     assert response.status_code == 422
     assert installments(api) == []
+
+
+@pytest.mark.parametrize(("month", "months"), [("9999-12", 2), ("9999-01", 13), ("9990-01", 600)])
+def test_MI_07_schedule_ending_after_year_9999_rejected(api: Api, month: str, months: int) -> None:
+    # Review F3: the last due date would be past date.max, a 500 on every retry.
+    response = post(api, entry(first_due_month=month, months=months))
+    assert response.status_code == 422
+    assert installments(api) == []
+
+
+@pytest.mark.parametrize(("month", "months"), [("9999-12", 1), ("9999-01", 12)])
+def test_MI_07_schedule_ending_in_year_9999_accepted(api: Api, month: str, months: int) -> None:
+    assert post(api, entry(first_due_month=month, months=months)).status_code == 201
 
 
 @pytest.mark.parametrize("user", [None, "", "a\nb"])

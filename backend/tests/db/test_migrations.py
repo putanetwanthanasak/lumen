@@ -103,7 +103,7 @@ def test_ST_15_settings_migration_keeps_rows_from_before_L63(migration_engine: E
             conn.execute(text("DELETE FROM user_settings WHERE user_id = 'mig-cap'"))
 
 
-def test_manual_installments_downgrade_one_step(migration_engine: Engine) -> None:
+def test_MI_12_manual_installments_downgrade_one_step(migration_engine: Engine) -> None:
     with migration_engine.begin() as conn:
         command.downgrade(alembic_config(conn), "13bb1d51a30c")
     with migration_engine.connect() as conn:
@@ -115,7 +115,7 @@ def test_manual_installments_downgrade_one_step(migration_engine: Engine) -> Non
         assert "client_request_id" in _columns(conn, "installments")
 
 
-def test_manual_installments_downgrade_refuses_while_manual_rows_exist(
+def test_MI_12_manual_installments_downgrade_refuses_while_manual_rows_exist(
     migration_engine: Engine,
 ) -> None:
     # Their NULL debt data cannot become NOT NULL, so the downgrade must stop, not
