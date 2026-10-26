@@ -52,9 +52,11 @@ uv run pytest --cov=app
    - **The reviewer type may be missing from the Agent tool.** Claude Code loads `.claude/agents/` at startup, so this happens when the agent was added or changed during the session. In that case, run the same agent headless from the repo root, in a Bash call of its own, with the same two-line prompt:
 
      ```
-     claude -p --agent independent-reviewer --allowedTools Bash Read Grep Glob "Review branch <branch> against main.
-     Spec files to read: <paths, or "none">."
+     claude -p "Review branch <branch> against main.
+     Spec files to read: <paths, or "none">." --agent independent-reviewer --allowedTools Bash Read Grep Glob
      ```
+
+     The prompt must come right after `-p`, because `--allowedTools` takes every word after it as a tool name.
 
      Its frontmatter hook still applies. Never use another agent type in its place, because that agent would not be read-only.
 3. For each finding, either:

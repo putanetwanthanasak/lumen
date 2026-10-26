@@ -37,6 +37,9 @@ ALLOW = [
     "sed -n '$p' x",
     "find backend -name '*.py'",
     "cat .env.example",
+    "grep -n 'x#y' CLAUDE.md",
+    'grep -n "a b" CLAUDE.md',
+    "sed -n '1,5p' 'docs/progress/2026-10-18.md'",
     "ls docs/spec",
 ]
 BLOCK = [
@@ -63,7 +66,7 @@ BLOCK = [
     "cat $(echo x)",
     "cat `echo x`",
     "echo $SECRET",
-    "cat ~/.ssh/id_rsa",
+    "cat ~/.ssh/id_rsa",  # blocked by the tilde rule; the home-directory rule is below
     # Linters and tests: only options that cannot write (review round 1, F2 and F3).
     "uv run --locked ruff check --fix .",
     "uv run --locked ruff format .",
@@ -102,6 +105,21 @@ BLOCK = [
     "grep -Rn PASSWORD .",
     "grep --recursive PASSWORD .",
     "grep -d recurse PASSWORD .",
+    "grep -f .aws/credentials x",
+    # Text the tokenizer must not misread (review round 2, F1 and F2).
+    "true x#; cat .env",
+    "true x#; rm -rf backend",
+    'cat \\"x .e* y\\"',
+    "echo \\' $DATABASE_URL \\'",
+    "echo 'unclosed",
+    'echo "$HOME"',
+    'echo "`id`"',
+    "echo a\\;b",
+    'echo "a\\" "; cat .env #"',
+    'echo "a\\" "; rm -rf backend #"',
+    "git diff --no-index /dev/null x",
+    "git diff --no-i /dev/null x",
+    "uv run --locked pytest -q | ",
 ]
 
 
@@ -135,6 +153,19 @@ def main() -> None:
             ("Grep", {"pattern": "SECRET", "path": ".", "glob": ".env*"}, 2),
             ("Grep", {"pattern": "SECRET", "path": "backend", "glob": "*.py"}, 0),
             ("Bash", {"command": "cat notes.txt"}, 2),
+            # Globs that ripgrep would let through to .env (review round 2, F3).
+            ("Grep", {"pattern": "S", "path": ".", "glob": "*nv"}, 2),
+            ("Grep", {"pattern": "S", "path": ".", "glob": ".e[n]v"}, 2),
+            ("Grep", {"pattern": "S", "path": ".", "glob": "**/.env.*"}, 2),
+            ("Grep", {"pattern": "S", "path": ".", "glob": "*.{py,env}"}, 2),
+            ("Grep", {"pattern": "S", "path": ".", "glob": "!*.py"}, 2),
+            ("Grep", {"pattern": "S", "path": ".", "glob": "*.{py,md}"}, 0),
+            # Secrets outside the project, under the home directory (review round 2, F4).
+            ("Read", {"file_path": os.path.expanduser("~/.ssh/id_rsa")}, 2),
+            ("Read", {"file_path": os.path.expanduser("~/.config/gh/hosts.yml")}, 2),
+            ("Bash", {"command": "cat " + os.path.expanduser("~/.ssh/id_rsa")}, 2),
+            ("Grep", {"pattern": "S", "path": os.path.expanduser("~/.aws")}, 2),
+            ("Read", {"file_path": "/usr/lib/python3/shlex.py"}, 0),
         ]
         for tool, tool_input, want in tool_cases:
             if run({"tool_name": tool, "tool_input": tool_input, "cwd": tmp}) != want:

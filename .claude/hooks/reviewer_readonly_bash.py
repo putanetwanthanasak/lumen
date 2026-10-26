@@ -1,14 +1,17 @@
-"""PreToolUse hook for the independent-reviewer subagent: read-only tools only.
+r"""PreToolUse hook for the independent-reviewer subagent: read-only tools only.
 
 Subagent frontmatter cannot limit Bash to specific commands, so this hook does
 it. It reads the hook JSON on stdin and exits 0 to allow the call or 2 to block
 it. On a block, the reason goes back to the subagent on stderr.
 
 Bash rules (an allowlist; anything not listed is blocked):
-- No redirection, command substitution, ';', subshells, background jobs,
-  variable expansion, unquoted glob or brace characters, or a leading "~".
-  The one exception is "2>&1", which writes no file.
-- Parts may be chained with |, && or ||, and every part is checked.
+- The command is parsed by tokenize(), which accepts only a subset of shell
+  syntax whose meaning is exact. Unquoted words use only the characters in
+  SAFE_UNQUOTED. Single quotes are literal. Double quotes may not contain $, `,
+  \ or !. Parts may be chained with |, && or ||, and "2>&1" may follow a word.
+  Every other character is blocked, so there is no redirection, ';', '#',
+  subshell, background job, expansion, glob, brace or tilde. Nothing in the
+  command can be hidden from the checks below.
 - git: read-only subcommands only. No -c config overrides, and no output file
   or external diff tool, including abbreviated long options.
 - pytest, mypy and ruff run only as "uv run --locked|--frozen <tool>", so uv
@@ -21,13 +24,17 @@ Bash rules (an allowlist; anything not listed is blocked):
 Read, Grep and Bash rules:
 - No .env file (except .env.example) may be read or searched, because secret
   values must never be printed (CLAUDE.md Hard rule 2). Paths are resolved, so
-  a symlink to .env is caught too.
+  a symlink to .env is caught too. A Grep glob is blocked if it could match a
+  .env name, because ripgrep lets a glob override .gitignore.
+- Nothing under the home directory outside this project may be read or
+  searched (for example ~/.ssh, ~/.aws or the gh token).
 """
 
+import fnmatch
 import json
 import os
 import re
-import shlex
+import string
 import sys
 
 READ_ONLY_GIT = {
@@ -44,7 +51,7 @@ READ_ONLY_GIT = {
 GIT_BRANCH_LIST_ARGS = {"branch", "--show-current", "--list", "-a", "-r", "-v", "-vv"}
 FORBIDDEN_GIT_GLOBAL_ARGS = ("-c", "--config-env", "--exec-path")
 # git accepts any unambiguous prefix of a long option, so prefixes are matched too.
-FORBIDDEN_GIT_LONG_OPTIONS = ("--output", "--ext-diff")
+FORBIDDEN_GIT_LONG_OPTIONS = ("--output", "--ext-diff", "--no-index")
 PLAIN_READERS = {"cat", "head", "tail", "wc", "ls", "cut", "pwd", "echo", "cd", "true"}
 FORBIDDEN_FIND_PREFIXES = ("-delete", "-exec", "-ok", "-fprint", "-fls")
 SED_PRINT_SCRIPT = re.compile(r"(\d+|\$|/[^/]*/)(,(\d+|\$|/[^/]*/))?p")
@@ -79,6 +86,12 @@ SORT_FLAGS = re.compile(r"-[nruh]+")
 UNIQ_FLAGS = {"-c", "-d", "-u"}
 
 CHAIN_OPERATORS = {"|", "&&", "||"}
+SAFE_UNQUOTED = set(string.ascii_letters + string.digits + "_-./:=,@+%")
+NOT_IN_DOUBLE_QUOTES = set("$`\\!\n")
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+HOME_DIR = os.path.realpath(os.path.expanduser("~"))
+# Names a Grep glob must not be able to match.
+ENV_SAMPLES = (".env", ".env.local", ".env.production", "x/.env", "x/.env.local")
 # ".env" anywhere in a token (also inside "-f.env" or "--exclude=.env"), except ".env.example".
 ENV_TOKEN = re.compile(r"\.env(?!\.example\b|[A-Za-z0-9_])")
 
@@ -96,6 +109,31 @@ def touches_env(value: str, cwd: str) -> bool:
         return False
     resolved = os.path.realpath(os.path.join(cwd, value))
     return bool(ENV_TOKEN.search(os.path.basename(resolved)))
+
+
+def outside_project_in_home(value: str, cwd: str) -> bool:
+    """True if value resolves to a path under the home directory but outside this project."""
+    if not value or value.startswith("-"):
+        return False
+    resolved = os.path.realpath(os.path.join(cwd, value))
+    in_home = os.path.commonpath([resolved, HOME_DIR]) == HOME_DIR
+    in_project = os.path.commonpath([resolved, PROJECT_DIR]) == PROJECT_DIR
+    return in_home and not in_project
+
+
+def expand_braces(glob: str) -> list[str]:
+    """Expand the first {a,b} group, recursively, as ripgrep does."""
+    match = re.search(r"\{([^{}]*)\}", glob)
+    if not match:
+        return [glob]
+    head, tail = glob[: match.start()], glob[match.end() :]
+    return [g for alt in match.group(1).split(",") for g in expand_braces(head + alt + tail)]
+
+
+def glob_may_match_env(glob: str) -> bool:
+    if glob.startswith("!") or touches_env(glob, "/"):
+        return True
+    return any(fnmatch.fnmatchcase(name, g) for g in expand_braces(glob) for name in ENV_SAMPLES)
 
 
 def check_options(
@@ -165,6 +203,8 @@ def check_part(tokens: list[str], cwd: str) -> str | None:
         return "empty command part"
     if any(touches_env(t, cwd) for t in tokens):
         return "reading a .env file is not allowed (secret values must never be printed)"
+    if any(outside_project_in_home(t, cwd) for t in tokens):
+        return "reading files in the home directory outside this project is not allowed"
     cmd, args = tokens[0], tokens[1:]
 
     if cmd == "uv":
@@ -179,6 +219,8 @@ def check_part(tokens: list[str], cwd: str) -> str | None:
     if cmd == "grep":
         if is_recursive_grep(args):
             return "recursive grep is not allowed; use the Grep tool (it skips gitignored files)"
+        if any(a.startswith("--file") or re.fullmatch(r"-[a-zA-Z]*f.*", a) for a in args):
+            return "grep -f (patterns from a file) is not allowed"
         return None
     if cmd == "sed":
         options = {a for a in args if a.startswith("-")}
@@ -203,36 +245,76 @@ def check_part(tokens: list[str], cwd: str) -> str | None:
     return f"'{cmd}' is not on the read-only allowlist"
 
 
+def tokenize(command: str) -> list[str] | str:
+    """Split a command into words and chain operators, or return why it is blocked.
+
+    Only the subset described in the module docstring is accepted, so every
+    word here is exactly the word bash would pass to the program.
+    """
+    tokens: list[str] = []
+    word: str | None = None
+    i = 0
+    while i < len(command):
+        c = command[i]
+        if c in " \t":
+            if word is not None:
+                tokens.append(word)
+                word = None
+            i += 1
+        elif word is None and re.match(r"2>&1(?=[ \t|]|$)", command[i:]):
+            i += 4
+        elif command.startswith(("&&", "||"), i) or c == "|":
+            if word is not None:
+                tokens.append(word)
+                word = None
+            op = "|" if c == "|" and not command.startswith("||", i) else command[i : i + 2]
+            tokens.append(op)
+            i += len(op)
+        elif c == "'":
+            end = command.find("'", i + 1)
+            if end < 0:
+                return "unclosed single quote"
+            word = (word or "") + command[i + 1 : end]
+            i = end + 1
+        elif c == '"':
+            end = command.find('"', i + 1)
+            if end < 0:
+                return "unclosed double quote"
+            quoted = command[i + 1 : end]
+            if NOT_IN_DOUBLE_QUOTES & set(quoted):
+                return (
+                    "$, `, \\, ! and newlines are not allowed in double quotes; use single quotes"
+                )
+            word = (word or "") + quoted
+            i = end + 1
+        elif c in SAFE_UNQUOTED:
+            word = (word or "") + c
+            i += 1
+        else:
+            return (
+                f"{c!r} is not allowed outside quotes (no redirection, ';', '#', '&', "
+                "subshell, expansion, glob or escape); quote patterns with single quotes"
+            )
+    if word is not None:
+        tokens.append(word)
+    return tokens
+
+
 def check_bash(command: str, cwd: str) -> str | None:
-    if not command.strip():
-        return "no command"
-    scrubbed = command.replace("2>&1", " ")
-    if "\n" in scrubbed.strip():
-        return "multi-line commands are not allowed"
-    if "`" in scrubbed or "$" in re.sub(r"'[^']*'", "", scrubbed):
-        return "command substitution and variable expansion are not allowed"
-    unquoted = re.sub(r"'[^']*'|\"[^\"]*\"", "", scrubbed)
-    if re.search(r"[*?\[\]{}]|(^|\s)~", unquoted):
-        return "unquoted glob, brace or tilde characters are not allowed; quote patterns"
-    lexer = shlex.shlex(scrubbed, posix=True, punctuation_chars=True)
-    lexer.whitespace_split = True
-    try:
-        tokens = list(lexer)
-    except ValueError as exc:
-        return f"cannot parse the command: {exc}"
+    tokens = tokenize(command)
+    if isinstance(tokens, str):
+        return tokens
     part: list[str] = []
     for token in [*tokens, "&&"]:
-        if token in CHAIN_OPERATORS:
-            reason = check_part(part, cwd)
-            if reason:
-                return reason
-            if part[:1] == ["cd"] and len(part) > 1:
-                cwd = os.path.join(cwd, part[1])
-            part = []
-        elif token and set(token) <= set("();<>|&"):
-            return f"'{token}' (redirection, ';', subshell or background job) is not allowed"
-        else:
+        if token not in CHAIN_OPERATORS:
             part.append(token)
+            continue
+        reason = check_part(part, cwd)
+        if reason:
+            return reason
+        if part[:1] == ["cd"] and len(part) > 1:
+            cwd = os.path.join(cwd, part[1])
+        part = []
     return None
 
 
@@ -244,13 +326,13 @@ def main() -> None:
     reason = None
     if tool == "Bash":
         reason = check_bash(str(tool_input.get("command", "")), cwd)
-    elif tool == "Read":
-        if touches_env(str(tool_input.get("file_path", "")), cwd):
-            reason = "reading a .env file is not allowed"
-    elif tool == "Grep":
-        fields = [str(tool_input.get(key) or "") for key in ("path", "glob")]
-        if any(touches_env(field, cwd) for field in fields if field):
-            reason = "searching a .env file is not allowed"
+    elif tool in ("Read", "Grep"):
+        path = str(tool_input.get("file_path" if tool == "Read" else "path") or "")
+        glob = str(tool_input.get("glob") or "")
+        if touches_env(path, cwd) or (glob and glob_may_match_env(glob)):
+            reason = "reading or searching a .env file is not allowed"
+        elif outside_project_in_home(path, cwd):
+            reason = "reading files in the home directory outside this project is not allowed"
     if reason:
         deny(reason)
     sys.exit(0)
