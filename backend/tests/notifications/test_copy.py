@@ -5,7 +5,14 @@ from decimal import Decimal
 import pytest
 
 from app.models import InstallmentKind, NotificationKind
-from app.notifications.copy import TEMPLATES, format_baht, new_debt_alert
+from app.notifications.copy import (
+    MANUAL_BODY,
+    MANUAL_TITLES,
+    TEMPLATES,
+    format_baht,
+    manual_entry_alert,
+    new_debt_alert,
+)
 from app.rules.config import load_rules
 
 
@@ -95,6 +102,57 @@ def test_every_kind_has_a_template_and_every_strong_kind_is_not_plain_new_debt()
 def test_rule_10_no_em_dash_and_rule_5_no_bank_brand_in_copy() -> None:
     em_dash = chr(0x2014)  # spelled out, so this file has none either
     banned = (em_dash, "kbank", "kbtg", "kasikorn", "k plus", "kplus", "shopee", "กสิกร")
-    for template in TEMPLATES.values():
-        text = f"{template.title} {template.body}".lower()
-        assert not [word for word in banned if word in text]
+    copy = [f"{t.title} {t.body}" for t in TEMPLATES.values()]
+    copy += [*MANUAL_TITLES.values(), MANUAL_BODY]
+    for text in copy:
+        assert not [word for word in banned if word in text.lower()]
+
+
+def test_MI_08_manual_entry_copy_exact() -> None:
+    # Session 12 wording (L62, L43): no vendor and no "if this isn't you" line.
+    kind, title, body = manual_entry_alert(
+        kind=InstallmentKind.PURCHASE,
+        item_name="หูฟัง",
+        item_price=Decimal("1200.00"),
+        months=10,
+        monthly_amount=Decimal("130.00"),
+        monthly_total=Decimal("4583.33"),
+    )
+    assert (kind, title) == (NotificationKind.NEW_DEBT, "บันทึกรายการผ่อนแล้ว")
+    assert body == (
+        "หูฟัง ราคา 1,200 บาท ผ่อน 10 เดือน เดือนละ 130 บาท ยอดผ่อนรวมต่อเดือนตอนนี้ 4,583.33 บาท"
+    )
+
+
+def test_MI_08_manual_entry_copy_without_item_name_starts_with_price() -> None:
+    _, _, body = manual_entry_alert(
+        kind=InstallmentKind.PURCHASE,
+        item_name="",
+        item_price=Decimal("999.50"),
+        months=3,
+        monthly_amount=Decimal("333.17"),
+        monthly_total=Decimal("333.17"),
+    )
+    assert body == ("ราคา 999.50 บาท ผ่อน 3 เดือน เดือนละ 333.17 บาท ยอดผ่อนรวมต่อเดือนตอนนี้ 333.17 บาท")
+
+
+@pytest.mark.parametrize(
+    ("kind", "notification_kind", "title"),
+    [
+        (InstallmentKind.CASH_WITHDRAWAL, NotificationKind.CASH_WITHDRAWAL, "บันทึกการเบิกเงินสดแล้ว"),
+        (InstallmentKind.CASH_LOAN, NotificationKind.CASH_LOAN, "บันทึกการกู้เงินสดแล้ว"),
+    ],
+)
+def test_MI_08_manual_cash_entry_titles(
+    kind: InstallmentKind, notification_kind: NotificationKind, title: str
+) -> None:
+    result = manual_entry_alert(
+        kind=kind,
+        item_name="",
+        item_price=Decimal("5000.00"),
+        months=5,
+        monthly_amount=Decimal("1100.00"),
+        monthly_total=Decimal("1100.00"),
+    )
+    assert result[:2] == (notification_kind, title)
+    assert set(MANUAL_TITLES) == set(InstallmentKind)

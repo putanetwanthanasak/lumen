@@ -62,22 +62,31 @@ def check_user_invariants(session: Session, user_id: str) -> list[str]:
     if balance < 0:
         violations.append("INV-2")
 
-    # INV-3: one event creates at most one auto_save.
+    # INV-3: one event, and one installment, creates at most one auto_save. A manual
+    # entry (L62) has no source event; NULL pairs would group together, so they are
+    # left out of the first check and covered by the second.
     auto_save = and_(tx.user_id == user_id, tx.type == SavingsType.AUTO_SAVE)
-    repeated = session.execute(
+    repeated_event = session.execute(
         select(tx.source_vendor, tx.source_event_id)
-        .where(auto_save)
+        .where(auto_save, tx.source_event_id.is_not(None))
         .group_by(tx.source_vendor, tx.source_event_id)
         .having(func.count() > 1)
         .limit(1)
     ).first()
-    if repeated is not None:
+    repeated_installment = session.execute(
+        select(tx.installment_id)
+        .where(auto_save)
+        .group_by(tx.installment_id)
+        .having(func.count() > 1)
+        .limit(1)
+    ).first()
+    if repeated_event is not None or repeated_installment is not None:
         violations.append("INV-3")
 
     # INV-5: no auto_save from a cash event or a cash installment.
     from_cash = session.execute(
         select(tx.id)
-        .join(
+        .outerjoin(
             WebhookEvent,
             and_(
                 WebhookEvent.vendor == tx.source_vendor,
@@ -97,21 +106,27 @@ def check_user_invariants(session: Session, user_id: str) -> list[str]:
     if from_cash is not None:
         violations.append("INV-5")
 
-    # L51: an auto_save belongs to the user its event belongs to. Matched from both
-    # sides, so a saving filed under the wrong user is found from the event's user too.
+    # L51: an auto_save belongs to the user its event and its installment belong to.
+    # Matched from both sides, so a saving filed under the wrong user is found from
+    # the owner's side too. A manual entry has no event; its installment still counts.
     other_user = session.execute(
         select(tx.id)
-        .join(
+        .outerjoin(
             WebhookEvent,
             and_(
                 WebhookEvent.vendor == tx.source_vendor,
                 WebhookEvent.event_id == tx.source_event_id,
             ),
         )
+        .outerjoin(Installment, Installment.id == tx.installment_id)
         .where(
             tx.type == SavingsType.AUTO_SAVE,
-            or_(tx.user_id == user_id, WebhookEvent.user_id == user_id),
-            WebhookEvent.user_id != tx.user_id,
+            or_(
+                tx.user_id == user_id,
+                WebhookEvent.user_id == user_id,
+                Installment.user_id == user_id,
+            ),
+            or_(WebhookEvent.user_id != tx.user_id, Installment.user_id != tx.user_id),
         )
         .limit(1)
     ).first()

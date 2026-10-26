@@ -55,6 +55,20 @@ def installment(**overrides: Any) -> Installment:
     return Installment(**(fields | overrides))
 
 
+def manual_installment(**overrides: Any) -> Installment:
+    """A row the user recorded (L62): vendor 'manual', a client request id, and the
+    platform debt data unknown (NULL)."""
+    fields: dict[str, Any] = {
+        "vendor": "manual",
+        "contract_id": str(uuid.uuid4()),
+        "client_request_id": "req-1",
+        "min_payment": None,
+        "late_fee_per_period": None,
+        "monthly_rate": None,
+    }
+    return installment(**(fields | overrides))
+
+
 def savings_tx(**overrides: Any) -> SavingsTransaction:
     fields: dict[str, Any] = {
         "user_id": USER,

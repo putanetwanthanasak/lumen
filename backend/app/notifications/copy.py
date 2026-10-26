@@ -1,7 +1,8 @@
 """Thai copy for new-debt alerts (L43, L50; rule 10: no em dashes).
 
-The wording is fixed by the user (Session 9). 03 section 4 has an older example
-without the L43 monthly total and without a cash version.
+The wording is fixed by the user (Session 9; the manual-entry copy in Session 12).
+03 section 4 has an older example without the L43 monthly total and without a
+cash version.
 """
 
 from dataclasses import dataclass
@@ -74,3 +75,39 @@ def new_debt_alert(
         monthly_total=format_baht(monthly_total),
     )
     return template.kind, template.title, body
+
+
+# L62: the user recorded this installment themselves, so there is no vendor and no
+# "if this isn't you" line. Titles per kind; one body (Session 12 wording).
+MANUAL_TITLES = {
+    InstallmentKind.PURCHASE: "บันทึกรายการผ่อนแล้ว",
+    InstallmentKind.CASH_WITHDRAWAL: "บันทึกการเบิกเงินสดแล้ว",
+    InstallmentKind.CASH_LOAN: "บันทึกการกู้เงินสดแล้ว",
+}
+MANUAL_BODY = (
+    "ราคา {item_price} บาท ผ่อน {months} เดือน เดือนละ {monthly_amount} บาท "
+    "ยอดผ่อนรวมต่อเดือนตอนนี้ {monthly_total} บาท"
+)
+
+
+def manual_entry_alert(
+    *,
+    kind: InstallmentKind,
+    item_name: str,
+    item_price: Decimal,
+    months: int,
+    monthly_amount: Decimal,
+    monthly_total: Decimal,
+) -> tuple[NotificationKind, str, str]:
+    """(notification kind, title, body) for an installment the user recorded. The
+    item name is the user's own text (no control characters, by the schema); when it
+    is empty the body starts with "ราคา"."""
+    body = MANUAL_BODY.format(
+        item_price=format_baht(item_price),
+        months=months,
+        monthly_amount=format_baht(monthly_amount),
+        monthly_total=format_baht(monthly_total),
+    )
+    if item_name:
+        body = f"{item_name} {body}"
+    return TEMPLATES[kind].kind, MANUAL_TITLES[kind], body

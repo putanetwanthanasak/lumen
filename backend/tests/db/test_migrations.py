@@ -1,6 +1,7 @@
 import pytest
 from alembic import command
 from sqlalchemy import Connection, Engine, inspect, text
+from sqlalchemy.exc import DBAPIError
 
 from app.db import Base
 from tests.conftest import alembic_config
@@ -100,6 +101,43 @@ def test_ST_15_settings_migration_keeps_rows_from_before_L63(migration_engine: E
         with migration_engine.begin() as conn:
             command.upgrade(alembic_config(conn), "head")
             conn.execute(text("DELETE FROM user_settings WHERE user_id = 'mig-cap'"))
+
+
+def test_MI_12_manual_installments_downgrade_one_step(migration_engine: Engine) -> None:
+    with migration_engine.begin() as conn:
+        command.downgrade(alembic_config(conn), "13bb1d51a30c")
+    with migration_engine.connect() as conn:
+        assert "client_request_id" not in _columns(conn, "installments")
+        assert "uq_installments_user_client_request_id" not in _indexes(conn, "installments")
+    with migration_engine.begin() as conn:
+        command.upgrade(alembic_config(conn), "head")
+    with migration_engine.connect() as conn:
+        assert "client_request_id" in _columns(conn, "installments")
+
+
+def test_MI_12_manual_installments_downgrade_refuses_while_manual_rows_exist(
+    migration_engine: Engine,
+) -> None:
+    # Their NULL debt data cannot become NOT NULL, so the downgrade must stop, not
+    # fail half-way or drop data.
+    insert = (
+        "INSERT INTO installments (user_id, vendor, contract_id, client_request_id, kind, "
+        "item_name, principal, months, monthly_amount, first_due_date) VALUES ('mig-user', "
+        "'manual', 'mig-c1', 'mig-r1', 'purchase', '', 100.00, 1, 100.00, '2026-11-01')"
+    )
+    with migration_engine.begin() as conn:
+        conn.execute(text(insert))
+    try:
+        with (
+            pytest.raises(DBAPIError, match="manual installments exist"),
+            migration_engine.begin() as conn,
+        ):
+            command.downgrade(alembic_config(conn), "13bb1d51a30c")
+        with migration_engine.connect() as conn:
+            assert "client_request_id" in _columns(conn, "installments")  # rolled back
+    finally:
+        with migration_engine.begin() as conn:
+            conn.execute(text("DELETE FROM installments WHERE user_id = 'mig-user'"))
 
 
 def test_alembic_check_no_drift(migration_engine: Engine) -> None:

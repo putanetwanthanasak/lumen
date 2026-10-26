@@ -9,10 +9,11 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, delete, func, select
 
-from app.models import UserSettings
+from app.models import AuditLog, Installment, UserSettings
 from tests.concurrency.conftest import Race
+from tests.concurrency.test_manual_entry_concurrency import entry
 
 pytestmark = [pytest.mark.db, pytest.mark.concurrency]
 
@@ -64,3 +65,18 @@ def test_ST_07_replaced_settings_persist_across_sessions(race: Race) -> None:
     assert response.status_code == 200
     row = stored_settings(race)
     assert (row.saving_mode, row.saving_percent, row.saving_fixed_amount) == ("percent", 7, None)
+
+
+def test_MI_06_conflict_audit_survives_commit(race: Race) -> None:
+    # The 409 must still commit its audit row (as L55), so the router commits before
+    # it raises.
+    first = entry(race.id("req_conflict"))
+    assert race.post_manual(first).status_code == 201
+    assert race.post_manual(first | {"months": 5}).status_code == 409
+
+    with race.session() as s:
+        actions = s.scalars(
+            select(AuditLog.action).where(AuditLog.user_id == race.user).order_by(AuditLog.id)
+        ).all()
+        assert actions == ["installment_recorded", "client_request_id_reused"]
+        assert s.scalar(select(func.count()).where(Installment.user_id == race.user)) == 1

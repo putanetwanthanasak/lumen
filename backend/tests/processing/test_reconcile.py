@@ -26,7 +26,7 @@ from app.models import (
 )
 from app.providers.mock_bank import MockBankAccountProvider
 from app.savings import service as savings
-from tests.db.factories import installment, savings_tx, webhook_event
+from tests.db.factories import installment, manual_installment, savings_tx, webhook_event
 from tests.processing.conftest import USER, VENDOR, auto_saves, count, created, opt_in, run
 
 pytestmark = pytest.mark.db
@@ -183,6 +183,79 @@ def test_INV_5_auto_save_for_cash_installment(db_session: Session, kind: str) ->
 def test_L51_auto_save_filed_under_another_user(db_session: Session) -> None:
     _bad_auto_save(db_session, event_type="installment_created", kind="purchase", saver="user_b")
     # Found from both sides: the event's user and the user who got the saving.
+    assert violations(db_session, USER) == ["L51"]
+    assert violations(db_session, "user_b") == ["L51"]
+
+
+def _manual_auto_save(
+    session: Session,
+    request_id: str,
+    *,
+    kind: str = "purchase",
+    owner: str = USER,
+    saver: str = USER,
+    amount: str = "10.00",
+) -> None:
+    """A manual installment (L62) and an auto_save for it with no source event."""
+    row = manual_installment(user_id=owner, client_request_id=request_id, kind=kind)
+    session.add(row)
+    session.flush()
+    session.add(
+        savings_tx(
+            user_id=saver,
+            amount=Decimal(amount),
+            source_vendor=None,
+            source_event_id=None,
+            installment_id=row.id,
+        )
+    )
+    session.flush()
+
+
+def _set_balance(session: Session, user: str, amount: str) -> None:
+    session.add(UserBalance(user_id=user, savings_balance=Decimal(amount)))
+    session.flush()
+
+
+def test_INV_3_manual_auto_saves_without_event_are_not_repeats(db_session: Session) -> None:
+    # Two manual savings both have a NULL source pair. GROUP BY puts NULLs in one
+    # group, so the per-event check must leave them out.
+    _manual_auto_save(db_session, "req-1")
+    _manual_auto_save(db_session, "req-2", amount="20.00")
+    _set_balance(db_session, USER, "30.00")
+    assert violations(db_session) == []
+
+
+def test_INV_3_two_manual_auto_saves_for_one_installment(owner_session: Session) -> None:
+    owner_session.execute(text("DROP INDEX uq_savings_transactions_auto_save_installment_id"))
+    _manual_auto_save(owner_session, "req-1")
+    installment_id = owner_session.execute(
+        text("SELECT installment_id FROM savings_transactions")
+    ).scalar_one()
+    owner_session.add(
+        savings_tx(
+            user_id=USER,
+            amount=Decimal("10.00"),
+            source_vendor=None,
+            source_event_id=None,
+            installment_id=installment_id,
+        )
+    )
+    _set_balance(owner_session, USER, "20.00")
+    assert violations(owner_session) == ["INV-3"]
+
+
+@pytest.mark.parametrize("kind", ["cash_withdrawal", "cash_loan"])
+def test_INV_5_manual_auto_save_for_cash_installment(db_session: Session, kind: str) -> None:
+    _manual_auto_save(db_session, "req-1", kind=kind)
+    _set_balance(db_session, USER, "10.00")
+    assert violations(db_session) == ["INV-5"]
+
+
+def test_L51_manual_auto_save_filed_under_another_user(db_session: Session) -> None:
+    _manual_auto_save(db_session, "req-1", saver="user_b")
+    _set_balance(db_session, "user_b", "10.00")
+    # No event to compare with: the installment's owner is what counts.
     assert violations(db_session, USER) == ["L51"]
     assert violations(db_session, "user_b") == ["L51"]
 

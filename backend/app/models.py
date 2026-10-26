@@ -105,6 +105,11 @@ class UserResponse(StrEnum):
 DISPUTE_ACTION = "installment_disputed"
 
 
+# L62: installments the user records themselves carry this vendor. No webhook vendor
+# can have it: vendors come from configured secrets, and "manual" has none.
+MANUAL_VENDOR = "manual"
+
+
 class Actor(StrEnum):
     SYSTEM = "system"
     USER = "user"
@@ -170,6 +175,27 @@ class Installment(Base):
             "(disputed_at IS NULL) = (dispute_signal_status IS NULL)",
             name="dispute_signal_status_with_report",
         ),
+        # L62: a manual row, and only a manual row, carries the client's request id.
+        CheckConstraint(
+            f"(vendor = '{MANUAL_VENDOR}') = (client_request_id IS NOT NULL)",
+            name="manual_has_client_request_id",
+        ),
+        # L41 debt data comes from the platform. A manual row may leave it unknown
+        # (NULL), never a made-up 0; a platform row must have all of it.
+        CheckConstraint(
+            f"vendor = '{MANUAL_VENDOR}' OR (min_payment IS NOT NULL "
+            "AND late_fee_per_period IS NOT NULL AND monthly_rate IS NOT NULL)",
+            name="platform_debt_data_complete",
+        ),
+        # The idempotency key for manual entry (L62): a double submit, however
+        # concurrent, creates one installment.
+        Index(
+            "uq_installments_user_client_request_id",
+            "user_id",
+            "client_request_id",
+            unique=True,
+            postgresql_where=text("client_request_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -191,13 +217,15 @@ class Installment(Base):
     first_due_date: Mapped[date] = mapped_column(Date)
     # L41: full debt data from the platform contract (an assumption about its API).
     # No defaults: a silent 0 rate or fee would make debt look free to the planner.
-    min_payment: Mapped[Decimal] = mapped_column(Money)
-    late_fee_per_period: Mapped[Decimal] = mapped_column(Money)
-    monthly_rate: Mapped[Decimal] = mapped_column(Rate)
+    # NULL (unknown) only on a manual row, by platform_debt_data_complete.
+    min_payment: Mapped[Decimal | None] = mapped_column(Money)
+    late_fee_per_period: Mapped[Decimal | None] = mapped_column(Money)
+    monthly_rate: Mapped[Decimal | None] = mapped_column(Rate)
     overdue_days: Mapped[int] = mapped_column(server_default=text("0"))
     # Set once by "Not me" and never cleared, so the dispute history survives (L59 3).
     disputed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     dispute_signal_status: Mapped[str | None] = mapped_column(Text)
+    client_request_id: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
 
 
@@ -216,12 +244,9 @@ class SavingsTransaction(Base):
             "(source_vendor IS NULL) = (source_event_id IS NULL)",
             name="source_event_pair_complete",
         ),
-        # NULLs never collide in a UNIQUE index, so INV-3 needs auto_save to carry its event.
-        CheckConstraint(
-            "type <> 'auto_save' OR (source_vendor IS NOT NULL AND source_event_id IS NOT NULL)",
-            name="auto_save_has_source_event",
-        ),
-        # INV-3: one event creates at most one auto_save.
+        # INV-3: one event creates at most one auto_save. A manual entry (L62) has no
+        # event, so its auto_save has no source pair; the per-installment index below
+        # is what keeps it to one.
         Index(
             "uq_savings_transactions_auto_save_source_event",
             "source_vendor",
