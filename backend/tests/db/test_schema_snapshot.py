@@ -72,7 +72,15 @@ EXPECTED_CONSTRAINTS: dict[str, dict[str, str]] = {
         "pk_user_balances": "PRIMARY KEY (user_id)",
     },
     "user_settings": {
-        "ck_user_settings_monthly_cap_nonneg": "CHECK (((monthly_installment_cap IS NULL) OR (monthly_installment_cap >= (0)::numeric)))",
+        "ck_user_settings_income_positive": "CHECK ((income > (0)::numeric))",
+        "ck_user_settings_monthly_budget_nonneg": "CHECK ((monthly_installment_budget >= (0)::numeric))",
+        "ck_user_settings_payday_day_of_month": "CHECK (((payday >= 1) AND (payday <= 31)))",
+        "ck_user_settings_profile_all_or_none": "CHECK ((num_nulls(income, payday, monthly_installment_budget, saving_mode) = ANY (ARRAY[0, 4])))",
+        "ck_user_settings_saving_fixed_amount_positive": "CHECK ((saving_fixed_amount > (0)::numeric))",
+        "ck_user_settings_saving_fixed_amount_with_mode": "CHECK (((saving_fixed_amount IS NOT NULL) = (NOT (saving_mode IS DISTINCT FROM 'fixed'::text))))",
+        "ck_user_settings_saving_mode_valid": "CHECK ((saving_mode = ANY (ARRAY['percent'::text, 'fixed'::text])))",
+        "ck_user_settings_saving_percent_range": "CHECK (((saving_percent >= 1) AND (saving_percent <= 100)))",
+        "ck_user_settings_saving_percent_with_mode": "CHECK (((saving_percent IS NOT NULL) = (NOT (saving_mode IS DISTINCT FROM 'percent'::text))))",
         "pk_user_settings": "PRIMARY KEY (user_id)",
     },
     "webhook_events": {
@@ -147,6 +155,7 @@ EXPECTED_DEFAULTS: dict[str, dict[str, str]] = {
     },
     "user_settings": {
         "auto_save_enabled": "false",
+        "leftover_saving_enabled": "false",
     },
     "webhook_events": {
         "received_at": "now()",

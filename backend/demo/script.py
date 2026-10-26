@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import get_settings
 from app.db import get_session, make_engine
 from app.main import app
-from app.models import Notification, SavingsTransaction, UserBalance, UserSettings
+from app.models import Notification, SavingMode, SavingsTransaction, UserBalance, UserSettings
 from app.notifications.copy import format_baht
 from app.providers import get_bank_provider, get_platform_provider, get_push_provider
 from app.providers.mock_platform import MockPlatformProvider
@@ -228,11 +228,22 @@ def scene_reset(demo: Demo) -> None:
     demo.screen.scene(1, "Reset: a clean demo database and one user")
     with demo.session() as s:
         role = s.scalar(text("SELECT current_user"))
-        s.add(UserSettings(user_id=USER, auto_save_enabled=True, consent_at=datetime.now(UTC)))
+        s.add(
+            UserSettings(
+                user_id=USER,
+                auto_save_enabled=True,
+                consent_at=datetime.now(UTC),
+                income=Decimal("30000.00"),
+                payday=25,
+                monthly_installment_budget=Decimal("9000.00"),
+                saving_mode=SavingMode.PERCENT,
+                saving_percent=10,  # L63: the user's own rule
+            )
+        )
         s.commit()
     demo.screen.ok(f"Database {demo.config.db_name}: rebuilt by Alembic, empty")
     demo.screen.ok(f"App connects as {role} (no superuser, no DELETE)")
-    demo.screen.ok(f"User {USER}: auto-save on, consent given")
+    demo.screen.ok(f"User {USER}: auto-save 10% per purchase, consent given")
     demo.screen.ok(f"Mock bank balance: {baht(demo.bank())}")
     demo.facts["reset"] = {"role": role, "bank": demo.bank()}
 

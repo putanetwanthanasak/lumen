@@ -17,6 +17,7 @@ from app.models import SavingsTransaction, UserBalance, UserSettings
 from app.providers.mock_bank import MockBankAccountProvider
 from app.schemas import parse_event
 from app.webhooks.processor import Outcome, Result, process_event
+from tests.db.factories import profile
 from tests.webhooks.payloads import encode, payload
 
 VENDOR = "shopdemo"
@@ -30,11 +31,21 @@ def bank() -> MockBankAccountProvider:
 
 
 def opt_in(
-    session: Session, user: str = USER, *, enabled: bool = True, consent: bool = True
+    session: Session,
+    user: str = USER,
+    *,
+    enabled: bool = True,
+    consent: bool = True,
+    percent: int = 10,
+    fixed: str | None = None,
 ) -> None:
+    """Settings with auto-save on and a rule: 10% by default (L63), or a fixed amount."""
     session.add(
         UserSettings(
-            user_id=user, auto_save_enabled=enabled, consent_at=CONSENT_AT if consent else None
+            user_id=user,
+            auto_save_enabled=enabled,
+            consent_at=CONSENT_AT if consent else None,
+            **profile(percent=percent, fixed=fixed),
         )
     )
     session.flush()

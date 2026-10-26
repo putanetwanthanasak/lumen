@@ -40,7 +40,7 @@ def _history(session: Session, bank: MockBankAccountProvider) -> Session:
     """Purchases, cash events and an ID-05 resend for one user, all through the processor."""
     opt_in(session)
     run(session, created("evt_1", "c_1", "800.00"), bank)
-    run(session, created("evt_2", "c_2", "50.00"), bank)
+    run(session, created("evt_2", "c_2", "100.00"), bank)  # 10% (L63): 10.00
     run(session, created("evt_3", "c_3", "15000.00", event_type="cash_withdrawal_created"), bank)
     run(session, created("evt_4", "c_4", "9000.00", event_type="cash_loan_created"), bank)
     run(session, created("evt_5", "c_1", "800.00"), bank)  # ID-05 resend

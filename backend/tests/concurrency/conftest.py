@@ -44,6 +44,7 @@ from app.providers.mock_platform import MockPlatformProvider
 from app.providers.mock_push import MockPushProvider
 from app.webhooks import processor
 from app.webhooks.signature import get_now, get_vendor_secrets, sign
+from tests.db.factories import profile
 from tests.processing.conftest import CONSENT_AT
 from tests.webhooks.conftest import NOW, SECRETS, VENDOR
 from tests.webhooks.payloads import encode
@@ -161,7 +162,11 @@ def race(
     app.dependency_overrides.update(overrides)
     try:
         with Session(concurrent_engine) as session, session.begin():
-            session.add(UserSettings(user_id=user, auto_save_enabled=True, consent_at=CONSENT_AT))
+            session.add(
+                UserSettings(
+                    user_id=user, auto_save_enabled=True, consent_at=CONSENT_AT, **profile()
+                )
+            )
         with TestClient(app) as client:
             yield Race(concurrent_engine, client, bank, push, platform, user)
     finally:
