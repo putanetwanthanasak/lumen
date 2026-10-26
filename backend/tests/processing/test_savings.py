@@ -2,16 +2,18 @@
 INV-4 and the safety net through the bank provider (L46 + L52), L51."""
 
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy import event, select, text
 from sqlalchemy.orm import ORMExecuteState, Session
 
-from app.models import Installment, UserBalance
+from app.models import Installment, UserBalance, UserSettings
 from app.providers.mock_bank import MockBankAccountProvider
 from app.savings import service as savings
 from app.webhooks.processor import Outcome
 from tests.processing.conftest import (
+    CONSENT_AT,
     USER,
     VENDOR,
     auto_saves,
@@ -24,6 +26,10 @@ from tests.processing.conftest import (
 pytestmark = pytest.mark.db
 
 OPENING = Decimal("10000.00")
+# Both rules give 80.00 on an 800.00 purchase, so one expected amount serves both.
+BOTH_MODES = pytest.mark.parametrize(
+    "rule", [{"percent": 10}, {"fixed": "80.00"}], ids=["percent", "fixed"]
+)
 
 
 def test_auto_save_recorded_with_source_installment_and_balance(
@@ -60,23 +66,51 @@ def test_second_purchase_adds_to_balance(
 
 
 @pytest.mark.parametrize(
-    ("principal", "expected"),
+    ("principal", "rule", "expected"),
     [
-        ("50.00", "10.00"),  # 5.00 raised to the 10.00 minimum
-        ("100.05", "10.01"),  # 10.005 rounds half up
-        ("4999.99", "500.00"),
-        ("20000.00", "500.00"),  # capped at 500.00
+        ("50.00", {"percent": 10}, "5.00"),  # no 10.00 minimum any more (L63)
+        ("100.05", {"percent": 10}, "10.00"),  # 10.005 rounds down
+        ("20000.00", {"percent": 10}, "2000.00"),  # no 500.00 cap any more
+        ("99.99", {"percent": 1}, "0.99"),
+        ("800.00", {"fixed": "25.00"}, "25.00"),
+        ("10.00", {"fixed": "25.00"}, "25.00"),  # fixed ignores the price
     ],
 )
-def test_INV_4_auto_save_within_min_and_max(
-    db_session: Session, bank: MockBankAccountProvider, principal: str, expected: str
+def test_INV_4_auto_save_follows_the_users_rule(
+    db_session: Session,
+    bank: MockBankAccountProvider,
+    principal: str,
+    rule: dict[str, Any],
+    expected: str,
 ) -> None:
-    opt_in(db_session)
+    # Open question 1 (Session 12): the webhook path uses the same user setting as
+    # manual entry.
+    opt_in(db_session, **rule)
     run(db_session, created("evt_1", "c_1", principal), bank)
 
     [tx] = auto_saves(db_session)
     assert tx.amount == Decimal(expected)
-    assert Decimal("10.00") <= tx.amount <= Decimal("500.00")
+
+
+def test_RE_03_webhook_percent_result_zero_saves_nothing(
+    db_session: Session, bank: MockBankAccountProvider
+) -> None:
+    opt_in(db_session, percent=1)
+    assert run(db_session, created("evt_1", "c_1", "0.99"), bank) == Outcome.PROCESSED
+    # Decided under the balance lock, like a safety-net skip: the empty row may exist.
+    assert auto_saves(db_session) == []
+    assert balance(db_session) == (Decimal("0.00"), 0)
+    assert bank.get_balance(USER) == OPENING
+
+
+def test_ST_14_settings_without_a_rule_save_nothing(
+    db_session: Session, bank: MockBankAccountProvider
+) -> None:
+    # A row from before L63: auto-save on with consent, but no rule chosen.
+    db_session.add(UserSettings(user_id=USER, auto_save_enabled=True, consent_at=CONSENT_AT))
+    db_session.flush()
+    assert run(db_session, created("evt_1", "c_1", "800.00"), bank) == Outcome.PROCESSED
+    assert_nothing_saved(db_session, bank)
 
 
 def assert_nothing_saved(db_session: Session, bank: MockBankAccountProvider) -> None:
@@ -109,18 +143,22 @@ def test_SV_02_enabled_without_consent_no_saving(
     assert_nothing_saved(db_session, bank)
 
 
+@BOTH_MODES
 def test_SV_03_cash_withdrawal_never_saves(
-    db_session: Session, bank: MockBankAccountProvider
+    db_session: Session, bank: MockBankAccountProvider, rule: dict[str, Any]
 ) -> None:
-    opt_in(db_session)
+    opt_in(db_session, **rule)
     data = created("evt_1", "c_1", "15000.00", event_type="cash_withdrawal_created")
     assert run(db_session, data, bank) == Outcome.PROCESSED
     assert_nothing_saved(db_session, bank)
     assert db_session.execute(select(Installment.kind)).scalar_one() == "cash_withdrawal"
 
 
-def test_SV_03a_cash_loan_never_saves(db_session: Session, bank: MockBankAccountProvider) -> None:
-    opt_in(db_session)
+@BOTH_MODES
+def test_SV_03a_cash_loan_never_saves(
+    db_session: Session, bank: MockBankAccountProvider, rule: dict[str, Any]
+) -> None:
+    opt_in(db_session, **rule)
     data = created("evt_1", "c_1", "15000.00", event_type="cash_loan_created")
     assert run(db_session, data, bank) == Outcome.PROCESSED
     assert_nothing_saved(db_session, bank)
@@ -128,20 +166,22 @@ def test_SV_03a_cash_loan_never_saves(db_session: Session, bank: MockBankAccount
     assert db_session.execute(select(Installment.kind)).scalar_one() == "cash_loan"
 
 
+@BOTH_MODES
 def test_RE_07_safety_net_reads_balance_from_bank_provider(
-    db_session: Session, bank: MockBankAccountProvider
+    db_session: Session, bank: MockBankAccountProvider, rule: dict[str, Any]
 ) -> None:
-    opt_in(db_session)
+    opt_in(db_session, **rule)
     bank.set_balance(USER, Decimal("579.99"))  # 579.99 - 80.00 < 500.00: skip, no partial
     assert run(db_session, created("evt_1", "c_1", "800.00"), bank) == Outcome.PROCESSED
     assert auto_saves(db_session) == []
     assert bank.get_balance(USER) == Decimal("579.99")
 
 
+@BOTH_MODES
 def test_RE_07_safety_net_saves_at_exact_protected_min(
-    db_session: Session, bank: MockBankAccountProvider
+    db_session: Session, bank: MockBankAccountProvider, rule: dict[str, Any]
 ) -> None:
-    opt_in(db_session)
+    opt_in(db_session, **rule)
     bank.set_balance(USER, Decimal("580.00"))  # leaves exactly 500.00
     run(db_session, created("evt_1", "c_1", "800.00"), bank)
     assert [tx.amount for tx in auto_saves(db_session)] == [Decimal("80.00")]

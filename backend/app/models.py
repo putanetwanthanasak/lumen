@@ -269,21 +269,52 @@ class UserBalance(Base):
     version: Mapped[int] = mapped_column(server_default=text("0"))  # optimistic locking
 
 
+class SavingMode(StrEnum):
+    """L63: the user picks exactly one saving rule; the two never combine."""
+
+    PERCENT = "percent"
+    FIXED = "fixed"
+
+
 class UserSettings(Base):
-    """The saving rule is fixed (L46 + L52); users only switch auto-save and consent."""
+    """The user's own settings (L63, L64). A row from before L63 has no profile (all
+    four profile columns NULL) and saves nothing until the user sets a rule."""
 
     __tablename__ = "user_settings"
     __table_args__ = (
+        CheckConstraint("monthly_installment_budget >= 0", name="monthly_budget_nonneg"),
+        CheckConstraint("income > 0", name="income_positive"),
+        CheckConstraint("payday BETWEEN 1 AND 31", name="payday_day_of_month"),
+        one_of("saving_mode", SavingMode),
+        CheckConstraint("saving_percent BETWEEN 1 AND 100", name="saving_percent_range"),
+        CheckConstraint("saving_fixed_amount > 0", name="saving_fixed_amount_positive"),
+        # Exactly the chosen mode's value is set, so both rules can never be active.
         CheckConstraint(
-            "monthly_installment_cap IS NULL OR monthly_installment_cap >= 0",
-            name="monthly_cap_nonneg",
+            "(saving_percent IS NOT NULL) = (saving_mode IS NOT DISTINCT FROM 'percent')",
+            name="saving_percent_with_mode",
+        ),
+        CheckConstraint(
+            "(saving_fixed_amount IS NOT NULL) = (saving_mode IS NOT DISTINCT FROM 'fixed')",
+            name="saving_fixed_amount_with_mode",
+        ),
+        CheckConstraint(
+            "num_nulls(income, payday, monthly_installment_budget, saving_mode) IN (0, 4)",
+            name="profile_all_or_none",
         ),
     )
 
     user_id: Mapped[str] = mapped_column(Text, primary_key=True)
     auto_save_enabled: Mapped[bool] = mapped_column(server_default=text("false"))
+    # Stamped the first time the user turns auto-save on with consent; never cleared.
     consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    monthly_installment_cap: Mapped[Decimal | None] = mapped_column(Money)
+    monthly_installment_budget: Mapped[Decimal | None] = mapped_column(Money)
+    income: Mapped[Decimal | None] = mapped_column(Money)
+    payday: Mapped[int | None]
+    saving_mode: Mapped[str | None] = mapped_column(Text)
+    saving_percent: Mapped[int | None]
+    saving_fixed_amount: Mapped[Decimal | None] = mapped_column(Money)
+    # Stored only; the leftover-budget transfer comes in a later session.
+    leftover_saving_enabled: Mapped[bool] = mapped_column(server_default=text("false"))
 
 
 # The new-debt alert kinds (5e): one per installment, whatever the installment kind.

@@ -71,6 +71,19 @@ def user_balance(**overrides: Any) -> UserBalance:
     return UserBalance(**(fields | overrides))
 
 
+def profile(*, percent: int | None = 10, fixed: str | None = None) -> dict[str, Any]:
+    """UserSettings columns for a configured user (L63): a percent rule by default,
+    or a fixed one when `fixed` is given."""
+    return {
+        "income": Decimal("30000.00"),
+        "payday": 25,
+        "monthly_installment_budget": Decimal("9000.00"),
+        "saving_mode": "fixed" if fixed is not None else "percent",
+        "saving_percent": None if fixed is not None else percent,
+        "saving_fixed_amount": None if fixed is None else Decimal(fixed),
+    }
+
+
 def user_settings(**overrides: Any) -> UserSettings:
     fields: dict[str, Any] = {"user_id": USER}
     return UserSettings(**(fields | overrides))

@@ -1,11 +1,4 @@
 {
-  "auto_save": {
-    "rate": "0.10",
-    "min_saving": "10.00",
-    "max_saving": "500.00",
-    "rounding": "ROUND_HALF_UP",
-    "applies_to_kinds": ["purchase"]
-  },
   "safety_net": {
     "protected_min_balance": "500.00"
   },

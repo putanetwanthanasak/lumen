@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Base
 from app.models import Installment, UserSettings
-from tests.db.factories import installment, user_settings
+from tests.db.factories import installment, profile, user_settings
 
 pytestmark = pytest.mark.db
 
@@ -28,7 +28,7 @@ def _numeric_columns() -> list[tuple[str, str, Numeric[Decimal]]]:
 
 def test_money_columns_are_numeric_12_2_and_rates_7_6() -> None:
     cols = _numeric_columns()
-    assert len(cols) == 11  # installments 8, user_settings 1, savings 1, balances 1
+    assert len(cols) == 13  # installments 8, user_settings 3, savings 1, balances 1
     for table, name, typ in cols:
         expected = (7, 6) if (table, name) in RATE_COLUMNS else (12, 2)
         assert (typ.precision, typ.scale) == expected, f"{table}.{name}"
@@ -73,12 +73,13 @@ def test_server_default_money_is_decimal(db_session: Session) -> None:
 
 
 def test_nullable_money_roundtrips_as_decimal(db_session: Session) -> None:
-    db_session.add(user_settings(monthly_installment_cap=Decimal("3000.00")))
+    db_session.add(user_settings(**profile(fixed="12.50")))
     db_session.flush()
     db_session.expire_all()
     row = db_session.get_one(UserSettings, "user-1")
-    assert type(row.monthly_installment_cap) is Decimal
-    assert row.monthly_installment_cap == Decimal("3000.00")
+    for value in (row.monthly_installment_budget, row.income, row.saving_fixed_amount):
+        assert type(value) is Decimal
+    assert row.saving_fixed_amount == Decimal("12.50")
 
 
 def test_money_overflow_rejected(db_session: Session) -> None:

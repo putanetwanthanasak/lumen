@@ -9,7 +9,6 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy import Engine, inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -22,6 +21,7 @@ from tests.db.factories import (
     audit_log,
     installment,
     notification,
+    profile,
     savings_tx,
     user_balance,
     user_settings,
@@ -209,19 +209,62 @@ def test_ID_05_unique_vendor_contract(db_session: Session) -> None:
 # --- Ranges ------------------------------------------------------------------------
 
 
-def test_user_settings_hold_no_saving_rule(engine: Engine) -> None:
-    # L46 + L52: the rule is fixed, so there is no per-user rate or cap to store.
-    columns = {c["name"] for c in inspect(engine).get_columns("user_settings")}
-    assert columns == {"user_id", "auto_save_enabled", "consent_at", "monthly_installment_cap"}
-
-
-def test_user_settings_defaults(db_session: Session) -> None:
+def test_ST_13_user_settings_defaults(db_session: Session) -> None:
+    # A bare row is the shape from before L63: no profile, no rule, nothing saved.
     row = user_settings()
     assert_accepted(db_session, row)
     db_session.refresh(row)
     assert row.auto_save_enabled is False
+    assert row.leftover_saving_enabled is False
     assert row.consent_at is None
-    assert row.monthly_installment_cap is None
+    assert (row.income, row.payday, row.monthly_installment_budget, row.saving_mode) == (
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+@pytest.mark.parametrize("rule", [{"percent": 1}, {"percent": 100}, {"fixed": "0.01"}])
+def test_ST_13_user_settings_accept_each_mode(db_session: Session, rule: dict[str, Any]) -> None:
+    assert_accepted(db_session, user_settings(**profile(**rule)))
+
+
+# L63 at the DB layer: exactly the chosen mode's value, so both can never be active.
+ST_13_CASES: list[tuple[dict[str, Any], str]] = [
+    ({"saving_fixed_amount": Decimal("5.00")}, "ck_user_settings_saving_fixed_amount_with_mode"),
+    ({"saving_percent": None}, "ck_user_settings_saving_percent_with_mode"),
+    # Both values set: whichever mode is chosen, the other one's value is refused.
+    (
+        {"saving_mode": "fixed", "saving_fixed_amount": Decimal("5.00")},
+        "ck_user_settings_saving_percent_with_mode",
+    ),
+    ({"saving_mode": "both"}, "ck_user_settings_saving_mode_valid"),
+    ({"saving_percent": 0}, "ck_user_settings_saving_percent_range"),
+    ({"saving_percent": 101}, "ck_user_settings_saving_percent_range"),
+    ({"income": None}, "ck_user_settings_profile_all_or_none"),
+    ({"payday": None}, "ck_user_settings_profile_all_or_none"),
+]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "constraint"), ST_13_CASES, ids=[str(c[0]) for c in ST_13_CASES]
+)
+def test_ST_13_user_settings_never_hold_both_modes(
+    db_session: Session, overrides: dict[str, Any], constraint: str
+) -> None:
+    assert_rejected(db_session, user_settings(**(profile() | overrides)), constraint)
+
+
+def test_ST_13_fixed_mode_without_amount_rejected(db_session: Session) -> None:
+    row = user_settings(**(profile(fixed="5.00") | {"saving_fixed_amount": None}))
+    assert_rejected(db_session, row, "ck_user_settings_saving_fixed_amount_with_mode")
+
+
+def test_ST_13_rule_without_profile_rejected(db_session: Session) -> None:
+    # A rule alone (no income, payday, budget) is not a valid half-filled row.
+    row = user_settings(saving_mode="percent", saving_percent=10)
+    assert_rejected(db_session, row, "ck_user_settings_profile_all_or_none")
 
 
 def test_installment_defaults(db_session: Session) -> None:
@@ -261,8 +304,16 @@ CHECK_CASES: list[tuple[Any, dict[str, Any], str]] = [
     (user_balance, {"version": -1}, "ck_user_balances_version_nonneg"),
     (
         user_settings,
-        {"monthly_installment_cap": Decimal("-1.00")},
-        "ck_user_settings_monthly_cap_nonneg",
+        profile() | {"monthly_installment_budget": Decimal("-1.00")},
+        "ck_user_settings_monthly_budget_nonneg",
+    ),
+    (user_settings, profile() | {"income": Decimal("0.00")}, "ck_user_settings_income_positive"),
+    (user_settings, profile() | {"payday": 0}, "ck_user_settings_payday_day_of_month"),
+    (user_settings, profile() | {"payday": 32}, "ck_user_settings_payday_day_of_month"),
+    (
+        user_settings,
+        profile(fixed="5.00") | {"saving_fixed_amount": Decimal("0.00")},
+        "ck_user_settings_saving_fixed_amount_positive",
     ),
     (notification, {"kind": "promo"}, "ck_notifications_kind_valid"),
     (notification, {"delivery_status": "sent"}, "ck_notifications_delivery_status_valid"),

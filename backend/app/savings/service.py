@@ -10,10 +10,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.ledger.service import ContractCreated
-from app.models import SavingsTransaction, SavingsType, UserBalance, UserSettings
+from app.models import SavingMode, SavingsTransaction, SavingsType, UserBalance, UserSettings
 from app.providers.base import BankAccountProvider
 from app.rules.config import NEVER_SAVE_KINDS, load_rules
-from app.rules.engine import ZERO, compute_saving
+from app.rules.engine import ZERO, FixedRule, PercentRule, SavingRule, compute_saving
 
 # Each failed attempt means another transaction committed a credit for this user, so
 # this bounds the number of concurrent writers, not time. Past it, the event fails
@@ -33,6 +33,16 @@ def transfer_key(vendor: str, event_id: str) -> str:
     return "auto-save-" + hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def saving_rule(settings: UserSettings) -> SavingRule | None:
+    """The user's one rule (L63), or None if they have not set one (a row from before
+    L63). The DB CHECKs guarantee the chosen mode's value is present."""
+    if settings.saving_mode == SavingMode.PERCENT and settings.saving_percent is not None:
+        return PercentRule(settings.saving_percent)
+    if settings.saving_mode == SavingMode.FIXED and settings.saving_fixed_amount is not None:
+        return FixedRule(settings.saving_fixed_amount)
+    return None
+
+
 def auto_save(
     session: Session,
     *,
@@ -44,7 +54,8 @@ def auto_save(
     """Record the auto-save for a new contract and return its amount (0.00 if none).
 
     The caller moves the money with bank.transfer_to_savings only after the
-    transaction passes reconcile. The saving belongs to the event's user (L51).
+    transaction passes reconcile. The saving belongs to the event's user (L51). The
+    amount follows that user's own rule (L63), the same rule as for manual entry.
     """
     contract = event.contract
     if contract.kind in NEVER_SAVE_KINDS:  # INV-5: decided before anything else
@@ -54,19 +65,21 @@ def auto_save(
     # SV-01, SV-02: a missing row means auto-save was never switched on.
     if settings is None or not settings.auto_save_enabled or settings.consent_at is None:
         return ZERO
+    rule = saving_rule(settings)
+    if rule is None:  # no rule set yet: nothing to save by
+        return ZERO
 
     # R3: hold this user's balance row until commit, before reading the bank. A second
     # purchase for the same user waits here and then reads the bank after the first
     # one's transfer, so two savings cannot jointly pass the safety net. The version
     # check in _credit stays as a second layer.
     _lock_balance(session, user_id)
-    rules = load_rules()
     amount = compute_saving(
         kind=contract.kind,
         item_value=contract.principal,
         bank_balance=bank.get_balance(user_id),
-        rules=rules.auto_save,
-        protected_min=rules.safety_net.protected_min_balance,
+        rule=rule,
+        protected_min=load_rules().safety_net.protected_min_balance,
     )
     if amount == ZERO:
         return ZERO

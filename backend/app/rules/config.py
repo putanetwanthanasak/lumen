@@ -1,17 +1,17 @@
 """Rule config (04 section 7): rules.json, validated once into Decimals.
 
-Money and rates must be JSON strings. A JSON number such as 0.05 is rejected,
-because it would be parsed through float before reaching Decimal.
+Money must be a JSON string. A JSON number such as 500.00 is rejected, because it
+would be parsed through float before reaching Decimal. The saving rule itself is
+the user's own (L63, in user_settings), so it is not here.
 """
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models import EventType, InstallmentKind
-from app.money import MoneyStr, RateStr
+from app.money import MoneyStr
 
 RULES_PATH = Path(__file__).with_name("rules.json")
 
@@ -21,28 +21,6 @@ NEVER_SAVE_KINDS = frozenset({InstallmentKind.CASH_WITHDRAWAL, InstallmentKind.C
 
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
-
-
-class AutoSaveRules(_Frozen):
-    """The fixed saving rule (L46 + L52). Not user-configurable."""
-
-    rate: RateStr
-    min_saving: MoneyStr
-    max_saving: MoneyStr
-    rounding: Literal["ROUND_HALF_UP"]
-    applies_to_kinds: tuple[InstallmentKind, ...] = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def _consistent(self) -> Self:
-        if not 0 < self.rate <= 1:
-            raise ValueError("rate must be within (0, 1]")
-        if self.min_saving <= 0:
-            raise ValueError("min_saving must be > 0")
-        if self.max_saving < self.min_saving:
-            raise ValueError("max_saving must be >= min_saving")
-        if NEVER_SAVE_KINDS & set(self.applies_to_kinds):
-            raise ValueError("cash_withdrawal and cash_loan must never trigger auto-save (INV-5)")
-        return self
 
 
 class SafetyNetRules(_Frozen):
@@ -56,7 +34,6 @@ class AlertRules(_Frozen):
 
 
 class Rules(_Frozen):
-    auto_save: AutoSaveRules
     safety_net: SafetyNetRules
     alerts: AlertRules
 
