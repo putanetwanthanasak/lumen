@@ -1,5 +1,5 @@
 """ST-xx: /settings (L63 saving rule, L64 budget warning). 05 has no IDs for this,
-so ST-01 to ST-13 are new (Session 12)."""
+so ST-01 to ST-15 are new (Session 12; ST-13 to ST-15 live in tests/db and tests/processing)."""
 
 import json
 from decimal import Decimal
@@ -342,7 +342,7 @@ def test_ST_12_consent_is_kept_after_turning_auto_save_off(api: Api) -> None:
     assert on_again.json()["consent_at"] == first  # stamped once, never moved
 
 
-def test_to_out_refuses_a_row_without_profile() -> None:
+def test_ST_10_to_out_refuses_a_row_without_profile() -> None:
     # Callers pass configured rows only; a row from before L63 must not render half-empty.
     with pytest.raises(ValueError, match="no profile"):
         service.to_out(UserSettings(user_id=USER, auto_save_enabled=True))

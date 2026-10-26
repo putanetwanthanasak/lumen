@@ -209,7 +209,7 @@ def test_ID_05_unique_vendor_contract(db_session: Session) -> None:
 # --- Ranges ------------------------------------------------------------------------
 
 
-def test_user_settings_defaults(db_session: Session) -> None:
+def test_ST_13_user_settings_defaults(db_session: Session) -> None:
     # A bare row is the shape from before L63: no profile, no rule, nothing saved.
     row = user_settings()
     assert_accepted(db_session, row)

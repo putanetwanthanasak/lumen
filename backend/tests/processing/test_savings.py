@@ -103,7 +103,7 @@ def test_RE_03_webhook_percent_result_zero_saves_nothing(
     assert bank.get_balance(USER) == OPENING
 
 
-def test_SV_04_settings_without_a_rule_save_nothing(
+def test_ST_14_settings_without_a_rule_save_nothing(
     db_session: Session, bank: MockBankAccountProvider
 ) -> None:
     # A row from before L63: auto-save on with consent, but no rule chosen.

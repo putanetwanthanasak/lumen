@@ -8,7 +8,8 @@ was never built.
 
 Hand-written CHECKs (tests/db/test_schema_snapshot.py sees them): the ranges,
 the mode's value present exactly for that mode, and the profile all-or-none, so
-rows from before L63 stay valid and save nothing until the user sets a rule.
+rows from before L63 stay valid and save nothing until the user sets a rule. Their
+never-used cap is cleared first, or a cap alone would break the all-or-none CHECK.
 
 Revision ID: 13bb1d51a30c
 Revises: c4e6a8b0d2f4
@@ -66,6 +67,10 @@ def upgrade() -> None:
             "leftover_saving_enabled", sa.Boolean(), server_default=sa.text("false"), nullable=False
         ),
     )
+    # Review F5: the old CHECK allowed a cap alone, which would now be a budget with
+    # no profile. No code ever wrote the cap (5d was never built), and every row here
+    # has no rule yet, so the budget is cleared rather than kept half-filled.
+    op.execute("UPDATE user_settings SET monthly_installment_budget = NULL")
     for name, condition in CHECKS.items():
         op.create_check_constraint(op.f(name), TABLE, condition)
 

@@ -208,7 +208,7 @@ def test_largest_numeric_12_2_money_accepted() -> None:
     assert save(largest, PercentRule(1), bank_balance=largest) == Decimal("99999999.99")
 
 
-def test_largest_percent_saving_is_exact() -> None:
+def test_RE_11_largest_percent_saving_is_exact() -> None:
     # 100% leaves exactly 500.00, so the full 10-digit amount is saved, not rounded.
     item = "9999999499.99"
     assert save(item, PercentRule(100), bank_balance="9999999999.99") == Decimal(item)
