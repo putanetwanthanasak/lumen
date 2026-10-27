@@ -116,15 +116,21 @@ test("UI_26_the_phone_frame_never_scrolls_and_hidden_inputs_stay_in_the_scrollin
   assert.doesNotMatch(app, /overflow-hidden/);
   // ...and every visually hidden input sits in a `relative` label, so focusing it
   // scrolls <main>, not the frame (the bug: the frame scrolled 157px and lifted the nav).
+  // From each sr-only class back to its tag: an `=>` inside the tag would stop a
+  // `[^>]*` scan, which once matched none of the inputs (B-UI-55).
+  let inputs = 0;
   const hits = files.flatMap((file) => {
     const text = readFileSync(file, "utf8");
-    return [...text.matchAll(/<input\b[^>]*?className="sr-only"/gs)].flatMap((m) => {
+    return [...text.matchAll(/className="sr-only"/g)].flatMap((m) => {
+      if (!text.startsWith("<input", text.lastIndexOf("<", m.index))) return [];
+      inputs += 1;
       const label = text.lastIndexOf("<label", m.index);
       const tag = label === -1 ? "" : text.slice(label, m.index);
       return /\brelative\b/.test(tag) ? [] : [`${relative(ROOT, file)} at ${m.index}`];
     });
   });
   assert.deepEqual(hits, []);
+  assert.ok(inputs >= 3, `found ${inputs} hidden inputs; expected the first due, saving mode and term choices`);
   // Only <main> scrolls: the bars around it never shrink.
   const screen = readFileSync(join(SRC, "components", "Screen.tsx"), "utf8");
   assert.match(screen, /<header className="[^"]*shrink-0/);
