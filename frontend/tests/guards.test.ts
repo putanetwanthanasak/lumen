@@ -106,7 +106,7 @@ test("UI_22_the_scrollbar_is_hidden_inside_the_phone_frame_only", () => {
   );
   // It still scrolls, and takes keyboard focus so arrow keys and Page Down work.
   const screen = readFileSync(join(SRC, "components", "Screen.tsx"), "utf8");
-  assert.match(screen, /<main tabIndex=\{0\} className="phone-scroll [^"]*overflow-y-auto/);
+  assert.match(screen, /<main\s+tabIndex=\{0\}\s+className=\{`phone-scroll [^`]*overflow-y-auto/);
 });
 
 test("UI_26_the_phone_frame_never_scrolls_and_hidden_inputs_stay_in_the_scrolling_body", () => {
@@ -134,6 +134,6 @@ test("UI_26_the_phone_frame_never_scrolls_and_hidden_inputs_stay_in_the_scrollin
   // Only <main> scrolls: the bars around it never shrink.
   const screen = readFileSync(join(SRC, "components", "Screen.tsx"), "utf8");
   assert.match(screen, /<header className="[^"]*shrink-0/);
-  assert.match(screen, /<main tabIndex=\{0\} className="phone-scroll min-h-0 flex-1 overflow-y-auto/);
+  assert.match(screen, /<main\s+tabIndex=\{0\}\s+className=\{`phone-scroll min-h-0 flex-1 overflow-y-auto/);
   assert.match(screen, /<nav aria-label=\{NAV.menu\} className="shrink-0 /);
 });

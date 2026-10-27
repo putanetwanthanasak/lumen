@@ -9,7 +9,7 @@ import { navigate, type Route } from "../router.ts";
 import { DemoButton } from "./DemoPanel.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { LogoBean } from "./Logo.tsx";
-import { navIconClass, navLabelClass } from "../navStyle.ts";
+import { navIconClass, navLabelClass, SCROLL_PAD_WITH_NAV, SCROLL_PAD_WITHOUT_NAV } from "../navStyle.ts";
 import { useLoad } from "../useLoad.ts";
 
 type ScreenProps = {
@@ -49,7 +49,10 @@ export function Screen({ title, back, route, children, showNav = true, actions }
       </header>
       {/* The scrollbar is hidden inside the phone frame only (index.css); the body
           still scrolls by wheel, touchpad, touch and keyboard (it takes focus). */}
-      <main tabIndex={0} className="phone-scroll min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-leaf-600">
+      <main
+        tabIndex={0}
+        className={`phone-scroll min-h-0 flex-1 overflow-y-auto px-4 pt-4 ${showNav ? SCROLL_PAD_WITH_NAV : SCROLL_PAD_WITHOUT_NAV} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-leaf-600`}
+      >
         <div className="flex flex-col gap-4">{children}</div>
         <Footer />
       </main>

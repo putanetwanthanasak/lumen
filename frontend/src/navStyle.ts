@@ -7,9 +7,19 @@
  */
 const SELECTED_FILL = "bg-leaf-700 text-white";
 
+/** How far the centre button rises above the nav (Tailwind's 0.25rem steps: 20px). */
+export const NAV_RAISE = "-mt-5";
+
+/**
+ * Bottom padding of the scrolling body while the nav shows: the raise plus at
+ * least 24px, so the last item is never hidden behind the raised button (UI-27).
+ */
+export const SCROLL_PAD_WITH_NAV = "pb-14";
+export const SCROLL_PAD_WITHOUT_NAV = "pb-6";
+
 export function navIconClass(primary: boolean, active: boolean): string {
   const shape = primary
-    ? "-mt-5 mb-0.5 h-14 w-14 border-2 shadow-card ring-4 ring-card"
+    ? `${NAV_RAISE} mb-0.5 h-14 w-14 border-2 shadow-card ring-4 ring-card`
     : "h-8 w-14 border-2 border-transparent";
   const look = active
     ? `${SELECTED_FILL} border-leaf-700`
