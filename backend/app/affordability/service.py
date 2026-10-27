@@ -55,18 +55,23 @@ def require_profile(session: Session, user_id: str) -> Profile:
     return Profile(settings.income, settings.monthly_installment_budget)
 
 
+def counted_installments(session: Session, user_id: str) -> list[Installment]:
+    """The user's installments that count toward a month total (the L43 owed set)."""
+    rows = session.execute(
+        select(Installment)
+        .where(Installment.user_id == user_id, Installment.status.in_(OWED_STATUSES))
+        .order_by(Installment.created_at, Installment.id)
+    ).scalars()
+    return [row for row in rows if still_owed(row)]
+
+
+def schedule_of(row: Installment) -> Scheduled:
+    return Scheduled(Month.of(row.first_due_date), row.months, row.monthly_amount)
+
+
 def counted_schedules(session: Session, user_id: str) -> list[Scheduled]:
     """The user's installments that count toward a month total, as plain schedules."""
-    rows = session.execute(
-        select(Installment).where(
-            Installment.user_id == user_id, Installment.status.in_(OWED_STATUSES)
-        )
-    ).scalars()
-    return [
-        Scheduled(Month.of(row.first_due_date), row.months, row.monthly_amount)
-        for row in rows
-        if still_owed(row)
-    ]
+    return [schedule_of(row) for row in counted_installments(session, user_id)]
 
 
 def assess(
