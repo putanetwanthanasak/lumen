@@ -10,7 +10,14 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 from app.affordability.months import Month, Scheduled
 from app.affordability.schemas import VerdictOut
@@ -32,12 +39,19 @@ def parse_month(value: object) -> date:
     return date(year, month, 1)
 
 
+def _recordable_kind(kind: InstallmentKind) -> InstallmentKind:
+    """L72: a consolidation loan comes only from an approved consolidation."""
+    if kind == InstallmentKind.CONSOLIDATION_LOAN:
+        raise ValueError("consolidation_loan is created by an approved consolidation only")
+    return kind
+
+
 class ManualEntryIn(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
 
     # The idempotency key, with the user (L62): a double submit records once.
     client_request_id: Id
-    kind: InstallmentKind
+    kind: Annotated[InstallmentKind, AfterValidator(_recordable_kind)]
     item_price: Annotated[MoneyStr, Field(gt=Decimal(0))]
     months: Annotated[int, Field(ge=1, le=MAX_MONTHS)]
     monthly_amount: Annotated[MoneyStr, Field(gt=Decimal(0))]

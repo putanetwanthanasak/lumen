@@ -15,8 +15,14 @@ from app.money import MoneyStr
 
 RULES_PATH = Path(__file__).with_name("rules.json")
 
-# Kinds that must never trigger auto-save (INV-5).
-NEVER_SAVE_KINDS = frozenset({InstallmentKind.CASH_WITHDRAWAL, InstallmentKind.CASH_LOAN})
+# Kinds that must never trigger auto-save (INV-5, L72).
+NEVER_SAVE_KINDS = frozenset(
+    {
+        InstallmentKind.CASH_WITHDRAWAL,
+        InstallmentKind.CASH_LOAN,
+        InstallmentKind.CONSOLIDATION_LOAN,
+    }
+)
 
 
 class _Frozen(BaseModel):

@@ -155,7 +155,10 @@ def apply_event(
             installment.overdue_days = event.overdue_days
         case _:  # InstallmentCancelled, the last member of ContractEvent
             # INV-7: savings are not touched; what was saved stays saved (rule 6).
-            installment.status = InstallmentStatus.CANCELLED
+            # A consolidated installment was paid off by the loan (L72): the cancel is
+            # recorded and the status stays, so the payoff history is never lost.
+            if installment.status != InstallmentStatus.CONSOLIDATED:
+                installment.status = InstallmentStatus.CANCELLED
     _settle(installment)
     session.flush()
     return Applied.APPLIED
@@ -163,7 +166,7 @@ def apply_event(
 
 def _settle(installment: Installment) -> None:
     """active <-> paid_off as the amount owed is reached or grows again (late fees).
-    Cancelled and disputed are never changed here."""
+    Cancelled, disputed and consolidated are never changed here."""
     paid_up = installment.paid_amount == owed(installment)
     if installment.status == InstallmentStatus.ACTIVE and paid_up:
         installment.status = InstallmentStatus.PAID_OFF

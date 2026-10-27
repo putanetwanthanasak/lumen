@@ -25,6 +25,10 @@ from app.notifications.copy import (
 )
 from app.rules.config import load_rules
 
+# Every kind a webhook or a manual entry can carry. A consolidation loan comes only
+# from an approved consolidation (CO-05) and has its own alert (L72).
+RECORDABLE_KINDS = set(InstallmentKind) - {InstallmentKind.CONSOLIDATION_LOAN}
+
 
 @pytest.mark.parametrize(
     ("amount", "text"),
@@ -103,8 +107,11 @@ def test_unknown_vendor_shown_by_its_id() -> None:
     assert "จาก othervendor 1 บาท" in body
 
 
-def test_every_kind_has_a_template_and_every_strong_kind_is_not_plain_new_debt() -> None:
-    assert set(TEMPLATES) == set(InstallmentKind)
+def test_NT_01_every_recordable_kind_has_a_template_and_strong_kinds_are_not_plain() -> None:
+    assert set(TEMPLATES) == RECORDABLE_KINDS
+    # The loan is never recorded through a webhook or a manual entry (CO-05), so it
+    # has no new-debt template; its approval brings its own alert (L72).
+    assert InstallmentKind.CONSOLIDATION_LOAN not in TEMPLATES
     for kind in load_rules().alerts.strong_alert_kinds:
         assert TEMPLATES[kind].kind != NotificationKind.NEW_DEBT
 
@@ -167,7 +174,7 @@ def test_MI_08_manual_cash_entry_titles(
         monthly_total=Decimal("1100.00"),
     )
     assert result[:2] == (notification_kind, title)
-    assert set(MANUAL_TITLES) == set(InstallmentKind)
+    assert set(MANUAL_TITLES) == RECORDABLE_KINDS
 
 
 # --- Payday copy (L67, Session 13 wording) ----------------------------------------------
