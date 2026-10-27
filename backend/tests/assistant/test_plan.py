@@ -571,3 +571,21 @@ def test_AS_05_a_run_past_the_cap_still_makes_consolidation_needed() -> None:
     assert not any(r.over_budget for r in result.rows)
     assert result.back_in_budget_month == NOW.plus(653)
     assert result.consolidation.reason is Reason.ELIGIBLE
+
+
+def test_AS_05_a_principal_beyond_numeric_12_2_is_too_large_before_any_payment_math() -> None:
+    """Round 2 review F1: a principal of 1E14 or more must not reach the 34-digit
+    payment computation, which cannot quantize it to 20 places."""
+    # 3 x 3,400 rows of 9,999,999,999.00: a principal above 1E14, over a 1-month term.
+    debts = [debt("9999999999.00", 1, offset=i) for i in range(3)] * 3400
+    result = build(
+        debts,
+        now=NOW,
+        income=INCOME,
+        budget=Decimal("0.00"),
+        buffer_balance=Decimal("0.00"),
+        annual_rate=RATE,
+        term=1,
+    )
+
+    assert result.consolidation.reason is Reason.ESTIMATE_TOO_LARGE

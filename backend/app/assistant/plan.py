@@ -220,6 +220,10 @@ def consolidation(
     if any(d.disputed for d in debts):
         return Consolidation(Reason.DISPUTED_DEBT, None)
     principal = sum((remaining_for_payoff(d, now) for d in debts), ZERO)
+    # Before any payment math (round 2 review F1): up to MONEY_MAX the payment stays
+    # below 1.1E10, which 34 digits hold to 20 places; far above it, quantize fails.
+    if principal > MONEY_MAX:
+        return Consolidation(Reason.ESTIMATE_TOO_LARGE, None)
     payment = amortised_payment(principal, annual_rate, term)
     total_cost = payment * term
     if total_cost > MONEY_MAX:
