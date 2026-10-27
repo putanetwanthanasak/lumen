@@ -76,13 +76,17 @@ def _locked_balance(session: Session, user_id: str) -> Decimal | None:
     ).scalar_one_or_none()
 
 
-def move_to_main(
-    session: Session, *, user_id: str, request: MoveIn, bank: BankAccountProvider
-) -> Moved | None:
-    """Move `request.amount` from the buffer to the main account, once per
-    (user, client_request_id). None, with nothing written, when the buffer holds
-    less. The caller commits (also after a CONFLICT, for its audit row). Raises
-    reconcile.InvariantViolationError after rolling back."""
+def move_to_main(session: Session, *, user_id: str, request: MoveIn) -> Moved | None:
+    """Record moving `request.amount` from the buffer, once per (user,
+    client_request_id). None, with nothing written, when the buffer holds less.
+    Raises reconcile.InvariantViolationError after rolling back.
+
+    The caller commits (also after a CONFLICT, for its audit row), then calls
+    transfer_to_main for CREATED and DUPLICATE. The ledger commits first: if the
+    commit were lost after the bank call, the main account would hold money the
+    ledger never withdrew, and a later move could withdraw it again (review round 2
+    F1). A bank call that fails after the commit is repeated by the client's retry,
+    which gets DUPLICATE, under the same key."""
     current = _locked_balance(session, user_id)
     # The request is looked up first: a repeat of a move that emptied the buffer
     # must get its first answer back, not "above balance".
@@ -128,14 +132,17 @@ def move_to_main(
         session.rollback()
         logger.error("reconcile failed, move to main rolled back: %s", exc)
         raise
-
-    # Money moves only once the ledger rows have passed reconcile.
-    bank.transfer_from_savings(
-        user_id,
-        request.amount,
-        idempotency_key=savings.move_key(user_id, request.client_request_id),
-    )
     return Moved(Outcome.CREATED, transaction_id, request.amount)
+
+
+def transfer_to_main(
+    bank: BankAccountProvider, *, user_id: str, request: MoveIn, moved: Moved
+) -> None:
+    """Credit the main account for a committed move. The key is the request's, so a
+    repeat (DUPLICATE) moves nothing more if the first call got through."""
+    bank.transfer_from_savings(
+        user_id, moved.amount, idempotency_key=savings.move_key(user_id, request.client_request_id)
+    )
 
 
 def _earlier(user_id: str, client_request_id: str) -> Select[SavingsTransaction]:

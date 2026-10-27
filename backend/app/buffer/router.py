@@ -58,12 +58,14 @@ def move_to_main(
     session: Annotated[Session, Depends(get_session)],
     bank: Annotated[BankAccountProvider, Depends(get_bank_provider)],
 ) -> JSONResponse:
-    result = service.move_to_main(session, user_id=user_id, request=request, bank=bank)
+    result = service.move_to_main(session, user_id=user_id, request=request)
     if result is None:
         raise ABOVE_BALANCE  # nothing was written
     session.commit()  # the conflict's audit row commits too
     if result.outcome == service.Outcome.CONFLICT:
         raise HTTPException(status_code=409, detail="client_request_id reused with another amount")
+    # After the commit, and on a repeat too: see service.move_to_main.
+    service.transfer_to_main(bank, user_id=user_id, request=request, moved=result)
     body = MovedOut(
         transaction_id=result.transaction_id,
         status=result.outcome.value,

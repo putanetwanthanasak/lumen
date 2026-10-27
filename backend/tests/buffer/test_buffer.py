@@ -270,9 +270,11 @@ def test_BF_09_move_key_is_stable_per_request_and_distinct() -> None:
     assert key != savings.manual_transfer_key(USER, "move-1")  # never an auto-save's key
 
 
-def test_BF_09_commit_fails_after_transfer_retry_credits_main_once(
+def test_BF_09_commit_fails_retry_credits_main_once(
     api: Api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The bank is called only after the commit (review round 2 F1), so a lost
+    # commit moves nothing and the retry is the first move.
     save(api)
     api.session.commit()  # kept by the rollback below: only the lost request rolls back
     session = api.session
@@ -288,7 +290,7 @@ def test_BF_09_commit_fails_after_transfer_retry_credits_main_once(
     session.rollback()  # what get_session's close does after the failed request
     assert lost.status_code == 500
     assert withdrawals(api) == []
-    assert api.bank.get_balance(USER) == OPENING - Decimal("300.00")  # the money moved
+    assert api.bank.get_balance(USER) == OPENING - Decimal("500.00")  # nothing moved
 
     retry = move(api, "200.00")
 
@@ -296,6 +298,62 @@ def test_BF_09_commit_fails_after_transfer_retry_credits_main_once(
     assert api.bank.get_balance(USER) == OPENING - Decimal("300.00")  # credited once
     assert withdrawals(api) == [Decimal("200.00")]
     assert stored_balance(api) == Decimal("300.00")
+
+
+def test_BF_09_lost_commit_then_another_move_never_credits_main_twice(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review round 2 F1: move "a" loses its commit, "b" then moves the whole buffer,
+    and "a" is retried. The main account may only gain what the ledger withdrew."""
+    save(api)  # buffer 500.00; main OPENING - 500.00
+    api.session.commit()
+    session = api.session
+    real_commit = session.commit
+
+    def commit_fails_once() -> None:
+        monkeypatch.setattr(session, "commit", real_commit)
+        raise OperationalError("COMMIT", {}, Exception("connection lost"))
+
+    monkeypatch.setattr(session, "commit", commit_fails_once)
+    assert move(api, "500.00", "a").status_code == 500
+    session.rollback()
+
+    assert move(api, "500.00", "b").status_code == 201
+    retry = move(api, "500.00", "a")
+
+    assert retry.status_code == 422  # the buffer is empty now
+    credited = api.bank.get_balance(USER) - (OPENING - Decimal("500.00"))
+    assert credited == sum(withdrawals(api), Decimal("0.00")) == Decimal("500.00")
+    assert stored_balance(api) == Decimal("0.00")
+
+
+def test_BF_09_bank_fails_after_commit_retry_credits_main_once(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The withdrawal is committed before the bank call, so a failed call leaves a
+    recorded move that has not reached the main account yet. The client's retry
+    (same id) gets the duplicate answer and repeats the call under the same key."""
+    save(api)
+    api.session.commit()
+    real_transfer = api.bank.transfer_from_savings
+
+    def bank_down_once(user_id: str, amount: Decimal, *, idempotency_key: str) -> None:
+        monkeypatch.setattr(api.bank, "transfer_from_savings", real_transfer)
+        raise ConnectionError("bank unavailable")
+
+    monkeypatch.setattr(api.bank, "transfer_from_savings", bank_down_once)
+    with pytest.raises(ConnectionError):
+        move(api, "200.00")
+    assert withdrawals(api) == [Decimal("200.00")]  # committed
+    assert api.bank.get_balance(USER) == OPENING - Decimal("500.00")  # not credited yet
+
+    retry = move(api, "200.00")
+
+    assert retry.status_code == 200
+    assert retry.json()["status"] == "duplicate"
+    assert api.bank.get_balance(USER) == OPENING - Decimal("300.00")
+    assert move(api, "200.00").status_code == 200  # and again: still credited once
+    assert api.bank.get_balance(USER) == OPENING - Decimal("300.00")
 
 
 def test_BF_05_unique_index_is_the_second_layer(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
