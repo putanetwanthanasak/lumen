@@ -1,4 +1,4 @@
-"""LO-03, LO-04, LO-07: compute_leftover_saving (L67), pure. The service and the
+"""LO-01, LO-03, LO-04, LO-07, LO-09: compute_leftover_saving (L67), pure. The service and the
 opt-in checks are tested in tests/payday."""
 
 from decimal import Decimal
@@ -56,7 +56,7 @@ def test_LO_03_safety_net_one_satang_short_saves_nothing_at_all() -> None:
         ("month_total", 1, "must be Decimal"),
     ],
 )
-def test_LO_bad_input_rejected(field: str, value: object, message: str) -> None:
+def test_LO_09_bad_input_rejected(field: str, value: object, message: str) -> None:
     kwargs: dict[str, object] = {
         "budget": Decimal("9000.00"),
         "month_total": Decimal("100.00"),

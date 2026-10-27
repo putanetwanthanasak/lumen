@@ -26,9 +26,17 @@ from sqlalchemy.orm import Session
 
 from app.affordability.months import Month, month_totals
 from app.affordability.service import counted_schedules, require_profile
+from app.audit import service as audit
 from app.buffer.service import balance
 from app.ledger import reconcile
-from app.models import PaydayOutcome, PaydayRun, SavingsTransaction, SavingsType, UserSettings
+from app.models import (
+    Actor,
+    PaydayOutcome,
+    PaydayRun,
+    SavingsTransaction,
+    SavingsType,
+    UserSettings,
+)
 from app.notifications import service as notifications
 from app.notifications.copy import leftover_saved_alert, payday_shortfall_alert
 from app.providers.base import BankAccountProvider
@@ -64,8 +72,14 @@ def run(session: Session, *, user_id: str, month: Month, bank: BankAccountProvid
 
     [row] = month_totals(counted_schedules(session, user_id), first=month, count=1)
     total, budget = row.total, profile.budget
+    key = savings.leftover_key(user_id, str(month))
     amount, outcome = ZERO, PaydayOutcome.LEFTOVER_OFF
-    if total > budget:
+    if (moved := bank.applied_to_savings(user_id, key)) is not None:
+        # An earlier attempt moved the leftover, then lost its commit. Record what
+        # moved: deciding again would see a bank balance that already reflects it
+        # (and maybe a changed month total), and could skip or ask for another amount.
+        amount, outcome = moved, PaydayOutcome.LEFTOVER_SAVED
+    elif total > budget:
         amount, outcome = total - budget, PaydayOutcome.OVER_BUDGET
     elif total == budget:
         outcome = PaydayOutcome.NO_LEFTOVER
@@ -107,16 +121,24 @@ def run(session: Session, *, user_id: str, month: Month, bank: BankAccountProvid
             session, user_id=user_id, kind=kind, title=title, body=body
         )
     elif outcome == PaydayOutcome.LEFTOVER_SAVED:
-        session.add(
-            SavingsTransaction(
-                user_id=user_id,
-                type=SavingsType.LEFTOVER_SAVE,
-                amount=amount,
-                payday_month=month.first_day(),
-            )
+        saving = SavingsTransaction(
+            user_id=user_id,
+            type=SavingsType.LEFTOVER_SAVE,
+            amount=amount,
+            payday_month=month.first_day(),
         )
+        session.add(saving)
         session.flush()
         savings.adjust_balance(session, user_id, amount)
+        audit.record(
+            session,
+            actor=Actor.SYSTEM,
+            action="leftover_saved",
+            user_id=user_id,
+            ref_type="savings_transaction",
+            ref_id=str(saving.id),
+            detail={"month": str(month), "amount": str(amount), "recovered": moved is not None},
+        )
         kind, title, body = leftover_saved_alert(month=month, total=total, leftover=amount)
         notification_id = notifications.store_payday_alert(
             session, user_id=user_id, kind=kind, title=title, body=body
@@ -131,7 +153,6 @@ def run(session: Session, *, user_id: str, month: Month, bank: BankAccountProvid
 
     # Money moves only once the ledger rows have passed reconcile.
     if outcome == PaydayOutcome.LEFTOVER_SAVED:
-        key = savings.leftover_key(user_id, str(month))
         bank.transfer_to_savings(user_id, amount, idempotency_key=key)
     return Payday(month, True, outcome, total, budget, amount, buffer_after, notification_id)
 

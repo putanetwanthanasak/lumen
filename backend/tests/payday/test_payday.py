@@ -1,4 +1,4 @@
-"""PD-01, PD-02, PD-04 to PD-06 and LO-01 to LO-04, LO-06: the payday run (L67)
+"""PD-01, PD-02, PD-04 to PD-06 and LO-01 to LO-06: the payday run (L67)
 through POST /demo/payday. PD-03 runs concurrently in tests/concurrency. 05 has no
 PD or LO section; the IDs are new (Session 13).
 
@@ -22,7 +22,14 @@ from app.config import Settings
 from app.db import Base
 from app.ledger.reconcile import InvariantViolationError, check_user_invariants
 from app.main import create_app
-from app.models import Notification, PaydayRun, SavingsTransaction, UserBalance, UserSettings
+from app.models import (
+    AuditLog,
+    Notification,
+    PaydayRun,
+    SavingsTransaction,
+    UserBalance,
+    UserSettings,
+)
 from app.payday import service as payday_service
 from app.savings import service as savings
 from tests.db.factories import installment, savings_tx
@@ -285,7 +292,12 @@ def test_LO_01_leftover_is_saved_to_the_buffer(demo: Api) -> None:
     assert demo.bank.get_balance(USER) == OPENING - Decimal("1800.00")
     [alert] = alerts(demo)
     assert (alert.kind, alert.title) == ("leftover_saved", "ออมส่วนที่เหลือจากงบแล้ว")
-    assert alert.body == ("เดือน พ.ย. 2569 ค่างวดรวม 7,200 บาท ต่ำกว่างบ 1,800 บาท ย้ายเข้ากันชนแล้ว")
+    assert alert.body == "เดือน พ.ย. 2569 ค่างวดรวม 7,200 บาท ต่ำกว่างบ 1,800 บาท ย้ายเข้ากันชนแล้ว"
+    [entry] = demo.session.execute(
+        select(AuditLog).where(AuditLog.action == "leftover_saved")
+    ).scalars()
+    assert (entry.actor, entry.user_id, entry.ref_type) == ("system", USER, "savings_transaction")
+    assert entry.detail == {"month": NOV, "amount": "1800.00", "recovered": False}
 
 
 @pytest.mark.parametrize(
@@ -450,3 +462,64 @@ def test_PD_02_primary_key_is_the_second_layer(demo: Api, monkeypatch: pytest.Mo
     assert again.status_code == 200
     assert again.json() == first.json() | {"status": "duplicate"}
     assert len(alerts(demo)) == 1
+
+
+def lose_first_commit(demo: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The next commit fails after the bank call, as a lost connection would."""
+    session = demo.session
+    real_commit = session.commit
+
+    def commit_fails_once() -> None:
+        monkeypatch.setattr(session, "commit", real_commit)
+        raise OperationalError("COMMIT", {}, Exception("connection lost"))
+
+    monkeypatch.setattr(session, "commit", commit_fails_once)
+
+
+def test_LO_06_retry_near_the_safety_net_records_the_money_that_moved(
+    demo: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review F1: after the lost commit the main account holds 600.00, so deciding
+    again would skip for the safety net, leaving 1,800.00 moved and not recorded."""
+    configure(demo)
+    due(demo, "7200.00")
+    demo.bank.set_balance(USER, Decimal("2400.00"))
+    demo.session.commit()
+    lose_first_commit(demo, monkeypatch)
+    assert payday(demo).status_code == 500
+    demo.session.rollback()
+    assert demo.bank.get_balance(USER) == Decimal("600.00")
+
+    retry = payday(demo)
+
+    assert retry.status_code == 201, retry.text
+    assert (retry.json()["outcome"], retry.json()["amount"]) == ("leftover_saved", "1800.00")
+    assert leftover_saves(demo) == [(Decimal("1800.00"), date(2026, 11, 1))]
+    assert buffer_now(demo) == Decimal("1800.00")
+    assert demo.bank.get_balance(USER) == Decimal("600.00")
+    [entry] = demo.session.execute(
+        select(AuditLog).where(AuditLog.action == "leftover_saved")
+    ).scalars()
+    assert entry.detail == {"month": NOV, "amount": "1800.00", "recovered": True}
+
+
+def test_LO_06_retry_after_the_month_total_changed_records_the_money_that_moved(
+    demo: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review F1 variant: a new November installment lands between the lost commit
+    and the retry. Deciding again would ask the bank for another amount on the same
+    key; the money that moved is what gets recorded."""
+    configure(demo)
+    due(demo, "7200.00")
+    demo.session.commit()
+    lose_first_commit(demo, monkeypatch)
+    assert payday(demo).status_code == 500
+    demo.session.rollback()
+    due(demo, "500.00")
+
+    retry = payday(demo)
+
+    assert retry.status_code == 201, retry.text
+    assert (retry.json()["outcome"], retry.json()["amount"]) == ("leftover_saved", "1800.00")
+    assert leftover_saves(demo) == [(Decimal("1800.00"), date(2026, 11, 1))]
+    assert demo.bank.get_balance(USER) == OPENING - Decimal("1800.00")

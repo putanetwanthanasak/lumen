@@ -14,16 +14,20 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
+from app.affordability.months import Month
 from app.config import Settings
 from app.ledger.reconcile import check_user_invariants
 from app.main import app, create_app
-from app.models import Notification, PaydayRun, SavingsTransaction, UserSettings
+from app.models import Notification, PaydayRun, SavingsTransaction, UserBalance, UserSettings
+from app.payday import service as payday_service
 from tests.concurrency.conftest import Race
+from tests.concurrency.test_safety_net_concurrency import LockProbingBank
 from tests.db.factories import installment
 
 pytestmark = [pytest.mark.db, pytest.mark.concurrency]
 
 OPENING = Decimal("10000.00")
+NOV = Month(2026 * 12 + 10)
 
 
 @pytest.fixture
@@ -103,3 +107,19 @@ def test_PD_03_leftover_8_times_concurrently_saves_once(
     assert {r.json()["amount"] for r in responses} == {"2000.00"}
     assert counts(race) == (1, 1, [Decimal("2000.00")])
     assert race.bank.get_balance(race.user) == OPENING - Decimal("2000.00")  # debited once
+
+
+def test_PD_03_balance_row_locked_before_bank_balance_is_read(race: Race) -> None:
+    """Review F2, R3 for payday: the safety-net read must happen while this user's
+    balance row is locked, or a concurrent auto-save could pass the net on the same
+    balance and both debits together breach it. PD-03 races payday against payday
+    only, where the payday_runs key already decides, so it cannot see this."""
+    setup(race, "7000.00")
+    with race.session() as s, s.begin():
+        s.add(UserBalance(user_id=race.user))
+    bank = LockProbingBank(race)
+    with race.session() as session:
+        result = payday_service.run(session, user_id=race.user, month=NOV, bank=bank)
+        session.rollback()
+    assert result.outcome == "leftover_saved"
+    assert bank.locked_at_read == [True]

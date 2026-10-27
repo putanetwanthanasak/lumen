@@ -178,7 +178,7 @@ def test_BF_10_buffer_withdrawals_downgrade_refuses_while_withdrawals_exist(
             conn.execute(text("DELETE FROM savings_transactions WHERE user_id = 'mig-user'"))
 
 
-def test_PD_payday_runs_downgrade_one_step(migration_engine: Engine) -> None:
+def test_PD_08_payday_runs_downgrade_one_step(migration_engine: Engine) -> None:
     with migration_engine.begin() as conn:
         command.downgrade(alembic_config(conn), "3d9b7e2a4c61")
     with migration_engine.connect() as conn:
@@ -190,7 +190,7 @@ def test_PD_payday_runs_downgrade_one_step(migration_engine: Engine) -> None:
         assert "payday_runs" in inspect(conn).get_table_names()
 
 
-def test_PD_payday_runs_downgrade_refuses_while_runs_exist(migration_engine: Engine) -> None:
+def test_PD_08_payday_runs_downgrade_refuses_while_runs_exist(migration_engine: Engine) -> None:
     # Their savings rows and alerts would not fit the narrower CHECKs: stop, do not
     # fail half-way or drop data.
     insert = (

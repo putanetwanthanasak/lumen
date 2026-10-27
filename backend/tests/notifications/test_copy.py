@@ -186,11 +186,11 @@ def month(year: int, number: int) -> Month:
         (2027, 2, "ก.พ. 2570"),
     ],
 )
-def test_PD_thai_short_month_with_buddhist_era_year(year: int, number: int, text: str) -> None:
+def test_PD_09_thai_short_month_with_buddhist_era_year(year: int, number: int, text: str) -> None:
     assert thai_month(month(year, number)) == text
 
 
-def test_PD_thai_month_table_has_twelve_distinct_names() -> None:
+def test_PD_09_thai_month_table_has_twelve_distinct_names() -> None:
     assert len(THAI_MONTHS) == len(set(THAI_MONTHS)) == 12
     assert THAI_MONTHS[0] == "ม.ค."
     assert THAI_MONTHS[11] == "ธ.ค."

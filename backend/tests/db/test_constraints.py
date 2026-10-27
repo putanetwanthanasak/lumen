@@ -532,7 +532,7 @@ def test_BF_10_same_request_id_twice_for_one_user_rejected(db_session: Session) 
     assert_rejected(db_session, withdrawal(), "uq_savings_transactions_user_client_request_id")
 
 
-# --- PD and LO: payday runs and leftover saving (L67, Session 13) -----------------------
+# --- PD-07, LO-08: payday runs and leftover saving (L67, Session 13) -------------------
 
 
 def payday_run(**overrides: Any) -> Any:
@@ -548,7 +548,7 @@ def payday_run(**overrides: Any) -> Any:
     return PaydayRun(**(fields | overrides))
 
 
-def test_PD_one_run_per_user_per_month(db_session: Session) -> None:
+def test_PD_07_one_run_per_user_per_month(db_session: Session) -> None:
     assert_accepted(db_session, payday_run())
     assert_accepted(db_session, payday_run(month=date(2026, 12, 1)))
     assert_accepted(db_session, payday_run(user_id="user-2"))
@@ -576,7 +576,7 @@ def test_PD_one_run_per_user_per_month(db_session: Session) -> None:
         ({"outcome": "no_leftover", "amount": Decimal("-1.00")}, "ck_payday_runs_amount_nonneg"),
     ],
 )
-def test_PD_payday_run_checks(
+def test_PD_07_payday_run_checks(
     db_session: Session, overrides: dict[str, Any], constraint: str
 ) -> None:
     assert_rejected(db_session, payday_run(**overrides), constraint)
@@ -593,7 +593,7 @@ def leftover_save(**overrides: Any) -> Any:
     return savings_tx(**(fields | overrides))
 
 
-def test_LO_leftover_save_needs_its_payday_month(db_session: Session) -> None:
+def test_LO_08_leftover_save_needs_its_payday_month(db_session: Session) -> None:
     assert_rejected(
         db_session,
         leftover_save(payday_month=None),
@@ -601,7 +601,7 @@ def test_LO_leftover_save_needs_its_payday_month(db_session: Session) -> None:
     )
 
 
-def test_LO_only_a_leftover_save_carries_a_payday_month(db_session: Session) -> None:
+def test_LO_08_only_a_leftover_save_carries_a_payday_month(db_session: Session) -> None:
     assert_rejected(
         db_session,
         withdrawal(payday_month=date(2026, 11, 1)),
@@ -609,7 +609,7 @@ def test_LO_only_a_leftover_save_carries_a_payday_month(db_session: Session) -> 
     )
 
 
-def test_LO_one_leftover_save_per_user_per_month(db_session: Session) -> None:
+def test_LO_08_one_leftover_save_per_user_per_month(db_session: Session) -> None:
     assert_accepted(db_session, leftover_save())
     assert_accepted(db_session, leftover_save(payday_month=date(2026, 12, 1)))
     assert_accepted(db_session, leftover_save(user_id="user-2"))
