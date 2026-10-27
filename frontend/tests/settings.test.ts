@@ -37,3 +37,16 @@ test("UI_11_exactly_one_saving_mode_is_sent", () => {
   const percent = toRequest({ ...FILLED, mode: "percent", percent: "10", fixed: "200" });
   assert.deepEqual(percent.ok && percent.body.saving_rule, { mode: "percent", percent: 10 });
 });
+
+test("UI_11_first_save_retried_after_a_lost_answer_still_saves", async () => {
+  // Review round 2, F6: the first POST was saved but its answer was lost, so the
+  // screen still thinks nothing exists. The retry must not fail with 409 forever.
+  const { resetMock, handle } = await import("../src/mock/server.ts");
+  const { saveSettings } = await import("../src/api.ts");
+  resetMock(new Date(2026, 9, 27));
+  const result = toRequest(FILLED);
+  assert.ok(result.ok);
+  assert.equal(handle("POST", "/settings", result.body, "demo-mint").status, 201); // answer "lost"
+  const saved = await saveSettings({ ...result.body, payday: 1 }, false);
+  assert.equal(saved.payday, 1);
+});

@@ -3,7 +3,7 @@
  * This month's total against the budget, the คิดก่อน button, upcoming over-budget
  * months, the buffer, and every installment. All amounts are API strings.
  */
-import { getBuffer, getDebtSummary, getSettings, getUpcomingMonths } from "../api.ts";
+import { getBuffer, getDebtSummary, getSettings, getUpcomingMonths, USE_MOCK } from "../api.ts";
 import type { BufferOut, DebtSummary, InstallmentLine, SettingsOut, UpcomingMonthsOut } from "../api-types.ts";
 import { HOME } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
@@ -59,7 +59,7 @@ function HomeBody({
   const budget = settings.monthly_installment_budget;
   return (
     <>
-      <p className="text-lead font-semibold text-ink">{HOME.greeting(PERSONA_NAME)}</p>
+      <p className="text-lead font-semibold text-ink">{USE_MOCK ? HOME.greeting(PERSONA_NAME) : HOME.greetingPlain}</p>
 
       {thisMonth !== undefined && (
         <Card className="flex flex-col gap-3">

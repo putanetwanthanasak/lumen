@@ -107,6 +107,7 @@ export const SETTINGS = {
 
 export const HOME = {
   greeting: (name: string) => `สวัสดี ${name}`,
+  greetingPlain: "สวัสดี",
   thisMonthTitle: (month: string) => `ค่างวดรวมเดือน ${month}`,
   ofBudget: (budget: string) => `จากงบ ${budget}`,
   overBudgetNow: "เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้",
@@ -137,6 +138,10 @@ export const HOME = {
 export const THINK = {
   title: "คิดก่อนผ่อน",
   intro: "กรอกราคาและแผนผ่อน KidNee จะดูให้ว่าทุกเดือนยังไหวไหม",
+  kindTitle: "ประเภทรายการ",
+  kinds: { purchase: "ผ่อนสินค้า", cash_withdrawal: "กดเงินสด", cash_loan: "สินเชื่อเงินสด" },
+  cashNoSaving: "รายการเงินสดจะไม่กันเงินเข้ากันชน",
+  cashAmount: "ยอดเงินที่ได้รับ",
   itemName: "ชื่อสินค้า (ไม่บังคับ)",
   itemNamePlaceholder: "เช่น โทรศัพท์",
   price: "ราคาสินค้า",

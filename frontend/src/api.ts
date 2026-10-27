@@ -85,7 +85,15 @@ export async function getSettings(): Promise<SettingsOut | null> {
 
 /** POST the first time, PUT afterwards. */
 export async function saveSettings(data: SettingsIn, exists: boolean): Promise<SettingsOut> {
-  return (await call<SettingsOut>(exists ? "PUT" : "POST", "/settings", data)).body;
+  if (exists) return (await call<SettingsOut>("PUT", "/settings", data)).body;
+  try {
+    return (await call<SettingsOut>("POST", "/settings", data)).body;
+  } catch (error) {
+    // A first save whose answer was lost already exists: save again as an update
+    // (review round 2, F6), instead of a 409 on every retry.
+    if (error instanceof ApiError && error.status === 409) return (await call<SettingsOut>("PUT", "/settings", data)).body;
+    throw error;
+  }
 }
 
 // ---- home (screen 2) --------------------------------------------------------

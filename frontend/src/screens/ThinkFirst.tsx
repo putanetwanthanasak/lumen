@@ -4,53 +4,33 @@
  * bar per month. "บันทึก" records with the same client_request_id (a double tap or a
  * retry records once); "ยังไม่ซื้อ" records nothing. Recording is always allowed.
  */
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, getSettings, previewInstallment, recordInstallment } from "../api.ts";
-import type { ManualEntryIn, RecordedOut, SettingsOut, VerdictOut } from "../api-types.ts";
-import { MONEY_ERRORS, THINK } from "../copy.ts";
+import type { InstallmentKind, RecordedOut, SettingsOut } from "../api-types.ts";
+import { THINK } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Alert, Button, Card, ErrorState, Field, Loading, SettingsMissing } from "../components/ui.tsx";
 import { MonthBars, VerdictCard } from "../components/Verdict.tsx";
 import { SCENARIOS, type Scenario } from "../mock/persona.ts";
-import { formatBaht, parseMoneyInput, toSatang } from "../money.ts";
+import { formatBaht, toSatang } from "../money.ts";
 import { navigate } from "../router.ts";
 import { addMonths, monthOf, thaiMonth } from "../thaiMonth.ts";
+import {
+  answerPreview,
+  edit,
+  emptyForm,
+  entryToRecord,
+  startPreview,
+  toEntry,
+  type Errors,
+  type Form,
+  type Stage as FormStage,
+} from "../thinkFirstForm.ts";
 import { useLoad } from "../useLoad.ts";
 
-type Form = { name: string; price: string; months: string; monthly: string; firstDue: string };
-type Errors = Partial<Record<"price" | "months" | "monthly", string>>;
-
-const MONTHS = /^([1-9][0-9]{0,2})$/;
 const FIRST_DUE_CHOICES = 4;
-
-function emptyForm(): Form {
-  return { name: "", price: "", months: "", monthly: "", firstDue: addMonths(monthOf(new Date()), 1) };
-}
-
-function toEntry(form: Form, requestId: string): { ok: true; entry: ManualEntryIn } | { ok: false; errors: Errors } {
-  const errors: Errors = {};
-  const price = parseMoneyInput(form.price);
-  const monthly = parseMoneyInput(form.monthly);
-  const months = form.months.trim();
-  if (!price.ok) errors.price = MONEY_ERRORS[price.reason];
-  if (!monthly.ok) errors.monthly = MONEY_ERRORS[monthly.reason];
-  const count = MONTHS.test(months) ? Number(months) : 0; // ui-06-allow: a count of months
-  if (count < 1 || count > 600) errors.months = THINK.monthsError;
-  if (!price.ok || !monthly.ok || Object.keys(errors).length > 0) return { ok: false, errors };
-  return {
-    ok: true,
-    entry: {
-      client_request_id: requestId,
-      kind: "purchase",
-      item_price: price.value,
-      months: count,
-      monthly_amount: monthly.value,
-      first_due_month: form.firstDue,
-      item_name: form.name.trim(),
-    },
-  };
-}
+const KINDS: InstallmentKind[] = ["purchase", "cash_withdrawal", "cash_loan"];
 
 export function ThinkFirstScreen() {
   const [load, reload] = useLoad(getSettings);
@@ -68,11 +48,7 @@ export function ThinkFirstScreen() {
   );
 }
 
-type Stage =
-  | { name: "form" }
-  | { name: "verdict"; entry: ManualEntryIn; verdict: VerdictOut }
-  | { name: "recorded"; result: RecordedOut }
-  | { name: "notBuying" };
+type Stage = FormStage | { name: "recorded"; result: RecordedOut } | { name: "notBuying" };
 
 /** Demo deep link: "?persona&scene=YELLOW#/think" opens with that example checked. */
 function sceneFromUrl(): Scenario | null {
@@ -88,22 +64,25 @@ function formFor(scenario: Scenario, base: Form): Form {
 function ThinkFirst({ settings }: { settings: SettingsOut }) {
   const [form, setForm] = useState<Form>(() => {
     const scene = sceneFromUrl();
-    return scene === null ? emptyForm() : formFor(scene, emptyForm());
+    return scene === null ? emptyForm(new Date()) : formFor(scene, emptyForm(new Date()));
   });
   const [errors, setErrors] = useState<Errors>({});
   const [stage, setStage] = useState<Stage>({ name: "form" });
   const [busy, setBusy] = useState(false);
+  const pending = useRef<string | null>(null); // the preview request still waited for
   const [problem, setProblem] = useState<"failed" | "settings" | null>(null);
 
-  const set = (key: keyof Form, value: string) => {
+  const set = <K extends keyof Form>(key: K, value: Form[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
-    // A changed entry is a new entry: the old verdict and request id no longer apply.
-    if (stage.name === "verdict") setStage({ name: "form" });
+    pending.current = null;
+    // A changed entry is a new entry: a pending or shown verdict no longer applies.
+    setStage((s) => (s.name === "checking" || s.name === "verdict" ? edit(s) : s));
   };
 
   function fill(scenario: Scenario) {
     setForm((f) => formFor(scenario, f));
     setErrors({});
+    pending.current = null;
     setStage({ name: "form" });
   }
 
@@ -129,17 +108,24 @@ function ThinkFirst({ settings }: { settings: SettingsOut }) {
     }
     setErrors({});
     setProblem(null);
-    setBusy(true);
+    const id = built.entry.client_request_id;
+    pending.current = id;
+    setStage(startPreview(built.entry));
     try {
-      setStage({ name: "verdict", entry: built.entry, verdict: await previewInstallment(built.entry) });
+      const verdict = await previewInstallment(built.entry);
+      setStage((s) => (s.name === "checking" ? answerPreview(s, id, verdict) : s));
     } catch (error) {
-      handleError(error);
-    } finally {
-      setBusy(false);
+      // Only an error for the request still waited for is reported.
+      if (pending.current === id) {
+        handleError(error);
+        setStage({ name: "form" });
+      }
     }
   }
 
-  async function record(entry: ManualEntryIn) {
+  async function record() {
+    const entry = entryToRecord(stage.name === "verdict" ? stage : { name: "form" });
+    if (entry === null) return;
     setProblem(null);
     setBusy(true);
     try {
@@ -153,7 +139,7 @@ function ThinkFirst({ settings }: { settings: SettingsOut }) {
   }
 
   function again() {
-    setForm(emptyForm());
+    setForm(emptyForm(new Date()));
     setStage({ name: "form" });
   }
 
@@ -194,6 +180,29 @@ function ThinkFirst({ settings }: { settings: SettingsOut }) {
 
       <form noValidate onSubmit={check} className="flex flex-col gap-4">
         <Card className="flex flex-col gap-5">
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-2 text-body font-semibold text-ink">{THINK.kindTitle}</legend>
+            <div className="grid grid-cols-3 gap-2">
+              {KINDS.map((kind) => (
+                <label
+                  key={kind}
+                  className={`flex min-h-12 cursor-pointer items-center justify-center rounded-field border-2 px-1 text-center text-body font-semibold ${
+                    form.kind === kind ? "border-leaf-700 bg-leaf-50 text-leaf-800" : "border-line bg-card text-ink-muted"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="kind"
+                    checked={form.kind === kind}
+                    onChange={() => set("kind", kind)}
+                    className="sr-only"
+                  />
+                  {THINK.kinds[kind]}
+                </label>
+              ))}
+            </div>
+            {form.kind !== "purchase" && <p className="text-body text-ink-muted">{THINK.cashNoSaving}</p>}
+          </fieldset>
           <Field
             label={THINK.itemName}
             value={form.name}
@@ -202,7 +211,7 @@ function ThinkFirst({ settings }: { settings: SettingsOut }) {
             maxLength={100}
           />
           <Field
-            label={THINK.price}
+            label={form.kind === "purchase" ? THINK.price : THINK.cashAmount}
             value={form.price}
             onChange={(v) => set("price", v)}
             inputMode="decimal"
@@ -233,9 +242,9 @@ function ThinkFirst({ settings }: { settings: SettingsOut }) {
           </div>
           <FirstDue value={form.firstDue} onChange={(v) => set("firstDue", v)} />
         </Card>
-        {stage.name === "form" && (
-          <Button size="lg" type="submit" busy={busy} icon="think">
-            {busy ? THINK.checking : THINK.check}
+        {(stage.name === "form" || stage.name === "checking") && (
+          <Button size="lg" type="submit" busy={stage.name === "checking"} icon="think">
+            {stage.name === "checking" ? THINK.checking : THINK.check}
           </Button>
         )}
       </form>
@@ -255,7 +264,7 @@ function ThinkFirst({ settings }: { settings: SettingsOut }) {
             <Button variant="secondary" onClick={() => setStage({ name: "notBuying" })} disabled={busy}>
               {THINK.notBuying}
             </Button>
-            <Button onClick={() => void record(stage.entry)} busy={busy}>
+            <Button onClick={() => void record()} busy={busy}>
               {busy ? THINK.recording : THINK.record}
             </Button>
           </div>
