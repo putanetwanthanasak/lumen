@@ -242,7 +242,7 @@ def test_CO_05_manual_entry_cannot_record_a_consolidation_loan(api: Api) -> None
     for path in ("/installments", "/installments/preview"):
         response = api.call("POST", path, entry)
         assert response.status_code == 422
-        assert response.json()["detail"][0]["loc"] == ["body", "kind"]
+        assert response.json()["detail"][0]["loc"] == ["kind"]
     assert api.session.execute(select(func.count()).select_from(Installment)).scalar_one() == 0
 
 
