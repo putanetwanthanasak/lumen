@@ -25,7 +25,7 @@ from app.models import (
     Notification,
     NotificationKind,
 )
-from app.notifications.copy import manual_entry_alert, new_debt_alert
+from app.notifications.copy import consolidation_loan_alert, manual_entry_alert, new_debt_alert
 from app.providers.base import PushProvider
 from app.rules.config import load_rules
 
@@ -75,6 +75,27 @@ def notify_manual_entry(
         monthly_total=summary(session, user_id).monthly_total,
     )
     return _store(session, user_id, installment_id, kind_, title, body)
+
+
+def notify_consolidation_loan(
+    session: Session,
+    *,
+    user_id: str,
+    installment_id: uuid.UUID,
+    payment: Decimal,
+    term: int,
+    total_cost: Decimal,
+) -> uuid.UUID | None:
+    """The approved loan is a new debt (L58, L72): one alert, deduplicated like every
+    new-debt alert. Called after the paid-off installments are marked consolidated,
+    so the L43 total in the body counts the loan and not what it replaced."""
+    kind, title, body = consolidation_loan_alert(
+        payment=payment,
+        term=term,
+        total_cost=total_cost,
+        monthly_total=summary(session, user_id).monthly_total,
+    )
+    return _store(session, user_id, installment_id, kind, title, body)
 
 
 def _store(

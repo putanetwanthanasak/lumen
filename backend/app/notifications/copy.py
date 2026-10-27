@@ -171,3 +171,24 @@ def leftover_saved_alert(
         month=thai_month(month), total=format_baht(total), leftover=format_baht(leftover)
     )
     return NotificationKind.LEFTOVER_SAVED, LEFTOVER_TITLE, body
+
+
+# L72, the user's wording (Session 14): the monthly payment and the total cost are
+# always shown together, with the monthly total now (L43).
+CONSOLIDATION_TITLE = "อนุมัติสินเชื่อรวมหนี้แล้ว"
+CONSOLIDATION_BODY = (
+    "ผ่อนเดือนละ {payment} บาท {term} เดือน ยอดรวมทั้งหมด {total_cost} บาท "
+    "ค่างวดรวมต่อเดือนตอนนี้ {monthly_total} บาท"
+)
+
+
+def consolidation_loan_alert(
+    *, payment: Decimal, term: int, total_cost: Decimal, monthly_total: Decimal
+) -> tuple[NotificationKind, str, str]:
+    body = CONSOLIDATION_BODY.format(
+        payment=format_baht(payment),
+        term=term,
+        total_cost=format_baht(total_cost),
+        monthly_total=format_baht(monthly_total),
+    )
+    return NotificationKind.CONSOLIDATION_LOAN, CONSOLIDATION_TITLE, body
