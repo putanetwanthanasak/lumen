@@ -88,9 +88,15 @@ class NotEligible:
     reason: str  # a plan Reason, or PAYOFFS_DO_NOT_MATCH_PLAN
 
 
-def request_key(user_id: str, client_request_id: str) -> str:
-    """The bank's reference for one request: the same on every submit of it."""
-    canonical = json.dumps(["consolidation", user_id, client_request_id], separators=(",", ":"))
+def request_key(user_id: str, body: ConsolidationRequestIn) -> str:
+    """The bank's reference for one application: the same on every submit of it, and
+    different when the payoffs differ. An attempt that reached the bank but failed
+    before the commit stores nothing, so its retry may name other payoffs under the
+    same id, and must get a decision on those (round 2 review F1)."""
+    canonical = json.dumps(
+        ["consolidation", user_id, body.client_request_id, body.stored_payoffs()],
+        separators=(",", ":"),
+    )
     return "consolidation-" + hashlib.sha256(canonical.encode()).hexdigest()
 
 
@@ -151,7 +157,7 @@ def submit(
     rows = {r.id: r for r in counted}
     application = Application(
         user_id=user_id,
-        reference=request_key(user_id, body.client_request_id),
+        reference=request_key(user_id, body),
         payoffs=tuple(
             Payoff(
                 p.installment_id,
@@ -165,6 +171,9 @@ def submit(
         term_months=term,
     )
     decision = bank.decide(application)
+    if decision.approved and {p.installment_id for p in decision.payoffs} != required:
+        # The bank approved other installments than were asked: never build a loan on it.
+        raise RuntimeError("the bank decided on other installments than were requested")
     approved = decision.payoffs if decision.approved else application.payoffs
     principal = sum((p.amount for p in approved), Decimal("0.00"))
     payment = amortised_payment(principal, rate, term)

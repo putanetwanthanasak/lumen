@@ -26,7 +26,7 @@ def _numeric_columns() -> list[tuple[str, str, Numeric[Decimal]]]:
     return cols
 
 
-def test_money_columns_are_numeric_12_2_and_rates_7_6() -> None:
+def test_rule_1_money_columns_are_numeric_12_2_and_rates_7_6() -> None:
     cols = _numeric_columns()
     assert len(cols) == 22  # installments 8, user_settings 3, savings 1, balances 1,
     # payday_runs 4, consolidation_requests 4, consolidation_payouts 1

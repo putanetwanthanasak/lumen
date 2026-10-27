@@ -833,3 +833,71 @@ def test_CO_07_an_ended_row_with_nothing_left_is_not_named(co: Co) -> None:
     assert response.status_code == 201
     assert statuses(co)[ended.id] == "active"
     assert len(co.bank.payouts) == 2
+
+
+def test_CO_12_a_retry_with_other_payoffs_after_a_failed_approval_is_decided_afresh(
+    co: Co, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 2 review F1: the first attempt reached the bank, then failed before the
+    commit, so nothing was stored. The retry under the same id names a new debt too:
+    the bank must decide on what is asked now, never reuse its earlier answer."""
+    a, b = eligible(co)
+    co.api.session.commit()
+    create_loan = service.create_loan
+    calls = {"n": 0}
+
+    def fails_once(*args: Any, **kwargs: Any) -> Installment:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("loan insert failed")
+        return create_loan(*args, **kwargs)
+
+    monkeypatch.setattr(service, "create_loan", fails_once)
+    with pytest.raises(RuntimeError, match="loan insert failed"):
+        submit(co, body((a, b)))
+    co.api.session.rollback()  # the failed request's session closes
+    c = manual(co, "500.00", 3)  # a new debt, recorded before the retry
+
+    response = submit(co, body((a, b, c), ("18000.00", "12000.00", "1500.00")))
+
+    assert response.status_code == 201
+    assert response.json()["loan"]["principal"] == "31500.00"
+    assert {i: s for i, s in statuses(co).items() if i in (a, b, c)} == dict.fromkeys(
+        (a, b, c), "consolidated"
+    )
+    assert sorted(p.amount for p in co.bank.payouts) == [
+        Decimal("1500.00"),
+        Decimal("12000.00"),
+        Decimal("18000.00"),
+    ]
+
+
+def test_CO_12_an_approval_of_other_installments_than_requested_is_refused(co: Co) -> None:
+    a, b = eligible(co)
+
+    class Partial(MockConsolidationBank):
+        def decide(self, application: Application) -> Decision:
+            return Decision(True, application.payoffs[:1], "MOCK-partial")
+
+    co.use_bank(Partial())
+    co.api.session.commit()
+
+    with pytest.raises(RuntimeError, match="other installments than were requested"):
+        submit(co, body((a, b)))
+    co.api.session.rollback()
+
+    assert statuses(co) == {a: "active", b: "active"}
+    assert count(co.api.session, ConsolidationRequest) == 0
+
+
+def test_CO_11_the_bank_reference_changes_with_the_payoffs() -> None:
+    i, j = uuid.uuid4(), uuid.uuid4()
+
+    def key(amount: str) -> str:
+        return service.request_key(
+            "u",
+            ConsolidationRequestIn.model_validate_json(_json(body((i, j), ("1.00", amount)))),
+        )
+
+    assert key("2.00") == key("2.00")
+    assert key("2.00") != key("2.01")
