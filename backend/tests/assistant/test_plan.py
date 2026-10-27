@@ -303,8 +303,15 @@ def test_AS_05_payment_exactly_the_budget_is_eligible() -> None:
     assert plan(debts, budget="853.70").consolidation.reason is Reason.PAYMENT_ABOVE_BUDGET
 
 
-def test_AS_05_an_estimate_beyond_numeric_12_2_is_not_eligible() -> None:
-    result = plan([debt("4000000000.00", 3)], budget="0.00").consolidation
+@pytest.mark.parametrize(
+    "monthly",
+    [
+        "4000000000.00",  # the principal itself is above 9,999,999,999.99
+        "3333333333.00",  # the principal fits, the total cost with interest does not
+    ],
+)
+def test_AS_05_an_estimate_beyond_numeric_12_2_is_not_eligible(monthly: str) -> None:
+    result = plan([debt(monthly, 3)], budget="0.00").consolidation
 
     assert result.reason is Reason.ESTIMATE_TOO_LARGE
 
