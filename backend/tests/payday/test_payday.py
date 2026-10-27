@@ -523,3 +523,9 @@ def test_LO_06_retry_after_the_month_total_changed_records_the_money_that_moved(
     assert (retry.json()["outcome"], retry.json()["amount"]) == ("leftover_saved", "1800.00")
     assert leftover_saves(demo) == [(Decimal("1800.00"), date(2026, 11, 1))]
     assert demo.bank.get_balance(USER) == OPENING - Decimal("1800.00")
+    # Review round 2 F2: the run records the decision the first attempt made (7,200
+    # under the budget by 1,800), so the stored total, the response and the alert
+    # agree with each other and with the money, not 7,700 "under by 1,800".
+    assert retry.json()["month_total"] == "7200.00"
+    [alert] = alerts(demo)
+    assert alert.body == "เดือน พ.ย. 2569 ค่างวดรวม 7,200 บาท ต่ำกว่างบ 1,800 บาท ย้ายเข้ากันชนแล้ว"

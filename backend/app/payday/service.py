@@ -78,7 +78,11 @@ def run(session: Session, *, user_id: str, month: Month, bank: BankAccountProvid
         # An earlier attempt moved the leftover, then lost its commit. Record what
         # moved: deciding again would see a bank balance that already reflects it
         # (and maybe a changed month total), and could skip or ask for another amount.
+        # The run, its response and its alert carry that attempt's decision, whose
+        # total was budget - leftover (the month's first decision stands, Session 13
+        # open question 7). max() only guards a budget lowered in between.
         amount, outcome = moved, PaydayOutcome.LEFTOVER_SAVED
+        total = max(budget - moved, ZERO)
     elif total > budget:
         amount, outcome = total - budget, PaydayOutcome.OVER_BUDGET
     elif total == budget:
