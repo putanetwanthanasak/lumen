@@ -2,8 +2,8 @@
 
 The loan never saves, counts in every month total, and "Not me" is refused on it.
 A consolidated installment is not owed, keeps its history, and keeps its status
-whatever the platform sends later. Only an approved consolidation creates the kind;
-that request is not built yet, so here the rows are written directly.
+whatever the platform sends later. Only an approved consolidation creates the kind
+(test_requests.py); here the rows are written directly.
 """
 
 from datetime import UTC, datetime
