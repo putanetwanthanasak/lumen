@@ -63,7 +63,9 @@ def test_CO_01_engine_never_saves_on_a_consolidation_loan(rule: PercentRule | Fi
 
 
 def test_CO_01_auto_save_on_a_loan_records_nothing_and_moves_nothing(db_session: Session) -> None:
-    opt_in(db_session, percent=100)
+    # 1% of 17,100.00 is 171.00, well inside the 10,000.00 balance: only the kind
+    # rule can stop this saving, not the 500.00 safety net (B78 blind spot).
+    opt_in(db_session, percent=1)
     loan = add_loan(db_session)
     bank = MockBankAccountProvider()
 
