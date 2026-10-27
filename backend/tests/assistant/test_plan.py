@@ -252,6 +252,18 @@ def test_AS_05_three_consecutive_months_over_budget_is_eligible_with_an_estimate
     assert result.estimate.monthly_payment == Decimal("853.71")
 
 
+def test_AS_05_a_run_of_three_with_different_totals_is_one_run() -> None:
+    # 5,700 then 5,800 twice: three months over budget, though no total repeats 3x.
+    result = plan([debt("5700.00", 3), debt("100.00", 2, offset=1)])
+
+    assert [r.total for r in result.rows] == [
+        Decimal("5700.00"),
+        Decimal("5800.00"),
+        Decimal("5800.00"),
+    ]
+    assert result.consolidation.reason is Reason.ELIGIBLE
+
+
 def test_AS_05_three_months_over_budget_later_in_the_horizon_also_counts() -> None:
     result = plan([debt("1000.00", 6), debt("4500.00", 3, offset=3)])
 
