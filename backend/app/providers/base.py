@@ -16,6 +16,13 @@ class BankAccountProvider(Protocol):
         at-most-once guarantee per key as transfer_to_savings."""
         ...
 
+    def applied_to_savings(self, user_id: str, idempotency_key: str) -> Decimal | None:
+        """The amount a transfer_to_savings under this key already moved for this user,
+        or None if the key was never applied. A retry whose decision depends on the
+        bank balance asks this first, so it records the money that moved instead of
+        deciding again on a balance that already reflects it."""
+        ...
+
 
 class PushProvider(Protocol):
     def send(self, user_id: str, title: str, body: str) -> bool:
