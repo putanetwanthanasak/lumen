@@ -1,5 +1,5 @@
 """HTTP fixture for the app API: the real app on the rolled-back test session, with a
-fresh mock bank and push provider per test."""
+fresh mock bank, push and platform provider per test."""
 
 import json
 from collections.abc import Iterator
@@ -13,8 +13,9 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.main import app
-from app.providers import get_bank_provider, get_push_provider
+from app.providers import get_bank_provider, get_platform_provider, get_push_provider
 from app.providers.mock_bank import MockBankAccountProvider
+from app.providers.mock_platform import MockPlatformProvider
 from app.providers.mock_push import MockPushProvider
 
 USER = "user_a"
@@ -26,6 +27,7 @@ class Api:
     session: Session
     bank: MockBankAccountProvider
     push: MockPushProvider
+    platform: MockPlatformProvider
 
     def call(
         self, method: str, path: str, body: Any = None, *, user: str | None = USER
@@ -47,16 +49,17 @@ def api(db_session: Session) -> Iterator[Api]:
     def session_override() -> Iterator[Session]:
         yield db_session
 
-    bank, push = MockBankAccountProvider(), MockPushProvider()
+    bank, push, platform = MockBankAccountProvider(), MockPushProvider(), MockPlatformProvider()
     app.dependency_overrides.update(
         {
             get_session: session_override,
             get_bank_provider: lambda: bank,
             get_push_provider: lambda: push,
+            get_platform_provider: lambda: platform,
         }
     )
     try:
         with TestClient(app) as client:
-            yield Api(client, db_session, bank, push)
+            yield Api(client, db_session, bank, push, platform)
     finally:
         app.dependency_overrides.clear()

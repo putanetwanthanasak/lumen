@@ -14,7 +14,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.disputes.service import Disputed, dispute, send_signal
+from app.disputes.service import Disputed, ManualEntryRejected, dispute, send_signal
+from app.errors import coded
 from app.models import DisputeSignalStatus
 from app.notifications.copy import vendor_name
 from app.providers import get_platform_provider
@@ -71,6 +72,11 @@ class NotMeResponse(BaseModel):
 
 
 NOT_FOUND = HTTPException(status_code=404, detail="installment not found")
+MANUAL_ENTRY = coded(
+    409,
+    "NOT_ME_UNAVAILABLE_FOR_MANUAL_ENTRY",
+    "you recorded this installment yourself; there is no platform to report it to",
+)
 
 
 def _response(result: Disputed, signal_status: str) -> NotMeResponse:
@@ -97,6 +103,7 @@ def _response(result: Disputed, signal_status: str) -> NotMeResponse:
     responses={
         401: {"description": "No or malformed X-Demo-User"},
         404: {"description": "No such installment for this user (another user's looks the same)"},
+        409: {"description": "NOT_ME_UNAVAILABLE_FOR_MANUAL_ENTRY: an entry you recorded (L68)"},
     },
 )
 def not_me(
@@ -117,6 +124,9 @@ def not_me(
     result = dispute(session, user_id=user_id, installment_id=parsed)
     if result is None:
         raise NOT_FOUND
+    if isinstance(result, ManualEntryRejected):
+        session.commit()  # the attempt's audit row
+        raise MANUAL_ENTRY
     session.commit()  # the report is recorded even if the platform is down
     signal_status = result.signal_status
     if signal_status != DisputeSignalStatus.SENT:

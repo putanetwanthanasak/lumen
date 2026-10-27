@@ -10,6 +10,9 @@ stays cancelled but still records the report (the debt is not owed, the fraud
 report must not be lost). disputed_at is set once and never cleared, so a later
 cancel keeps the history. There is no undo in this prototype.
 
+L68: a manual entry (L62) has no platform to report to, so "Not me" on one is
+refused. Nothing changes and no signal is sent; the attempt is audited.
+
 L60 (2) / S4: the platform signal has its own status. The report sets it to
 `pending` in the same transaction; send_signal then tries the platform and stores
 `sent` or `failed`. A repeat tap tries again while it is not `sent`.
@@ -29,6 +32,7 @@ from app.db import describe_db_error
 from app.ledger.service import lock_contract
 from app.models import (
     DISPUTE_ACTION,
+    MANUAL_VENDOR,
     NEW_DEBT_KINDS,
     Actor,
     DisputeSignalStatus,
@@ -40,6 +44,8 @@ from app.models import (
 from app.providers.base import PlatformProvider
 
 logger = logging.getLogger(__name__)
+
+MANUAL_REJECTED_ACTION = "not_me_rejected_manual_entry"
 
 
 @dataclass(frozen=True)
@@ -54,9 +60,19 @@ class Disputed:
     first_report: bool
 
 
-def dispute(session: Session, *, user_id: str, installment_id: uuid.UUID) -> Disputed | None:
+@dataclass(frozen=True)
+class ManualEntryRejected:
+    """L68: the installment is one the user recorded themselves."""
+
+    installment_id: uuid.UUID
+
+
+def dispute(
+    session: Session, *, user_id: str, installment_id: uuid.UUID
+) -> Disputed | ManualEntryRejected | None:
     """Record "Not me" for the user's own installment. None if there is no such
-    installment for this user (the caller answers 404 either way). The caller commits.
+    installment for this user (the caller answers 404 either way). The caller commits,
+    also after a ManualEntryRejected, so its audit row is kept.
 
     Idempotent: a repeat, sequential or concurrent, changes nothing and gets the same
     stored values back.
@@ -69,6 +85,19 @@ def dispute(session: Session, *, user_id: str, installment_id: uuid.UUID) -> Dis
     if found is None:
         return None
     vendor, contract_id = found
+    if vendor == MANUAL_VENDOR:
+        # L68: no status change, no disputed_at, no alert update and no signal; the
+        # user recorded this one and can see it is theirs. Each attempt is audited.
+        audit.record(
+            session,
+            actor=Actor.USER,
+            action=MANUAL_REJECTED_ACTION,
+            user_id=user_id,
+            ref_type="installment",
+            ref_id=str(installment_id),
+            detail={"vendor": vendor, "contract_id": contract_id},
+        )
+        return ManualEntryRejected(installment_id)
     # The webhook lock: a payment that read `active` must not later write paid_off
     # over a dispute that committed in between (_settle runs on a stale status).
     lock_contract(session, vendor=vendor, contract_id=contract_id)

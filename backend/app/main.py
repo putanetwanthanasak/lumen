@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.affordability.router import router as affordability_router
 from app.config import Settings, get_settings
 from app.db import describe_db_error
 from app.debts.router import router as debts_router
@@ -45,6 +46,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(disputes_router)
     app.include_router(settings_router)
     app.include_router(installments_router)
+    app.include_router(affordability_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

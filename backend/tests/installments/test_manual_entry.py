@@ -47,6 +47,12 @@ def entry(**overrides: Any) -> dict[str, Any]:
     } | overrides
 
 
+def configured(api: Api, user: str = USER) -> None:
+    """Settings with auto-save off: recording needs an income and budget (Session 13,
+    SETTINGS_REQUIRED), not a saving."""
+    opt_in(api.session, user, enabled=False, consent=False)
+
+
 def post(api: Api, data: Any, user: str | None = USER) -> Any:
     return api.call("POST", "/installments", data, user=user)
 
@@ -68,6 +74,7 @@ def savings_amounts(api: Api) -> list[Decimal]:
 
 
 def test_MI_01_entry_is_recorded_in_the_ledger(api: Api) -> None:
+    configured(api)
     response = post(api, entry())
     assert response.status_code == 201
     [row] = installments(api)
@@ -93,12 +100,14 @@ def test_MI_01_entry_is_recorded_in_the_ledger(api: Api) -> None:
 
 
 def test_MI_01_fee_total_is_zero_when_schedule_is_below_price(api: Api) -> None:
+    configured(api)
     post(api, entry(item_price="1000.00", months=3, monthly_amount="333.33"))
     [row] = installments(api)
     assert row.fee_total == Decimal("0.00")
 
 
 def test_MI_01_item_name_is_optional(api: Api) -> None:
+    configured(api)
     data = entry()
     del data["item_name"]
     assert post(api, data).status_code == 201
@@ -107,6 +116,7 @@ def test_MI_01_item_name_is_optional(api: Api) -> None:
 
 
 def test_MI_01_entry_shows_in_debt_summary(api: Api) -> None:
+    configured(api)
     post(api, entry())
     summary = api.call("GET", "/debts/summary").json()
     assert summary["monthly_total"] == "130.00"
@@ -158,12 +168,12 @@ def test_MI_02_percent_result_zero_saves_nothing(api: Api) -> None:
     assert savings_amounts(api) == []
 
 
+# No settings at all is now 409 SETTINGS_REQUIRED (AF-10), so that case moved there.
 @pytest.mark.parametrize(
-    "settings", [None, {"enabled": False}, {"consent": False}], ids=["none", "off", "no-consent"]
+    "settings", [{"enabled": False}, {"consent": False}], ids=["off", "no-consent"]
 )
-def test_MI_02_no_saving_without_auto_save(api: Api, settings: dict[str, Any] | None) -> None:
-    if settings is not None:
-        opt_in(api.session, **settings)
+def test_MI_02_no_saving_without_auto_save(api: Api, settings: dict[str, Any]) -> None:
+    opt_in(api.session, **settings)
     response = post(api, entry())
     assert response.status_code == 201  # the installment is recorded all the same
     assert response.json()["saved_amount"] == "0.00"
@@ -246,6 +256,8 @@ def test_MI_06_same_request_id_other_fields_conflicts(api: Api, change: dict[str
 
 
 def test_MI_06_same_request_id_from_another_user_is_a_new_entry(api: Api) -> None:
+    configured(api)
+    configured(api, "user_b")
     assert post(api, entry()).status_code == 201
     assert post(api, entry(), user="user_b").status_code == 201
     assert sorted(row.user_id for row in installments(api)) == [USER, "user_b"]
@@ -314,6 +326,7 @@ def test_MI_07_schedule_ending_after_year_9999_rejected(api: Api, month: str, mo
 
 @pytest.mark.parametrize(("month", "months"), [("9999-12", 1), ("9999-01", 12)])
 def test_MI_07_schedule_ending_in_year_9999_accepted(api: Api, month: str, months: int) -> None:
+    configured(api)
     assert post(api, entry(first_due_month=month, months=months)).status_code == 201
 
 
@@ -327,6 +340,7 @@ def test_MI_07_missing_or_bad_user_is_401(api: Api, user: str | None) -> None:
 
 
 def test_MI_08_alert_carries_the_new_monthly_total(api: Api) -> None:
+    configured(api)
     post(api, entry(client_request_id="req-0", item_price="500.00", monthly_amount="50.00"))
     response = post(api, entry())
     assert response.json()["monthly_total"] == "180.00"
@@ -345,6 +359,7 @@ def test_MI_08_alert_carries_the_new_monthly_total(api: Api) -> None:
 
 
 def test_MI_08_alert_without_item_name_starts_with_price(api: Api) -> None:
+    configured(api)
     data = entry(item_price="999.50", monthly_amount="99.95")
     del data["item_name"]
     post(api, data)
@@ -360,6 +375,7 @@ def test_MI_08_alert_without_item_name_starts_with_price(api: Api) -> None:
     ],
 )
 def test_MI_08_cash_alert_titles(api: Api, kind: str, title: str, notification_kind: str) -> None:
+    configured(api)
     post(api, entry(kind=kind))
     [push] = api.push.delivered
     assert push.title == title
@@ -368,6 +384,7 @@ def test_MI_08_cash_alert_titles(api: Api, kind: str, title: str, notification_k
 
 
 def test_MI_08_failed_push_does_not_fail_the_entry(api: Api) -> None:
+    configured(api)
     api.push.fail = True
     response = post(api, entry())
     assert response.status_code == 201
