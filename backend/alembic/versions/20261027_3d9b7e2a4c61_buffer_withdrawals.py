@@ -6,7 +6,8 @@ idempotency key, through a partial UNIQUE index on (user_id, client_request_id).
 A CHECK keeps the id on withdrawals and only on withdrawals.
 
 The app never wrote a withdrawal before this revision, so no existing row lacks
-an id. The downgrade drops the column; withdrawals stay valid without it.
+an id. The downgrade refuses while withdrawals exist: dropping the column would
+leave rows that the CHECK rejects on the next upgrade (review F4).
 
 Revision ID: 3d9b7e2a4c61
 Revises: fe7ea21fcc85
@@ -48,6 +49,11 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.execute(
+        "DO $$ BEGIN IF EXISTS (SELECT 1 FROM savings_transactions "
+        "WHERE type = 'withdrawal') THEN "
+        "RAISE EXCEPTION 'buffer withdrawals exist; cannot downgrade'; END IF; END $$"
+    )
     op.drop_index(INDEX, table_name="savings_transactions")
     op.drop_constraint(op.f(CHECK), "savings_transactions", type_="check")
     op.drop_column("savings_transactions", "client_request_id")
