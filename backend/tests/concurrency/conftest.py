@@ -34,6 +34,7 @@ from app.main import app
 from app.models import (
     Installment,
     Notification,
+    PaydayRun,
     SavingsTransaction,
     UserBalance,
     UserSettings,
@@ -65,6 +66,7 @@ def concurrent_engine(engine: Engine, test_db_url: str) -> Iterator[Engine]:
 
 def _clean_up(eng: Engine, user: str) -> None:
     with eng.begin() as conn:
+        conn.execute(delete(PaydayRun).where(PaydayRun.user_id == user))
         conn.execute(delete(Notification).where(Notification.user_id == user))
         conn.execute(delete(SavingsTransaction).where(SavingsTransaction.user_id == user))
         conn.execute(delete(UserBalance).where(UserBalance.user_id == user))

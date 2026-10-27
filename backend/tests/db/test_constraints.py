@@ -4,7 +4,7 @@
 because some unrelated constraint (e.g. NOT NULL) fired instead.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -13,7 +13,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import Base
+from app.models import PaydayRun
 from tests.db.factories import (
+    USER,
     VENDOR,
     add_auto_save_parents,
     add_event,
@@ -528,3 +530,87 @@ def test_BF_10_same_request_id_twice_for_one_user_rejected(db_session: Session) 
     assert_accepted(db_session, withdrawal())
     assert_accepted(db_session, withdrawal(user_id="user-2"))  # per user
     assert_rejected(db_session, withdrawal(), "uq_savings_transactions_user_client_request_id")
+
+
+# --- PD and LO: payday runs and leftover saving (L67, Session 13) -----------------------
+
+
+def payday_run(**overrides: Any) -> Any:
+    fields: dict[str, Any] = {
+        "user_id": USER,
+        "month": date(2026, 11, 1),
+        "month_total": Decimal("7200.00"),
+        "budget": Decimal("9000.00"),
+        "outcome": "leftover_saved",
+        "amount": Decimal("1800.00"),
+        "buffer_balance": Decimal("1800.00"),
+    }
+    return PaydayRun(**(fields | overrides))
+
+
+def test_PD_one_run_per_user_per_month(db_session: Session) -> None:
+    assert_accepted(db_session, payday_run())
+    assert_accepted(db_session, payday_run(month=date(2026, 12, 1)))
+    assert_accepted(db_session, payday_run(user_id="user-2"))
+    db_session.add(payday_run())
+    with pytest.raises(IntegrityError) as exc:
+        db_session.flush()
+    assert exc.value.orig.diag.constraint_name == "pk_payday_runs"  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "constraint"),
+    [
+        ({"month": date(2026, 11, 2)}, "ck_payday_runs_month_first_day"),
+        # amount 0.00, so only the outcome CHECK is broken, not amount_with_outcome too
+        ({"outcome": "maybe", "amount": Decimal("0.00")}, "ck_payday_runs_outcome_valid"),
+        ({"month_total": Decimal("-0.01")}, "ck_payday_runs_month_total_nonneg"),
+        ({"budget": Decimal("-0.01")}, "ck_payday_runs_budget_nonneg"),
+        ({"buffer_balance": Decimal("-0.01")}, "ck_payday_runs_buffer_balance_nonneg"),
+        ({"amount": Decimal("0.00")}, "ck_payday_runs_amount_with_outcome"),
+        ({"outcome": "safety_net"}, "ck_payday_runs_amount_with_outcome"),
+        (
+            {"outcome": "over_budget", "amount": Decimal("0.00")},
+            "ck_payday_runs_amount_with_outcome",
+        ),
+        ({"outcome": "no_leftover", "amount": Decimal("-1.00")}, "ck_payday_runs_amount_nonneg"),
+    ],
+)
+def test_PD_payday_run_checks(
+    db_session: Session, overrides: dict[str, Any], constraint: str
+) -> None:
+    assert_rejected(db_session, payday_run(**overrides), constraint)
+
+
+def leftover_save(**overrides: Any) -> Any:
+    fields: dict[str, Any] = {
+        "type": "leftover_save",
+        "amount": Decimal("1800.00"),
+        "source_vendor": None,
+        "source_event_id": None,
+        "payday_month": date(2026, 11, 1),
+    }
+    return savings_tx(**(fields | overrides))
+
+
+def test_LO_leftover_save_needs_its_payday_month(db_session: Session) -> None:
+    assert_rejected(
+        db_session,
+        leftover_save(payday_month=None),
+        "ck_savings_transactions_leftover_save_has_payday_month",
+    )
+
+
+def test_LO_only_a_leftover_save_carries_a_payday_month(db_session: Session) -> None:
+    assert_rejected(
+        db_session,
+        withdrawal(payday_month=date(2026, 11, 1)),
+        "ck_savings_transactions_leftover_save_has_payday_month",
+    )
+
+
+def test_LO_one_leftover_save_per_user_per_month(db_session: Session) -> None:
+    assert_accepted(db_session, leftover_save())
+    assert_accepted(db_session, leftover_save(payday_month=date(2026, 12, 1)))
+    assert_accepted(db_session, leftover_save(user_id="user-2"))
+    assert_rejected(db_session, leftover_save(), "uq_savings_transactions_leftover_save_month")

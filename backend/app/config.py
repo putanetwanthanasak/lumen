@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     debug: bool = False
     webhook_secret_shopdemo: SecretStr | None = None
     provider_mode: Literal["mock"] = "mock"
+    # POST /demo/payday exists only when this is true (DEMO_ENDPOINTS_ENABLED). Off by
+    # default: a deployment never exposes it unless someone turns it on on purpose.
+    demo_endpoints_enabled: bool = False
 
     llm_provider: str | None = None
     llm_model_planner: str | None = None

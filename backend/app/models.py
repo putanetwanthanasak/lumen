@@ -73,6 +73,11 @@ class InstallmentStatus(StrEnum):
 class SavingsType(StrEnum):
     AUTO_SAVE = "auto_save"
     WITHDRAWAL = "withdrawal"
+    LEFTOVER_SAVE = "leftover_save"  # L67: what is left of the budget on payday
+
+
+# Types that add to the savings balance; every other type takes from it (INV-1).
+CREDIT_TYPES = (SavingsType.AUTO_SAVE, SavingsType.LEFTOVER_SAVE)
 
 
 class NotificationKind(StrEnum):
@@ -80,6 +85,8 @@ class NotificationKind(StrEnum):
     CASH_WITHDRAWAL = "cash_withdrawal"
     CASH_LOAN = "cash_loan"
     OVER_CAP = "over_cap"
+    PAYDAY_SHORTFALL = "payday_shortfall"  # L67 (a): the month is over budget
+    LEFTOVER_SAVED = "leftover_saved"  # L67 (b): the leftover moved to the buffer
 
 
 class DeliveryStatus(StrEnum):
@@ -280,6 +287,19 @@ class SavingsTransaction(Base):
             unique=True,
             postgresql_where=text("client_request_id IS NOT NULL"),
         ),
+        # L67: a leftover saving, and only one, carries the payday month it was for,
+        # and a user saves the leftover at most once per month.
+        CheckConstraint(
+            "(type = 'leftover_save') = (payday_month IS NOT NULL)",
+            name="leftover_save_has_payday_month",
+        ),
+        Index(
+            "uq_savings_transactions_leftover_save_month",
+            "user_id",
+            "payday_month",
+            unique=True,
+            postgresql_where=text("type = 'leftover_save'"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -294,6 +314,7 @@ class SavingsTransaction(Base):
         UUID(as_uuid=True), ForeignKey("installments.id")
     )
     client_request_id: Mapped[str | None] = mapped_column(Text)
+    payday_month: Mapped[date | None] = mapped_column(Date)  # first day of the month
     created_at: Mapped[datetime] = created_at_column()
 
 
@@ -353,8 +374,48 @@ class UserSettings(Base):
     saving_mode: Mapped[str | None] = mapped_column(Text)
     saving_percent: Mapped[int | None]
     saving_fixed_amount: Mapped[Decimal | None] = mapped_column(Money)
-    # Stored only; the leftover-budget transfer comes in a later session.
+    # L67: on payday, save what is left of the budget (payday.service).
     leftover_saving_enabled: Mapped[bool] = mapped_column(server_default=text("false"))
+
+
+class PaydayOutcome(StrEnum):
+    """What one payday run did (L67)."""
+
+    OVER_BUDGET = "over_budget"  # alerted with the shortfall
+    LEFTOVER_SAVED = "leftover_saved"
+    NO_LEFTOVER = "no_leftover"  # the month total is exactly the budget
+    LEFTOVER_OFF = "leftover_off"  # leftover saving or auto-save is off, or no consent
+    SAFETY_NET = "safety_net"  # saving would take the main account below 500.00
+
+
+class PaydayRun(Base):
+    """One payday run per user per month (L67). The primary key is the idempotency
+    key: a second run of the month, however concurrent, changes nothing. Append-only
+    for the app role, like audit_log."""
+
+    __tablename__ = "payday_runs"
+    __table_args__ = (
+        CheckConstraint("EXTRACT(DAY FROM month) = 1", name="month_first_day"),
+        one_of("outcome", PaydayOutcome),
+        CheckConstraint("month_total >= 0", name="month_total_nonneg"),
+        CheckConstraint("budget >= 0", name="budget_nonneg"),
+        CheckConstraint("buffer_balance >= 0", name="buffer_balance_nonneg"),
+        # The shortfall when over budget, the saving when saved; nothing otherwise.
+        CheckConstraint(
+            "(outcome IN ('over_budget', 'leftover_saved')) = (amount > 0)",
+            name="amount_with_outcome",
+        ),
+        CheckConstraint("amount >= 0", name="amount_nonneg"),
+    )
+
+    user_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    month: Mapped[date] = mapped_column(Date, primary_key=True)
+    month_total: Mapped[Decimal] = mapped_column(Money)
+    budget: Mapped[Decimal] = mapped_column(Money)
+    outcome: Mapped[str] = mapped_column(Text)
+    amount: Mapped[Decimal] = mapped_column(Money)
+    buffer_balance: Mapped[Decimal] = mapped_column(Money)  # after the run
+    created_at: Mapped[datetime] = created_at_column()
 
 
 # The new-debt alert kinds (5e): one per installment, whatever the installment kind.

@@ -4,14 +4,23 @@ from decimal import Decimal
 
 import pytest
 
+from app.affordability.months import Month
 from app.models import InstallmentKind, NotificationKind
 from app.notifications.copy import (
+    LEFTOVER_BODY,
+    LEFTOVER_TITLE,
     MANUAL_BODY,
     MANUAL_TITLES,
+    SHORTFALL_BODY,
+    SHORTFALL_TITLE,
     TEMPLATES,
+    THAI_MONTHS,
     format_baht,
+    leftover_saved_alert,
     manual_entry_alert,
     new_debt_alert,
+    payday_shortfall_alert,
+    thai_month,
 )
 from app.rules.config import load_rules
 
@@ -104,6 +113,7 @@ def test_rule_10_no_em_dash_and_rule_5_no_bank_brand_in_copy() -> None:
     banned = (em_dash, "kbank", "kbtg", "kasikorn", "k plus", "kplus", "shopee", "กสิกร")
     copy = [f"{t.title} {t.body}" for t in TEMPLATES.values()]
     copy += [*MANUAL_TITLES.values(), MANUAL_BODY]
+    copy += [SHORTFALL_TITLE, SHORTFALL_BODY, LEFTOVER_TITLE, LEFTOVER_BODY, *THAI_MONTHS]
     for text in copy:
         assert not [word for word in banned if word in text.lower()]
 
@@ -156,3 +166,54 @@ def test_MI_08_manual_cash_entry_titles(
     )
     assert result[:2] == (notification_kind, title)
     assert set(MANUAL_TITLES) == set(InstallmentKind)
+
+
+# --- Payday copy (L67, Session 13 wording) ----------------------------------------------
+
+
+def month(year: int, number: int) -> Month:
+    return Month(year * 12 + number - 1)
+
+
+@pytest.mark.parametrize(
+    ("year", "number", "text"),
+    [
+        (2026, 1, "ม.ค. 2569"),
+        (2026, 4, "เม.ย. 2569"),
+        (2026, 11, "พ.ย. 2569"),
+        (2026, 12, "ธ.ค. 2569"),
+        (2027, 1, "ม.ค. 2570"),  # the year boundary: Buddhist era moves with it
+        (2027, 2, "ก.พ. 2570"),
+    ],
+)
+def test_PD_thai_short_month_with_buddhist_era_year(year: int, number: int, text: str) -> None:
+    assert thai_month(month(year, number)) == text
+
+
+def test_PD_thai_month_table_has_twelve_distinct_names() -> None:
+    assert len(THAI_MONTHS) == len(set(THAI_MONTHS)) == 12
+    assert THAI_MONTHS[0] == "ม.ค."
+    assert THAI_MONTHS[11] == "ธ.ค."
+
+
+def test_PD_01_shortfall_copy_exact() -> None:
+    kind, title, body = payday_shortfall_alert(
+        month=month(2026, 11),
+        total=Decimal("10500.00"),
+        shortfall=Decimal("1500.00"),
+        buffer=Decimal("820.50"),
+    )
+    assert kind == NotificationKind.PAYDAY_SHORTFALL
+    assert title == "เดือนนี้ค่างวดเกินงบ"
+    assert body == (
+        "เดือน พ.ย. 2569 ค่างวดรวม 10,500 บาท เกินงบ 1,500 บาท คุณมีกันชน 820.50 บาท ย้ายมาช่วยจ่ายได้"
+    )
+
+
+def test_LO_01_leftover_copy_exact() -> None:
+    kind, title, body = leftover_saved_alert(
+        month=month(2026, 12), total=Decimal("7200.00"), leftover=Decimal("1800.00")
+    )
+    assert kind == NotificationKind.LEFTOVER_SAVED
+    assert title == "ออมส่วนที่เหลือจากงบแล้ว"
+    assert body == "เดือน ธ.ค. 2569 ค่างวดรวม 7,200 บาท ต่ำกว่างบ 1,800 บาท ย้ายเข้ากันชนแล้ว"

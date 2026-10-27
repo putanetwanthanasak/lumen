@@ -1,4 +1,4 @@
-"""Thai copy for new-debt alerts (L43, L50; rule 10: no em dashes).
+"""Thai copy for alerts: new debt (L43, L50) and payday (L67). Rule 10: no em dashes.
 
 The wording is fixed by the user (Session 9; the manual-entry copy in Session 12).
 03 section 4 has an older example without the L43 monthly total and without a
@@ -8,6 +8,7 @@ cash version.
 from dataclasses import dataclass
 from decimal import Decimal
 
+from app.affordability.months import Month
 from app.models import InstallmentKind, NotificationKind
 
 CENT = Decimal("0.01")
@@ -111,3 +112,56 @@ def manual_entry_alert(
     if item_name:
         body = f"{item_name} {body}"
     return TEMPLATES[kind].kind, MANUAL_TITLES[kind], body
+
+
+# Thai short month names, January first; the year is shown in the Buddhist era
+# (Session 13, open question 6): November 2026 is "พ.ย. 2569".
+THAI_MONTHS = (
+    "ม.ค.",
+    "ก.พ.",
+    "มี.ค.",
+    "เม.ย.",
+    "พ.ค.",
+    "มิ.ย.",
+    "ก.ค.",
+    "ส.ค.",
+    "ก.ย.",
+    "ต.ค.",
+    "พ.ย.",
+    "ธ.ค.",
+)
+BUDDHIST_ERA_OFFSET = 543
+
+
+def thai_month(month: Month) -> str:
+    return f"{THAI_MONTHS[month.month - 1]} {month.year + BUDDHIST_ERA_OFFSET}"
+
+
+# L67, the user's wording (Session 13).
+SHORTFALL_TITLE = "เดือนนี้ค่างวดเกินงบ"
+SHORTFALL_BODY = (
+    "เดือน {month} ค่างวดรวม {total} บาท เกินงบ {shortfall} บาท คุณมีกันชน {buffer} บาท ย้ายมาช่วยจ่ายได้"
+)
+LEFTOVER_TITLE = "ออมส่วนที่เหลือจากงบแล้ว"
+LEFTOVER_BODY = "เดือน {month} ค่างวดรวม {total} บาท ต่ำกว่างบ {leftover} บาท ย้ายเข้ากันชนแล้ว"
+
+
+def payday_shortfall_alert(
+    *, month: Month, total: Decimal, shortfall: Decimal, buffer: Decimal
+) -> tuple[NotificationKind, str, str]:
+    body = SHORTFALL_BODY.format(
+        month=thai_month(month),
+        total=format_baht(total),
+        shortfall=format_baht(shortfall),
+        buffer=format_baht(buffer),
+    )
+    return NotificationKind.PAYDAY_SHORTFALL, SHORTFALL_TITLE, body
+
+
+def leftover_saved_alert(
+    *, month: Month, total: Decimal, leftover: Decimal
+) -> tuple[NotificationKind, str, str]:
+    body = LEFTOVER_BODY.format(
+        month=thai_month(month), total=format_baht(total), leftover=format_baht(leftover)
+    )
+    return NotificationKind.LEFTOVER_SAVED, LEFTOVER_TITLE, body

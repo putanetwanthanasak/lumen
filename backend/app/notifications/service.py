@@ -1,4 +1,5 @@
-"""New-debt alerts (04 section 6, steps 5e and 9; 05 NT-01..NT-04, RS-03).
+"""Alerts: new debt (04 section 6, steps 5e and 9; 05 NT-01..NT-04, RS-03) and
+payday (L67).
 
 5e runs inside the webhook transaction, so the alert row commits or rolls back with
 the installment. Step 9, the push, runs only after commit: a push can never be
@@ -100,6 +101,17 @@ def _store(
         )
         .returning(Notification.id)
     ).scalar_one_or_none()
+
+
+def store_payday_alert(
+    session: Session, *, user_id: str, kind: NotificationKind, title: str, body: str
+) -> uuid.UUID:
+    """Store a payday alert (L67); not tied to an installment. Once per month is
+    the payday run's own key (payday_runs), so this plain insert is not deduplicated."""
+    row = Notification(user_id=user_id, kind=kind, title=title, body=body)
+    session.add(row)
+    session.flush()
+    return row.id
 
 
 def deliver(session: Session, notification_id: uuid.UUID, push: PushProvider) -> None:

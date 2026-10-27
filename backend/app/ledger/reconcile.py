@@ -1,7 +1,8 @@
 """Invariant checks run inside the transaction before commit (04 step 7, 05 section 3).
 
 A violation means a bug, not bad input: the caller rolls back the whole transaction
-and logs it (RS-02). INV-1, 2, 3, 5 and 6 are checked; INV-4 is enforced by the rule
+and logs it (RS-02). INV-1, 2, 3, 5 and 6 are checked, and L67 (one leftover saving
+per month); INV-4 is enforced by the rule
 engine and INV-7 needs a before-and-after, so tests check both. INV-5 and "auto-save
 user = event user" live here, not in the DB (L51).
 """
@@ -12,6 +13,7 @@ from sqlalchemy import and_, case, func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    CREDIT_TYPES,
     EventType,
     Installment,
     SavingsTransaction,
@@ -44,7 +46,8 @@ def check_user_invariants(session: Session, user_id: str) -> list[str]:
     ledger_total = (
         select(
             func.coalesce(
-                func.sum(case((tx.type == SavingsType.AUTO_SAVE, tx.amount), else_=-tx.amount)),
+                # auto_save and leftover_save add; a withdrawal takes away.
+                func.sum(case((tx.type.in_(CREDIT_TYPES), tx.amount), else_=-tx.amount)),
                 0,
             )
         )
@@ -132,6 +135,18 @@ def check_user_invariants(session: Session, user_id: str) -> list[str]:
     ).first()
     if other_user is not None:
         violations.append("L51")
+
+    # L67: at most one leftover saving per user per month. The partial UNIQUE index
+    # enforces it too; this names it in the RS-02 log.
+    repeated_month = session.execute(
+        select(tx.payday_month)
+        .where(tx.user_id == user_id, tx.type == SavingsType.LEFTOVER_SAVE)
+        .group_by(tx.payday_month)
+        .having(func.count() > 1)
+        .limit(1)
+    ).first()
+    if repeated_month is not None:
+        violations.append("L67")
 
     # INV-6 (L48): never paid more than is owed, late fees included. The DB CHECK
     # paid_le_total enforces it too; this names it in the RS-02 log.

@@ -50,6 +50,13 @@ def move_key(user_id: str, client_request_id: str) -> str:
     return "move-to-main-" + hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def leftover_key(user_id: str, month: str) -> str:
+    """As transfer_key, for one payday month's leftover saving (L67): the same on
+    every attempt for (user, month), so a retry after a lost commit debits once."""
+    canonical = json.dumps(["leftover_save", user_id, month], separators=(",", ":"))
+    return "leftover-save-" + hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def saving_rule(settings: UserSettings) -> SavingRule | None:
     """The user's one rule (L63), or None if they have not set one (a row from before
     L63). The DB CHECKs guarantee the chosen mode's value is present."""
