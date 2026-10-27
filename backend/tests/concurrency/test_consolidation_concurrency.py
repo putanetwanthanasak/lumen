@@ -125,8 +125,15 @@ class ContractProbingBank(MockConsolidationBank):
 
     def decide(self, application: Application) -> Decision:
         for payoff in application.payoffs:
-            key = func.hashtextextended(f"{payoff.vendor}:{payoff.contract_id}", 0)
             with self.race.session() as other, other.begin():
+                # The installment's own vendor, as ledger.lock_contract keys it: the
+                # payoff names the recipient, "unnamed_platform" for a manual entry.
+                vendor, contract_id = other.execute(
+                    select(Installment.vendor, Installment.contract_id).where(
+                        Installment.id == payoff.installment_id
+                    )
+                ).one()
+                key = func.hashtextextended(f"{vendor}:{contract_id}", 0)
                 got = other.execute(select(func.pg_try_advisory_xact_lock(key))).scalar_one()
                 self.held.append(not got)
         return super().decide(application)
