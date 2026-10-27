@@ -589,8 +589,13 @@ def test_CO_13_a_payout_failing_after_commit_is_completed_by_the_retry_once(co: 
     bank = FailsOnce()
     co.use_bank(bank)
 
+    co.api.session.commit()  # the setup survives the rollback below
     with pytest.raises(ConnectionError):
         submit(co, body((a, b)))
+    # The failed request's session closes, which rolls back anything not committed
+    # (get_session). The shared test session must do the same, or a payout made
+    # before the commit would look committed (B92 blind spot).
+    co.api.session.rollback()
     # The approval committed before the payouts: the Ledger already shows it.
     assert count(co.api.session, ConsolidationRequest) == 1
     assert len(bank.payouts) == 0
