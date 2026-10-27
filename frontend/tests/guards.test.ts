@@ -130,7 +130,8 @@ test("UI_26_the_phone_frame_never_scrolls_and_hidden_inputs_stay_in_the_scrollin
     });
   });
   assert.deepEqual(hits, []);
-  assert.ok(inputs >= 3, `found ${inputs} hidden inputs; expected the first due, saving mode and term choices`);
+  // The term choices went with the consolidation screen (part 4).
+  assert.ok(inputs >= 2, `found ${inputs} hidden inputs; expected the first due and saving mode choices`);
   // Only <main> scrolls: the bars around it never shrink.
   const screen = readFileSync(join(SRC, "components", "Screen.tsx"), "utf8");
   assert.match(screen, /<header className="[^"]*shrink-0/);

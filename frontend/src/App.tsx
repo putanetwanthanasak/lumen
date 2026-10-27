@@ -8,10 +8,8 @@ import { DemoPanel } from "./components/DemoPanel.tsx";
 import { Loading } from "./components/ui.tsx";
 import { navigate, useRoute, type Route } from "./router.ts";
 import { BufferScreen } from "./screens/Buffer.tsx";
-import { ConsolidationScreen } from "./screens/Consolidation.tsx";
 import { HomeScreen } from "./screens/Home.tsx";
 import { NotificationsScreen } from "./screens/Notifications.tsx";
-import { PayoffScreen } from "./screens/Payoff.tsx";
 import { MonthsScreen } from "./screens/Months.tsx";
 import { ResultScreen } from "./screens/Result.tsx";
 import { SettingsScreen } from "./screens/Settings.tsx";
@@ -23,8 +21,6 @@ const SCREENS: Record<Route, () => React.JSX.Element> = {
   think: ThinkFirstScreen,
   buffer: BufferScreen,
   alerts: NotificationsScreen,
-  payoff: PayoffScreen,
-  consolidate: ConsolidationScreen,
   result: ResultScreen,
   months: MonthsScreen,
 };

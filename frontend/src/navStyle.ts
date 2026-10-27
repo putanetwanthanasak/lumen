@@ -5,7 +5,26 @@
  * outline only, never filled, so it never looks selected on another screen.
  * Labels never wrap (`whitespace-nowrap`); copy.ts keeps them short.
  */
+import type { Route } from "./router.ts";
+
 const SELECTED_FILL = "bg-leaf-700 text-white";
+
+/**
+ * The three tabs (UI-30): feature 1 ภาพรวมหนี้ (Home), the check in the centre,
+ * feature 2 กันชน. Nothing else: settings and notifications are in the header.
+ */
+export const NAV_TABS = [
+  { route: "home", primary: false },
+  { route: "think", primary: true },
+  { route: "buffer", primary: false },
+] as const satisfies readonly { route: Route; primary: boolean }[];
+
+export type NavTab = (typeof NAV_TABS)[number]["route"];
+
+/** A tab is selected on its own screen and on the screens it opens. */
+export function navActive(tab: NavTab, current: Route): boolean {
+  return tab === current || (tab === "think" && current === "result") || (tab === "home" && current === "months");
+}
 
 /** How far the centre button rises above the nav (Tailwind's 0.25rem steps: 20px). */
 export const NAV_RAISE = "-mt-5";

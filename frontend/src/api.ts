@@ -6,19 +6,17 @@
  * proxy (/api is stripped; to be confirmed when wiring).
  */
 import type {
+  AssistantPlanOut,
+  AssistantSummaryOut,
   BufferOut,
   CodedDetail,
-  ConsolidationIn,
-  ConsolidationOut,
   DebtSummary,
   ManualEntryIn,
+  MonthsOut,
   MoveIn,
   MovedOut,
   NotificationsOut,
   PaydayOut,
-  PayoffAskOut,
-  PayoffPlanOut,
-  MonthsOut,
   PreviewOut,
   RecordedOut,
   SettingsIn,
@@ -164,21 +162,16 @@ export async function markNotificationsRead(): Promise<NotificationsOut> {
   return (await call<NotificationsOut>("POST", "/notifications/read")).body;
 }
 
-// ---- ผู้ช่วยปลดหนี้ and รวมหนี้ (screens 6 and 7, mock only) -----------------------
+// ---- Assistant plan (Home, ภาระผ่อนรายเดือน, the form hint, the buffer) ------------
 
-/** TODO(backend): GET /payoff/plan. */
-export async function getPayoffPlan(): Promise<PayoffPlanOut> {
-  return (await call<PayoffPlanOut>("GET", "/payoff/plan")).body;
+/** GET /assistant/plan (merged backend): every number of the plan; 409 SETTINGS_REQUIRED. */
+export async function getAssistantPlan(): Promise<AssistantPlanOut> {
+  return (await call<AssistantPlanOut>("GET", "/assistant/plan")).body;
 }
 
-/** TODO(backend): POST /payoff/ask. The mock returns a canned example answer. */
-export async function askPayoff(question: string): Promise<PayoffAskOut> {
-  return (await call<PayoffAskOut>("POST", "/payoff/ask", { question })).body;
-}
-
-/** TODO(backend): POST /consolidation/estimate. An example estimate only. */
-export async function estimateConsolidation(request: ConsolidationIn): Promise<ConsolidationOut> {
-  return (await call<ConsolidationOut>("POST", "/consolidation/estimate", request)).body;
+/** TODO(backend, tomorrow): POST /assistant/summary, the AI summary. The mock returns an example. */
+export async function getAssistantSummary(): Promise<AssistantSummaryOut> {
+  return (await call<AssistantSummaryOut>("POST", "/assistant/summary")).body;
 }
 
 // ---- Demo panel -----------------------------------------------------------------
@@ -189,7 +182,7 @@ export async function runPayday(month: string): Promise<{ created: boolean; out:
   return { created: answer.status === 201, out: answer.body };
 }
 
-export type DemoScene = "first_launch" | "persona" | "over_budget";
+export type DemoScene = "first_launch" | "persona" | "over_budget" | "over_budget_now";
 
 /** Mock only: there is no backend endpoint for scenes. */
 export async function setDemoScene(scene: DemoScene): Promise<void> {

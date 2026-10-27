@@ -6,7 +6,7 @@ import { alertAction } from "../src/alertAction.ts";
 test("UI_17_a_shortfall_points_to_the_buffer_while_it_holds_money", () => {
   assert.equal(alertAction("payday_shortfall", "7800.00")?.route, "buffer");
   assert.equal(alertAction("payday_shortfall", "0.01")?.route, "buffer");
-  assert.equal(alertAction("payday_shortfall", "0.00")?.route, "payoff");
+  assert.equal(alertAction("payday_shortfall", "0.00")?.route, "months");
 });
 
 test("UI_17_other_kinds", () => {

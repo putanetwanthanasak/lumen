@@ -7,7 +7,8 @@
  * false nothing here runs.
  */
 import type {
-  ConsolidationIn,
+  AssistantPlanOut,
+  AssistantSummaryOut,
   DebtSummary,
   ErrorBody,
   InstallmentLine,
@@ -39,14 +40,13 @@ import {
   type MockInstallment,
 } from "./persona.ts";
 import { leftoverAlert, manualEntryAlert, shortfallAlert } from "./alerts.ts";
-import { consolidationEstimate, exampleAnswer, payoffPlan } from "./payoff.ts";
+import { assistantPlan, exampleSummary } from "./assistant.ts";
 import { SCENARIOS } from "./persona.ts";
 import { fromSatang, sum, toSatang } from "./satang.ts";
 
 export type MockResponse = { status: number; body: unknown };
 
 const SAFETY_NET = toSatang("500.00");
-const PLAN_MONTHS = 12;
 const PLATFORM_MAX = 60;
 const CONTROL = /[\u0000-\u001f]/; // L55: no control characters in text fields
 
@@ -419,16 +419,6 @@ function suggestedMonthly(path: string): MockResponse {
   return ok(out);
 }
 
-/** The months ahead from this month, no candidate (as GET /debts/months). */
-function monthsAhead(settings: SettingsOut, count: number): MonthRow[] {
-  return assess(
-    settings,
-    store.installments,
-    { first_due_month: monthOf(store.today), months: count, monthly_amount: "0.00" },
-    false,
-  ).months;
-}
-
 /** POST /buffer/move-to-main (L66): idempotent on client_request_id, never blocked. */
 function moveToMain(body: unknown): MockResponse {
   const b = body as { client_request_id?: unknown; amount?: unknown };
@@ -505,27 +495,30 @@ function payday(body: unknown): MockResponse {
   return ok(out, 201);
 }
 
-/** TODO(backend): POST /consolidation/estimate. */
-function consolidation(body: unknown): MockResponse {
-  const b = body as Partial<ConsolidationIn>;
-  if (b.consent !== true) return invalid("consent");
-  if (!isInt(b.months, 1, 120)) return invalid("months");
-  if (!Array.isArray(b.payoffs) || b.payoffs.length === 0) return invalid("payoffs");
-  const chosen: MockInstallment[] = [];
-  for (const p of b.payoffs) {
-    const found = store.installments.find((i) => i.id === p.installment_id && owed(i));
-    if (found === undefined || !isMoney(p.payoff_amount) || toSatang(p.payoff_amount) === 0n) {
-      return invalid("payoffs");
-    }
-    chosen.push(found);
-  }
-  return ok(
-    consolidationEstimate(
-      sum(b.payoffs.map((p) => p.payoff_amount)),
-      b.months,
-      sum(chosen.map((i) => i.monthly_amount)),
-      sum(chosen.map((i) => i.remaining)),
-    ),
+function recordScenario(name: keyof typeof SCENARIOS, firstDue: string): void {
+  const s = SCENARIOS[name];
+  previewOrRecord(
+    {
+      client_request_id: `demo-scene-${name}`,
+      kind: "purchase",
+      item_name: s.item_name,
+      item_price: s.item_price,
+      months: s.months,
+      monthly_amount: s.monthly_amount,
+      first_due_month: firstDue,
+    },
+    true,
+  );
+}
+
+/** GET /assistant/plan over the installments still owed. */
+function planNow(settings: SettingsOut): AssistantPlanOut {
+  return assistantPlan(
+    store.installments.filter(owed),
+    monthOf(store.today),
+    settings.income,
+    settings.monthly_installment_budget,
+    store.bufferBalance,
   );
 }
 
@@ -537,20 +530,14 @@ function demoScene(body: unknown): MockResponse {
   } else if (scene === "persona") {
     resetMock(store.today, PERSONA_SETTINGS);
   } else if (scene === "over_budget") {
+    // Two months over budget from next month: buffer covers it, no consolidation.
     resetMock(store.today, PERSONA_SETTINGS);
-    const s = SCENARIOS.YELLOW;
-    previewOrRecord(
-      {
-        client_request_id: "demo-scene-over-budget",
-        kind: "purchase",
-        item_name: s.item_name,
-        item_price: s.item_price,
-        months: s.months,
-        monthly_amount: s.monthly_amount,
-        first_due_month: addMonths(monthOf(store.today), 1),
-      },
-      true,
-    );
+    recordScenario("YELLOW", addMonths(monthOf(store.today), 1));
+  } else if (scene === "over_budget_now") {
+    // Over budget from this month for 9 months: pause, buffer still short, and
+    // consolidation is worth asking about (L70).
+    resetMock(store.today, PERSONA_SETTINGS);
+    recordScenario("RED", monthOf(store.today));
   } else {
     return invalid("scene");
   }
@@ -602,20 +589,14 @@ export function handle(
     case "POST /notifications/read":
       store.notifications = store.notifications.map((n) => ({ ...n, read: true }));
       return ok(notificationsOut());
-    case "GET /payoff/plan": {
+    case "GET /assistant/plan":
+      return store.settings === null ? SETTINGS_REQUIRED : ok(planNow(store.settings));
+    case "POST /assistant/summary": {
+      // TODO(backend, tomorrow): the AI summary. The mock is a fixed example.
       if (store.settings === null) return SETTINGS_REQUIRED;
-      const rows = monthsAhead(store.settings, PLAN_MONTHS);
-      return ok(
-        payoffPlan(rows, store.settings.monthly_installment_budget, store.bufferBalance, store.installments.filter(owed).length),
-      );
+      const out: AssistantSummaryOut = { text: exampleSummary(planNow(store.settings)), is_example: true };
+      return ok(out);
     }
-    case "POST /payoff/ask": {
-      const question = (body as { question?: unknown }).question;
-      if (typeof question !== "string" || question.trim() === "") return invalid("question");
-      return ok({ answer: exampleAnswer(question), is_example: true });
-    }
-    case "POST /consolidation/estimate":
-      return consolidation(body);
     case "POST /demo/scene":
       return demoScene(body);
     case "GET /buffer": {

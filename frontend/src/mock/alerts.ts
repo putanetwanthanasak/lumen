@@ -39,14 +39,18 @@ export function manualEntryAlert(
   return { kind, title, body: itemName ? `${itemName} ${body}` : body };
 }
 
-/** SHORTFALL_BODY, or SHORTFALL_BODY_NO_BUFFER when the buffer is 0.00. */
+/**
+ * SHORTFALL_BODY, or SHORTFALL_BODY_NO_BUFFER when the buffer is 0.00.
+ * TODO(backend): copy.py SHORTFALL_BODY_NO_BUFFER still says "ลองเปิดผู้ช่วยปลดหนี้";
+ * that screen is gone (Session 14-UI part 4), so the mock points to ภาระผ่อนรายเดือน.
+ */
 export function shortfallAlert(month: string, total: Money, shortfall: Money, buffer: Money, bufferIsEmpty: boolean): Alert {
   const head = `เดือน ${thaiMonth(month)} ค่างวดรวม ${alertBaht(total)} บาท เกินงบ ${alertBaht(shortfall)} บาท`;
   return {
     kind: "payday_shortfall",
     title: "เดือนนี้ค่างวดเกินงบ",
     body: bufferIsEmpty
-      ? `${head} ลองเปิดผู้ช่วยปลดหนี้เพื่อดูแผนได้`
+      ? `${head} ลองดูภาระผ่อนรายเดือนว่าจะกลับมาอยู่ในงบเมื่อไร`
       : `${head} คุณมีกันชน ${alertBaht(buffer)} บาท ย้ายมาช่วยจ่ายได้`,
   };
 }

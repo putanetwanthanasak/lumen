@@ -1,12 +1,14 @@
 /**
- * Screen 2: Home, the debt overview (DESIGN.md section 7.2).
+ * Screen 2: Home, ภาพรวมหนี้ (DESIGN.md section 7.2).
  * This month's total against the budget (tap for every month), the ตรวจสอบก่อนผ่อน
- * button, upcoming over-budget months, the buffer, and every installment grouped by
- * the app the user named. All amounts are API strings.
+ * button, the assistant's summary, upcoming over-budget months, the buffer,
+ * "ควรรวมหนี้ไหม", and every installment grouped by the app the user named. All
+ * amounts are API strings.
  */
-import { getBuffer, getDebtSummary, getMonths, getSettings, USE_MOCK } from "../api.ts";
-import type { BufferOut, DebtSummary, InstallmentLine, MonthsOut, SettingsOut } from "../api-types.ts";
-import { HOME, PAYOFF } from "../copy.ts";
+import { getAssistantPlan, getBuffer, getDebtSummary, getMonths, getSettings, USE_MOCK } from "../api.ts";
+import type { AssistantPlanOut, BufferOut, DebtSummary, InstallmentLine, MonthsOut, SettingsOut } from "../api-types.ts";
+import { HOME } from "../copy.ts";
+import { AiSummaryCard, ConsolidationCard } from "../components/AssistantCards.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Button, Card, ErrorState, Loading, SettingsMissing } from "../components/ui.tsx";
@@ -21,13 +23,19 @@ const UPCOMING_MONTHS = 6; // this month and the next five
 
 type HomeData =
   | { settings: null }
-  | { settings: SettingsOut; summary: DebtSummary; buffer: BufferOut; upcoming: MonthsOut };
+  | { settings: SettingsOut; summary: DebtSummary; buffer: BufferOut; upcoming: MonthsOut; plan: AssistantPlanOut | null };
 
 async function loadHome(): Promise<HomeData> {
   const settings = await getSettings();
   if (settings === null) return { settings: null };
-  const [summary, buffer, upcoming] = await Promise.all([getDebtSummary(), getBuffer(), getMonths(UPCOMING_MONTHS)]);
-  return { settings, summary, buffer, upcoming };
+  const [summary, buffer, upcoming, plan] = await Promise.all([
+    getDebtSummary(),
+    getBuffer(),
+    getMonths(UPCOMING_MONTHS),
+    // The plan's cards are extras: if it fails, Home still shows the debts.
+    getAssistantPlan().catch(() => null),
+  ]);
+  return { settings, summary, buffer, upcoming, plan };
 }
 
 export function HomeScreen() {
@@ -51,11 +59,13 @@ function HomeBody({
   summary,
   buffer,
   upcoming,
+  plan,
 }: {
   settings: SettingsOut;
   summary: DebtSummary;
   buffer: BufferOut;
   upcoming: MonthsOut;
+  plan: AssistantPlanOut | null;
 }) {
   const [thisMonth, ...later] = upcoming.months;
   const overLater = later.filter((m) => m.over_budget);
@@ -101,6 +111,8 @@ function HomeBody({
         <p className="text-center text-body text-ink-muted">{HOME.thinkCtaHelp}</p>
       </div>
 
+      {plan !== null && <AiSummaryCard />}
+
       <Card className="flex flex-col gap-3">
         <h2 className="text-lead font-bold text-ink">{HOME.upcomingTitle}</h2>
         {overLater.length === 0 ? (
@@ -123,19 +135,7 @@ function HomeBody({
         )}
       </Card>
 
-      <button
-        type="button"
-        onClick={() => navigate("payoff")}
-        className="flex min-h-16 cursor-pointer items-center gap-4 rounded-card bg-card p-5 text-left shadow-card hover:bg-leaf-50"
-      >
-        <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-pill bg-leaf-50 text-leaf-700">
-          <Icon name="route" size={28} />
-        </span>
-        <span className="flex flex-col">
-          <span className="text-lead font-bold text-ink">{PAYOFF.entry}</span>
-          <span className="text-body text-ink-muted">{PAYOFF.entryHelp}</span>
-        </span>
-      </button>
+      {plan !== null && <ConsolidationCard consolidation={plan.consolidation} />}
 
       <Card className="flex items-center gap-4">
         <span className="inline-flex h-12 w-12 items-center justify-center rounded-pill bg-leaf-50 text-leaf-700">

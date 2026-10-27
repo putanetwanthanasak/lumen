@@ -1,6 +1,5 @@
 /**
- * The header bell and screen 7's steps (PR B):
- * UI-23: payoff steps per app the user named.
+ * The header bell (PR B). (UI-23, the payoff steps per app, went with screen 7.)
  * UI-24: the persona's alerts use the manual entry copy (never "Not me"), and the
  * unread count comes from the API and drops to 0 once the list is opened.
  */
@@ -8,58 +7,15 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, test } from "node:test";
-import type { InstallmentLine, NotificationsOut } from "../src/api-types.ts";
+import type { NotificationsOut } from "../src/api-types.ts";
 import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
 import { handle, resetMock } from "../src/mock/server.ts";
-import { payoffSteps } from "../src/payoffSteps.ts";
 
 const TODAY = new Date(2026, 9, 27);
 const call = (method: string, path: string, body?: unknown) => handle(method, path, body, "demo-mint");
 const alerts = () => call("GET", "/notifications").body as NotificationsOut;
 
 beforeEach(() => resetMock(TODAY, PERSONA_SETTINGS));
-
-// ---- UI-23 -------------------------------------------------------------------------
-
-const LINE: InstallmentLine = {
-  id: "x",
-  vendor: "manual",
-  contract_id: "manual-x",
-  kind: "purchase",
-  item_name: "",
-  principal: "100.00",
-  monthly_amount: "10.00",
-  months: 10,
-  paid_amount: "0.00",
-  late_fees_accrued: "0.00",
-  remaining: "100.00",
-  status: "active",
-  disputed_at: null,
-  owed: true,
-  platform_name: null,
-};
-
-test("UI_23_payoff_steps_are_listed_per_app_with_its_items", () => {
-  const steps = payoffSteps([
-    { ...LINE, id: "a", item_name: "ตู้เย็น" },
-    { ...LINE, id: "b", item_name: "หูฟังไร้สาย", platform_name: "ShopDemo" },
-    { ...LINE, id: "c", item_name: "", platform_name: "ShopDemo" },
-  ]);
-  assert.deepEqual(steps, [
-    {
-      label: "ShopDemo",
-      steps: [
-        "เปิดแอป ShopDemo",
-        "ไปที่รายการผ่อน หูฟังไร้สาย, รายการผ่อน แล้วเลือก ขอยอดปิดบัญชี",
-        "จดยอดที่แอปแจ้ง แล้วกรอกด้านล่าง",
-      ],
-    },
-    {
-      label: "ไม่ระบุแอป",
-      steps: ["เปิดแอปที่คุณผ่อน ตู้เย็น", "ไปที่รายการผ่อน ตู้เย็น แล้วเลือก ขอยอดปิดบัญชี", "จดยอดที่แอปแจ้ง แล้วกรอกด้านล่าง"],
-    },
-  ]);
-});
 
 // ---- UI-24 -------------------------------------------------------------------------
 

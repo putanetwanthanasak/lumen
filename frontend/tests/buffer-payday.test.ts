@@ -1,21 +1,13 @@
 /**
- * PR B mock endpoints: the buffer move (UI-13, L66), payday (UI-14, L67), the
- * payoff plan and the consolidation estimate (UI-15, mock only). Critical: money
- * and idempotency, so each has a break test in the progress log.
+ * PR B mock endpoints: the buffer move (UI-13, L66) and payday (UI-14, L67).
+ * Critical: money and idempotency, so each has a break test in the progress log.
+ * (UI-15, the old payoff plan and consolidation request, went with screens 6 and 7;
+ * the assistant plan is UI-28 in assistant.test.ts.)
  */
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import type {
-  BufferOut,
-  ConsolidationOut,
-  DebtSummary,
-  MovedOut,
-  NotificationsOut,
-  PaydayOut,
-  PayoffPlanOut,
-} from "../src/api-types.ts";
+import type { BufferOut, MovedOut, NotificationsOut, PaydayOut } from "../src/api-types.ts";
 import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
-import { payoffPlan } from "../src/mock/payoff.ts";
 import { handle, resetMock } from "../src/mock/server.ts";
 
 const TODAY = new Date(2026, 9, 27); // Oct 2026: the persona owes 3,500.00 a month
@@ -93,14 +85,14 @@ test("UI_14_over_budget_alerts_with_the_shortfall_and_the_buffer", () => {
   );
 });
 
-test("UI_14_an_empty_buffer_points_to_the_payoff_assistant", () => {
+test("UI_14_an_empty_buffer_points_to_the_monthly_view", () => {
   call("POST", "/demo/scene", { scene: "over_budget" });
   call("POST", "/buffer/move-to-main", { client_request_id: "all", amount: buffer() });
   payday("2026-11");
   const latest = (call("GET", "/notifications").body as NotificationsOut).notifications[0];
   assert.equal(
     latest?.body,
-    "เดือน พ.ย. 2569 ค่างวดรวม 6,500 บาท เกินงบ 1,500 บาท ลองเปิดผู้ช่วยปลดหนี้เพื่อดูแผนได้",
+    "เดือน พ.ย. 2569 ค่างวดรวม 6,500 บาท เกินงบ 1,500 บาท ลองดูภาระผ่อนรายเดือนว่าจะกลับมาอยู่ในงบเมื่อไร",
   );
 });
 
@@ -135,57 +127,6 @@ test("UI_14_leftover_off_saves_nothing", () => {
   assert.equal(buffer(), "4800.00");
 });
 
-// ---- UI-15: payoff plan and consolidation (mock only) --------------------------------
-
-test("UI_15_payoff_plan_after_an_over_budget_purchase", () => {
-  call("POST", "/demo/scene", { scene: "over_budget" });
-  const plan = call("GET", "/payoff/plan").body as PayoffPlanOut;
-  assert.equal(plan.over_budget_now, false); // October itself is 3,500.00
-  assert.equal(plan.back_in_budget_month, "2027-01");
-  assert.equal(plan.pause_until, "2027-01");
-  assert.equal(plan.pause_beyond_horizon, false);
-  // From Jan 2027 the busiest month is 4,500.00, so 500.00 a month still fits.
-  assert.deepEqual(plan.headroom, { amount: "500.00", from_month: "2027-01" });
-  assert.deepEqual(plan.buffer_plan.shortfalls, [
-    { month: "2026-11", amount: "1500.00" },
-    { month: "2026-12", amount: "1500.00" },
-  ]);
-  assert.equal(plan.buffer_plan.total_shortfall, "3000.00");
-  assert.equal(plan.buffer_plan.covered, true); // 7,800.00 in the buffer
-  assert.equal(plan.consolidation_eligible, true);
-});
-
-test("UI_15_over_budget_through_the_horizon_still_advises_a_pause", () => {
-  // Review B1 F2: no month back in budget within 12 months must not read as "no need to pause".
-  const big = {
-    client_request_id: "big",
-    kind: "purchase",
-    item_price: "132000.00",
-    months: 24,
-    monthly_amount: "5500.00",
-    first_due_month: "2026-11",
-    item_name: "",
-  };
-  assert.equal(call("POST", "/installments", big).status, 201);
-  const plan = call("GET", "/payoff/plan").body as PayoffPlanOut;
-  assert.equal(plan.back_in_budget_month, null);
-  assert.equal(plan.pause_beyond_horizon, true);
-  assert.equal(plan.headroom, null);
-});
-
-test("UI_15_the_explanation_names_the_largest_shortfall", () => {
-  // Review B2 F5: the tightest month is the one over by the most, not the first.
-  const row = (month: string, total: string, over: boolean) => ({
-    month,
-    total,
-    over_budget: over,
-    over_one_third: false,
-  });
-  const rows = [row("2026-11", "5100.00", true), row("2026-12", "6500.00", true), row("2027-01", "4000.00", false)];
-  const plan = payoffPlan(rows, "5000.00", "0.00", 2);
-  assert.match(plan.explanation, /เดือนที่แน่นที่สุดเกินงบ 1,500\.00 บาท/);
-});
-
 test("UI_14_a_cash_entry_gets_the_strong_cash_alert", () => {
   // Review B2 F4, L50: the backend's manual_entry_alert uses the kind's own title and alert kind.
   for (const [kind, title] of [
@@ -207,38 +148,4 @@ test("UI_14_a_cash_entry_gets_the_strong_cash_alert", () => {
     assert.equal(latest?.kind, kind === "purchase" ? "new_debt" : kind);
     assert.equal(latest?.title, title);
   }
-});
-
-test("UI_15_no_consolidation_offer_when_every_month_fits", () => {
-  const plan = call("GET", "/payoff/plan").body as PayoffPlanOut;
-  assert.equal(plan.pause_until, null);
-  assert.equal(plan.pause_beyond_horizon, false);
-  assert.equal(plan.consolidation_eligible, false);
-  assert.deepEqual(plan.headroom, { amount: "1500.00", from_month: "2026-10" });
-});
-
-test("UI_15_consolidation_shows_monthly_and_total_cost_that_agree", () => {
-  const lines = (call("GET", "/debts/summary").body as DebtSummary).installments.filter((l) => l.owed);
-  const res = call("POST", "/consolidation/estimate", {
-    payoffs: lines.map((l) => ({ installment_id: l.id, payoff_amount: l.remaining })),
-    months: 24,
-    consent: true,
-  });
-  assert.equal(res.status, 200);
-  const out = res.body as ConsolidationOut;
-  // 16,000.00 at an assumed 12% flat for 2 years owes 19,840.00; 19,840.00 / 24 is
-  // 826.666..., rounded up to the satang. The total is what the 24 payments add up
-  // to, and the interest is that total minus the principal, so the three agree.
-  assert.equal(out.principal, "16000.00");
-  assert.equal(out.new_monthly_payment, "826.67");
-  assert.equal(out.total_cost, "19840.08");
-  assert.equal(out.total_interest, "3840.08");
-  assert.equal(out.monthly_now, "3500.00");
-  assert.equal(out.remaining_now, "16000.00");
-  assert.equal(out.is_example, true);
-});
-
-test("UI_15_consolidation_needs_consent", () => {
-  const res = call("POST", "/consolidation/estimate", { payoffs: [], months: 24, consent: false });
-  assert.equal(res.status, 422);
 });

@@ -5,7 +5,7 @@
  * the one-third rule is "ธปท. แนะนำ" (guidance), never "ธปท. กำหนด" (L64, L65).
  * Amounts come in already formatted by money.ts; this file never touches money.
  */
-import type { PaydayOutcome, Verdict } from "./api-types.ts";
+import type { ConsolidationReason, PaydayOutcome, Verdict } from "./api-types.ts";
 
 export const APP_NAME = "KidNee";
 export const APP_NAME_TH = "คิดหนี้";
@@ -47,7 +47,6 @@ export const NAV = {
   // Short labels: a quarter of 390px, one line each. Full names stay on titles and buttons.
   think: "ตรวจสอบ",
   buffer: "กันชน",
-  payoff: "ปลดหนี้",
   alerts: "แจ้งเตือน",
   alertsUnread: (count: number) => `แจ้งเตือน ยังไม่ได้อ่าน ${count} รายการ`,
   settings: "ตั้งค่า",
@@ -194,7 +193,7 @@ export const THINK = {
   savingTitle: "ถ้าบันทึก จะกันเงินเข้ากันชน",
   savingNone: "ถ้าบันทึก ครั้งนี้จะไม่ได้กันเงินเข้ากันชน",
   savingNoneHelp: "เช่น รายการเงินสด ปิดการออมอัตโนมัติ หรือเงินในบัญชีหลักจะเหลือน้อยกว่า 500 บาท",
-  seePayoff: "ดูผู้ช่วยปลดหนี้",
+  seeMonths: "ดูภาระผ่อนรายเดือน",
   noDraft: "ยังไม่มีรายการที่ประเมิน กรอกข้อมูลก่อนนะ",
   toForm: "ไปกรอกข้อมูล",
 };
@@ -244,80 +243,54 @@ export const PAYDAY_OUTCOME: Record<PaydayOutcome, string> = {
 export const ALERTS = {
   title: "แจ้งเตือน",
   empty: "ยังไม่มีแจ้งเตือน ทุกครั้งที่มีหนี้ใหม่ KidNee จะบอกทันที",
-  openPayoff: "เปิดผู้ช่วยปลดหนี้",
+  openMonths: "ดูภาระผ่อนรายเดือน",
   openBuffer: "ดูกันชน",
   unread: "ใหม่",
 };
 
-export const PAYOFF = {
-  title: "ผู้ช่วยปลดหนี้",
-  entry: "ผู้ช่วยปลดหนี้",
-  entryHelp: "ดูแผนว่าเมื่อไหร่จะกลับมาอยู่ในงบ",
-  exampleTag: "ตัวอย่าง",
-  backInBudgetTitle: "กลับมาอยู่ในงบ",
-  backInBudget: (month: string) => `ตั้งแต่ ${month} ค่างวดรวมทุกเดือนจะอยู่ในงบ`,
-  allInBudget: "ตอนนี้ทุกเดือนอยู่ในงบแล้ว",
-  notInHorizon: "ใน 12 เดือนข้างหน้ายังมีเดือนที่เกินงบ",
-  pauseTitle: "ชะลอการผ่อนใหม่",
-  pause: (month: string) => `ลองยังไม่เพิ่มรายการผ่อนใหม่จนถึง ${month}`,
-  noPause: "ไม่จำเป็นต้องชะลอ แต่กด คิดก่อน ทุกครั้งที่จะผ่อนเพิ่ม",
-  pauseBeyond: "ลองยังไม่เพิ่มรายการผ่อนใหม่ เพราะ 12 เดือนข้างหน้ายังมีเดือนที่เกินงบ",
-  headroomTitle: "ผ่อนเพิ่มได้อีกเท่าไหร่",
-  headroom: (amount: string, month: string) => `ผ่อนเพิ่มได้ไม่เกินเดือนละ ${amount} ตั้งแต่ ${month}`,
-  noHeadroom: "ตอนนี้ยังไม่มีที่ว่างในงบสำหรับการผ่อนเพิ่ม",
-  bufferTitle: "ใช้กันชนช่วย",
-  bufferShort: (month: string, amount: string) => `${month} เกินงบ ${amount}`,
-  bufferTotal: (amount: string) => `รวมส่วนที่เกิน ${amount}`,
-  bufferCovered: (amount: string) => `กันชน ${amount} พอช่วยจ่ายส่วนที่เกินได้`,
-  bufferNotCovered: (amount: string) => `กันชน ${amount} ยังไม่พอ ลองชะลอการผ่อนใหม่ร่วมด้วย`,
-  bufferNone: "ไม่มีเดือนที่เกินงบ ยังไม่ต้องใช้กันชน",
-  aiTitle: "คำอธิบายจากผู้ช่วย",
-  aiNote: "ตัวอย่างข้อความในต้นแบบ ยังไม่ได้สร้างจาก AI จริง",
-  askLabel: "ถามผู้ช่วย",
-  askPlaceholder: "เช่น ควรใช้กันชนเดือนไหน",
-  ask: "ถาม",
-  asking: "กำลังคิด...",
-  askEmpty: "พิมพ์คำถามก่อนนะ",
-  askFailed: "ถามไม่สำเร็จ ลองอีกครั้งได้เลย",
-  answerNote: "ตัวอย่างคำตอบในต้นแบบ",
-  consolidate: "ขอรวมหนี้",
-  consolidateHelp: "ดูตัวอย่างว่าถ้ารวมหลายรายการเป็นก้อนเดียว ค่างวดและต้นทุนรวมเป็นเท่าไหร่",
-};
-
-export const CONSOLIDATE = {
-  title: "ขอรวมหนี้",
-  exampleBanner: "ตัวอย่างการประมาณเท่านั้น ไม่ใช่ข้อเสนอสินเชื่อ",
-  stepsTitle: "ขอยอดปิดบัญชีจากแต่ละแอป",
-  stepsFor: (app: string | null, items: string) => [
-    app === null ? `เปิดแอปที่คุณผ่อน ${items}` : `เปิดแอป ${app}`,
-    `ไปที่รายการผ่อน ${items} แล้วเลือก ขอยอดปิดบัญชี`,
-    "จดยอดที่แอปแจ้ง แล้วกรอกด้านล่าง",
-  ],
-  payoffTitle: "ยอดปิดบัญชีที่แอปแจ้ง",
-  include: "รวมรายการนี้",
-  payoffLabel: (name: string) => `ยอดปิดบัญชี ${name}`,
-  remainingHint: (amount: string) => `คงเหลือตามแผนผ่อน ${amount}`,
-  monthsTitle: "ผ่อนก้อนใหม่กี่เดือน",
-  monthsOption: (months: number) => `${months} เดือน`,
-  consent: "ฉันเข้าใจว่านี่เป็นตัวอย่างการประมาณ และยินยอมให้ใช้ยอดที่กรอกเพื่อคำนวณ",
-  consentError: "ต้องยินยอมก่อนดูตัวอย่าง",
-  pickOne: "เลือกอย่างน้อยหนึ่งรายการ",
-  estimate: "ดูตัวอย่างการประมาณ",
-  estimating: "กำลังคำนวณ...",
-  resultTitle: "ตัวอย่างการประมาณ",
+/**
+ * The assistant plan's parts (GET /assistant/plan), spread over the screens:
+ * ภาระผ่อนรายเดือน, the form hint, the buffer card and Home's consolidation card.
+ * Every number is the API's; these only put words around them (assistantText.ts).
+ */
+export const ASSIST = {
+  backInBudget: (month: string) => `กลับมาอยู่ในงบเดือน ${month}`,
+  allInBudget: "ทุกเดือนอยู่ในงบ",
+  pauseNow: "ตอนนี้ยังไม่ควรผ่อนเพิ่ม",
+  safeNew: (month: string, amount: string) => `ตั้งแต่ ${month} ผ่อนเพิ่มได้ไม่เกินเดือนละ ${amount}`,
+  safeNone: (month: string) => `ตั้งแต่ ${month} ยังผ่อนเพิ่มไม่ได้โดยไม่เกินงบ`,
+  safeTerm: (months: number) => `(คิดจากแผนผ่อน ${months} เดือน ไม่เกินงบ และไม่เกิน 1 ใน 3 ของรายได้)`,
+  formHint: (amount: string, month: string) => `ผ่อนเพิ่มได้ไม่เกินเดือนละ ${amount} ตั้งแต่ ${month}`,
+  bufferTitle: "ถ้าเดือนไหนเกินงบ",
+  bufferNone: "ทุกเดือนอยู่ในงบ ยังไม่ต้องใช้กันชน",
+  shortfall: (amount: string) => `ค่างวดส่วนที่เกินงบรวมทุกเดือน ${amount}`,
+  covered: (balance: string) => `กันชน ${balance} พอจ่ายส่วนที่เกินได้ทั้งหมด`,
+  stillShort: (balance: string, short: string) => `กันชน ${balance} ยังขาดอีก ${short}`,
+  consolidateTitle: "ควรรวมหนี้ไหม",
+  notWorth: "ตอนนี้ยังไม่คุ้มที่จะรวมหนี้",
+  reason: {
+    NOT_NEEDED: "ยังไม่มีช่วงที่ค่างวดรวมเกินงบติดกัน 3 เดือนขึ้นไป",
+    OVERDUE_DEBT: "มีรายการที่ค้างชำระอยู่ ควรจัดการรายการนั้นก่อน",
+    DISPUTED_DEBT: "มีรายการที่คุณแจ้งว่าไม่ใช่ของคุณ จึงยังรวมไม่ได้",
+    ESTIMATE_TOO_LARGE: "ยอดรวมสูงเกินกว่าที่จะประมาณได้",
+    PAYMENT_ABOVE_BUDGET: "ถึงรวมแล้ว ค่างวดใหม่ก็ยังเกินงบ",
+    ELIGIBLE: "",
+  } satisfies Record<ConsolidationReason, string>,
+  worth: "รวมหนี้อาจช่วยให้ทุกเดือนกลับมาอยู่ในงบ",
+  exampleTag: "ตัวอย่างการประมาณ",
   newMonthly: "ค่างวดใหม่ต่อเดือน",
   totalCost: "ต้นทุนรวมทั้งหมด",
-  interest: (amount: string) => `ในนี้เป็นดอกเบี้ย ${amount}`,
-  rateNote: (rate: string, months: number) => `คิดจากดอกเบี้ยคงที่สมมติ ${rate}% ต่อปี ผ่อน ${months} เดือน`,
-  nowTitle: "เทียบกับตอนนี้",
-  nowMonthly: (amount: string) => `ค่างวดของรายการที่เลือก ${amount} ต่อเดือน`,
-  nowRemaining: (amount: string) => `คงเหลือตามแผนผ่อนเดิม ${amount}`,
-  compareNote: "ค่างวดต่อเดือนอาจลดลง แต่ต้นทุนรวมอาจสูงขึ้น ดูทั้งสองตัวเลขก่อนตัดสินใจ",
-  notEligible: "ตอนนี้ยังไม่จำเป็นต้องรวมหนี้ เพราะทุกเดือนอยู่ในงบ",
-  demoFill: "กรอกยอดตัวอย่าง",
-  again: "ลองใหม่",
-  failed: "คำนวณไม่สำเร็จ ลองอีกครั้งได้เลย",
-  exampleTag: "ตัวอย่าง",
+  terms: (months: number, rate: string) => `ผ่อน ${months} เดือน ดอกเบี้ยสมมติ ${rate}% ต่อปี (ไม่ใช่อัตราจริง)`,
+  extraCost: (extra: string, now: string) => `จ่ายรวมมากกว่าแผนเดิม ${extra} (ตอนนี้คงเหลือ ${now})`,
+  interested: "สนใจรวมหนี้",
+  bankWillCall: "ธนาคารจะติดต่อกลับเพื่อพิจารณา",
+  bankDecides: "ธนาคารพิจารณาจากข้อมูลของธนาคารเอง ตัวเลขนี้ยังไม่ใช่ข้อเสนอ",
+  aiTitle: "ผู้ช่วย KidNee สรุปให้ฟัง",
+  aiHelp: "สรุปภาพรวมหนี้ กันชน และการรวมหนี้ในไม่กี่ประโยค",
+  aiButton: "สรุปให้ฟัง",
+  aiLoading: "กำลังสรุป...",
+  aiExample: "ตัวอย่าง",
+  aiFailed: "สรุปไม่สำเร็จ ลองอีกครั้งได้เลย",
 };
 
 export const DEMO = {
@@ -336,5 +309,6 @@ export const DEMO = {
   sceneFirst: "เริ่มใหม่: ยังไม่ตั้งค่า",
   scenePersona: "มิ้นท์: ตั้งค่าแล้ว",
   sceneOver: "มิ้นท์: มีเดือนเกินงบ",
+  sceneOverNow: "มิ้นท์: เกินงบตั้งแต่เดือนนี้",
   done: "เปลี่ยนฉากแล้ว",
 };

@@ -17,8 +17,7 @@ export type IconName =
   | "spark"
   | "edit"
   | "down"
-  | "calendar"
-  | "route";
+  | "calendar";
 
 const PATHS: Record<IconName, string> = {
   check: "M20 6 9 17l-5-5",
@@ -32,11 +31,10 @@ const PATHS: Record<IconName, string> = {
   back: "M15 18 9 12l6-6",
   info: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-11v6m0-9v.5",
   wallet: "M3 7a2 2 0 0 1 2-2h13v4M3 7v10a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2Zm13 7h.5",
-  spark: "M12 3v4m0 10v4M3 12h4m10 0h4M6 6l2.5 2.5m7 7L18 18M6 18l2.5-2.5m7-7L18 6",
+  spark: "M10 3.5l1.6 4.9 4.9 1.6-4.9 1.6L10 16.5l-1.6-4.9L3.5 10l4.9-1.6L10 3.5ZM18 14l.8 2.2 2.2.8-2.2.8L18 20l-.8-2.2-2.2-.8 2.2-.8L18 14Z",
   edit: "M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4",
   down: "m6 9 6 6 6-6",
   calendar: "M4 6h16v14H4V6Zm0 4h16M8 3v4m8-4v4m-7 7 2 2 4-4",
-  route: "M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm12-12a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 17h7.5a3.5 3.5 0 0 0 0-7h-7a2.5 2.5 0 0 1 0-5H16",
 };
 
 type Props = { name: IconName; size?: number; className?: string; label?: string };

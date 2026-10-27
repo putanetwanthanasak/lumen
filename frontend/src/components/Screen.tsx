@@ -9,7 +9,15 @@ import { navigate, type Route } from "../router.ts";
 import { DemoButton } from "./DemoPanel.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { LogoBean } from "./Logo.tsx";
-import { navIconClass, navLabelClass, SCROLL_PAD_WITH_NAV, SCROLL_PAD_WITHOUT_NAV } from "../navStyle.ts";
+import {
+  NAV_TABS,
+  navActive,
+  navIconClass,
+  navLabelClass,
+  SCROLL_PAD_WITH_NAV,
+  SCROLL_PAD_WITHOUT_NAV,
+  type NavTab,
+} from "../navStyle.ts";
 import { useLoad } from "../useLoad.ts";
 
 type ScreenProps = {
@@ -103,26 +111,21 @@ export function Footer() {
   return <p className="mt-8 text-center text-caption text-ink-muted">{FOOTER}</p>;
 }
 
-type NavItem = { route: Route; label: string; icon: IconName; primary?: boolean };
-
-// Settings and notifications live in the header. ตรวจสอบก่อนผ่อน is the most prominent item.
-const NAV_ITEMS: NavItem[] = [
-  { route: "home", label: NAV.home, icon: "home" },
-  { route: "think", label: NAV.think, icon: "think", primary: true },
-  { route: "buffer", label: NAV.buffer, icon: "shield" },
-  { route: "payoff", label: NAV.payoff, icon: "route" },
-];
+// The tabs and which is selected live in navStyle.ts (UI-30); here only their look.
+const NAV_LOOK: Record<NavTab, { label: string; icon: IconName }> = {
+  home: { label: NAV.home, icon: "home" },
+  think: { label: NAV.think, icon: "think" },
+  buffer: { label: NAV.buffer, icon: "shield" },
+};
 
 function BottomNav({ current }: { current: Route }) {
   return (
     <nav aria-label={NAV.menu} className="shrink-0 border-t border-line bg-card">
       <ul className="flex">
-        {NAV_ITEMS.map((item) => {
-          const active =
-            item.route === current ||
-            (item.route === "think" && current === "result") ||
-            (item.route === "payoff" && current === "consolidate");
-          const primary = item.primary === true;
+        {NAV_TABS.map((tab) => {
+          const item = { ...tab, ...NAV_LOOK[tab.route] };
+          const active = navActive(tab.route, current);
+          const primary = tab.primary;
           return (
             <li key={item.route} className="min-w-0 flex-1">
               <a

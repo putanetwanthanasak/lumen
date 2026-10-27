@@ -143,6 +143,9 @@ function Sheet({ onClose }: { onClose: () => void }) {
             <Button variant="ghost" onClick={() => void scene("over_budget")} disabled={busy}>
               {DEMO.sceneOver}
             </Button>
+            <Button variant="ghost" onClick={() => void scene("over_budget_now")} disabled={busy}>
+              {DEMO.sceneOverNow}
+            </Button>
           </section>
         )}
       </div>

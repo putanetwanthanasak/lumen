@@ -6,8 +6,19 @@ source of truth for `frontend/`. Copy lives in `frontend/src/copy.ts`, tokens in
 explains them and must stay in step with them.
 
 Status (2026-10-27): screens 1 to 3, the result screen and the monthly view are
-built (PR A). Screens 4 to 7, the header bell and the Demo panel are PR B. All data is mocked in `src/mock/` until the next backend
+built (PR A). The buffer, the header bell, the assistant plan's parts and the Demo
+panel are PR B. All data is mocked in `src/mock/` until the next backend
 session sets `USE_MOCK = false` in `src/api.ts`.
+
+**Structure (user decision, 2026-10-27, final): two features and one card.**
+- **Feature 1, ภาพรวมหนี้:** Home, recording, ตรวจสอบก่อนผ่อน, ภาระผ่อนรายเดือน.
+- **Feature 2, กันชน:** saving on each installment, leftover saving on payday, and
+  using the buffer when a month is over budget.
+- **The "ควรรวมหนี้ไหม" card** on Home.
+There is no payoff assistant screen and no consolidation request flow (both
+were removed in part 4). Their parts moved: the plan's months and safe amount go to
+ภาระผ่อนรายเดือน and the form, the buffer plan goes to the buffer screen, and the
+consolidation estimate goes to the Home card. The AI summary is also a Home card.
 
 ---
 
@@ -30,6 +41,9 @@ not any bank's service):
 3. Saves a little into a **buffer** each time an installment is recorded, so a
    heavy month can be covered.
 4. Alerts on every new debt and on payday when a month is over budget.
+5. Says when the months are back in budget, how much more fits, and whether
+   consolidating is worth asking the bank about (`GET /assistant/plan`; every
+   number comes from code, never from AI: L69, L70).
 
 **Principle: advice only, never a block.** KidNee never stops a purchase and never
 holds the user's money. Recording is always allowed, whatever the verdict.
@@ -222,10 +236,12 @@ Tones `ok`, `warn`, `risk`, `info`, each with its own icon. Connection errors us
   with a visible focus ring). Nothing outside the frame hides a scrollbar (UI-22).
 - **Action bar** (optional): fixed under the body, above the nav (the result
   screen's บันทึก / ยังไม่ซื้อ).
-- **Bottom nav:** short labels, one line each at 390px: หน้าหลัก, **ตรวจสอบ**
-  (centre, a raised 56px round button), กันชน, ปลดหนี้ (a route icon, never one that
-  could read as loading; the last two join in PR B). The full names stay on screen
-  titles and Home's big button. Settings and notifications are not tabs.
+- **Bottom nav: three tabs**, one line each at 390px: หน้าหลัก (feature 1),
+  **ตรวจสอบ** (centre, a raised 56px round button), กันชน (feature 2). The list and
+  which tab is selected live in `navStyle.ts` (`NAV_TABS`, `navActive`, UI-30):
+  หน้าหลัก stays selected on ภาระผ่อนรายเดือน, ตรวจสอบ on the result. The full names
+  stay on screen titles and Home's big button. Settings and notifications are not
+  tabs.
   - **Selected is the same for every tab:** a filled green icon background and a bold
     green label (`navStyle.ts`, UI-25). The centre button is larger but, when not
     selected, only a green outline on white, never filled.
@@ -242,8 +258,8 @@ Tones `ok`, `warn`, `risk`, `info`, each with its own icon. Connection errors us
 - On a desktop the app sits in a 390x844 phone frame centred on the `desk`
   background. Below 640px wide it fills the screen.
 - Hash routes, no router package (`src/router.ts`): `#/settings`, `#/home`,
-  `#/months`, `#/think`, `#/result` (PR B adds `#/buffer`, `#/alerts`, `#/payoff`,
-  `#/consolidate`).
+  `#/months`, `#/think`, `#/result` (PR B adds `#/buffer` and `#/alerts`). There is
+  no `#/payoff` or `#/consolidate` (UI-30).
 - With no route, a user without settings starts on screen 1; otherwise Home.
 
 ## 7. Screens and their states
@@ -274,17 +290,30 @@ Every screen has the footer and handles **loading** (skeleton), **error**
    "ดูทุกเดือน ›", the total, "จากงบ ...", a progress bar, and "เดือนนี้ยังอยู่ในงบ" /
    "เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้" with an icon (from the API's `over_budget`).
 3. **ตรวจสอบก่อนผ่อน**, the 56px primary button, with a one-line hint.
-4. **Upcoming over-budget months** (the next 5), or "5 เดือนข้างหน้ายังไม่มีเดือนไหนเกินงบ".
-5. **ผู้ช่วยปลดหนี้** card (PR B): a route icon (not a sparkle, which read as a
-   loading spinner), "ดูแผนว่าเมื่อไหร่จะกลับมาอยู่ในงบ".
-6. **Buffer card:** balance and "พอจ่ายค่างวดได้ประมาณ N เดือน".
-7. **Installments**, grouped by the app the user named (apps in the order they
+4. **ผู้ช่วย KidNee สรุปให้ฟัง** (PR B, `AssistantCards.tsx`): the sparkle icon (a
+   four-point star and a small one), "สรุปให้ฟัง" shows a short Thai summary of
+   the back-in-budget month, the safe amount, the buffer plan and the consolidation
+   card, one point per line, in a dashed box tagged "ตัวอย่าง". Mock text now
+   (`POST /assistant/summary`, TODO: real AI tomorrow); it only puts words around
+   the plan's numbers.
+5. **Upcoming over-budget months** (the next 5), or "5 เดือนข้างหน้ายังไม่มีเดือนไหนเกินงบ".
+6. **ควรรวมหนี้ไหม** (PR B, from the plan's `consolidation`, L70):
+   - not eligible: "ตอนนี้ยังไม่คุ้มที่จะรวมหนี้" and the reason in plain words
+     (`ASSIST.reason`: fewer than 3 months over in a row, an overdue or disputed
+     debt, too large to estimate, or the new payment would still be over budget);
+   - eligible: tagged "ตัวอย่างการประมาณ"; the new monthly payment AND the total
+     cost side by side, the term and the example rate "(ไม่ใช่อัตราจริง)", and how much
+     more it costs than the current plans. "สนใจรวมหนี้" only shows "ธนาคารจะติดต่อกลับ
+     เพื่อพิจารณา" with "ตัวเลขนี้ยังไม่ใช่ข้อเสนอ": no form and no request (UI-31).
+7. **Buffer card:** balance and "พอจ่ายค่างวดได้ประมาณ N เดือน".
+8. **Installments**, grouped by the app the user named (apps in the order they
    first appear, then "ไม่ระบุแอป"): name, months, amount per month, remaining.
    Lines the API marks as not owed (paid off, cancelled) are listed under "ไม่นับในยอดต่อเดือน", so the rows above always add up to the total. A
    status chip says "ผ่อนครบแล้ว", "ยกเลิกแล้ว", "คุณแจ้งว่าไม่ใช่รายการของคุณ" or
    "ยกเลิกแล้ว หลังจากคุณแจ้งว่าไม่ใช่รายการของคุณ" (L59(3): the report is never lost).
    Empty: "ยังไม่มีรายการผ่อน ก่อนผ่อนชิ้นต่อไป กด ตรวจสอบก่อนผ่อน ได้เลย".
-- States: loading, error, settings missing, empty list.
+- States: loading, error, settings missing, empty list. If the plan fails to load,
+  Home still shows; only cards 4 and 6 are left out.
 
 ### 7.2b ภาระผ่อนรายเดือน (`#/months`)
 - Every month from this month to the last month with an installment, from
@@ -294,10 +323,19 @@ Every screen has the footer and handles **loading** (skeleton), **error**
   "เกินงบ" (triangle) or "เกินเกณฑ์ที่ ธปท. แนะนำ" (octagon; wins over เกินงบ).
 - Tap a month (a button with `aria-expanded`) to list its installments: name, app
   if given, monthly amount, "งวดที่ x จาก y", and "งวดสุดท้าย" on its last month.
+- **On top, the plan card** (`GET /assistant/plan`, PR B): "กลับมาอยู่ในงบเดือน
+  {back_in_budget_month}" (or "ทุกเดือนอยู่ในงบ"), then "ตั้งแต่ {safe_new_from}
+  ผ่อนเพิ่มได้ไม่เกินเดือนละ {safe_new_monthly}". When this month is over budget
+  (`pause_until` set), the line starts "ตอนนี้ยังไม่ควรผ่อนเพิ่ม" and the card gets a
+  warn border. A caption says the amount is for a 12-month plan, within the budget
+  and within a third of income. No ranking of which debt to pay first (L69).
 - No money arithmetic: totals, flags and instalment numbers come from the API.
 - States: loading, error, settings missing, no months.
 
 ### 7.3 Screen 3: ตรวจสอบก่อนผ่อน, the form (`#/think`)
+0. **Hint** under the intro (PR B, from the plan): "ผ่อนเพิ่มได้ไม่เกินเดือนละ
+   {safe_new_monthly} ตั้งแต่ {safe_new_from}", or "ตั้งแต่ ... ยังผ่อนเพิ่มไม่ได้โดยไม่เกินงบ"
+   when it is 0.00. Advice only; nothing is blocked. Left out if the plan fails.
 1. Fields: kind, item name (optional), **แอปที่ผ่อน** (optional free text, at most
    60 characters, placeholder "เช่น ShopDemo"; never a list of real platforms,
    rule 5), price, months, monthly amount, first due month.
@@ -327,7 +365,7 @@ Every screen has the footer and handles **loading** (skeleton), **error**
 4. "ถ้าบันทึก จะกันเงินเข้ากันชน" and the amount (`saving_if_recorded`), or why
    nothing is saved this time.
 5. Action bar: **บันทึก** (primary, wider) and **ยังไม่ซื้อ** (secondary), always
-   enabled (advice only). On RED, a link "ดูผู้ช่วยปลดหนี้" under them (PR B).
+   enabled (advice only). On RED, a link "ดูภาระผ่อนรายเดือน" under them (PR B).
 6. **บันทึก** sends the previewed body with the same `client_request_id`, so a
    retry records once. Recorded: a check, "บันทึกรายการผ่อนแล้ว", the new monthly
    total, the amount saved (or "ครั้งนี้ไม่ได้กันเงินเข้ากันชน"), and the verdict
@@ -335,8 +373,13 @@ Every screen has the footer and handles **loading** (skeleton), **error**
 7. **ยังไม่ซื้อ**: "โอเค ยังไม่ซื้อ ไว้ค่อยคิดใหม่ได้เสมอ", nothing is written.
 - Opened without a preview (a reload): "ยังไม่มีรายการที่ประเมิน กรอกข้อมูลก่อนนะ" and "ไปกรอกข้อมูล".
 
-### 7.4 Screen 4: Buffer (`#/buffer`, `screens/Buffer.tsx`)
+### 7.4 Screen 4: Buffer, feature 2 (`#/buffer`, `screens/Buffer.tsx`)
 - Balance, "พอจ่ายค่างวดได้ประมาณ N เดือน" (or nothing owed), monthly total.
+- **"ถ้าเดือนไหนเกินงบ", the buffer plan** (the plan's `buffer_plan`): "ค่างวดส่วนที่
+  เกินงบรวมทุกเดือน {shortfall}", then "กันชน {balance} พอจ่ายส่วนที่เกินได้ทั้งหมด"
+  (ok) or "กันชน {balance} ยังขาดอีก {still_short}" (warn); with no month over,
+  "ทุกเดือนอยู่ในงบ ยังไม่ต้องใช้กันชน". It reloads after a move, so it always matches
+  the balance above it.
 - "ย้ายกลับบัญชีหลัก": an amount and one button, always enabled (L66: the user's
   own action, never automatic, never blocked). One `client_request_id` per typed
   amount, reused on a retry, so a double tap moves the money once (UI-13).
@@ -351,7 +394,7 @@ Every screen has the footer and handles **loading** (skeleton), **error**
   that were unread keep a "ใหม่" tag while the screen is open (UI-24).
 - Newest first; icon per kind; the text is the backend's (`notifications/copy.py`,
   copied verbatim into `mock/alerts.ts`). A payday shortfall links to the buffer
-  while it holds money, else to the payoff assistant (UI-17). Empty:
+  while it holds money, else to ภาระผ่อนรายเดือน (UI-17). Empty:
   "ยังไม่มีแจ้งเตือน".
 - A recorded cash entry (`cash_withdrawal`, `cash_loan`) gets its own title and the
   strong (risk-coloured) alert, as the backend sends it (L50).
@@ -359,38 +402,22 @@ Every screen has the footer and handles **loading** (skeleton), **error**
   entry copy (L62). The webhook's "Not me" sentence never appears: manual entries
   have no "Not me" (L68), and no frontend source contains it (UI-24).
 
-### 7.6 Screen 6: Payoff assistant (`#/payoff`, `screens/Payoff.tsx`, MOCK)
-- Four rows from `PayoffPlanOut`: back-in-budget month, pause advice, headroom
-  "ผ่อนเพิ่มได้ไม่เกินเดือนละ X ตั้งแต่ Y", and the buffer plan (each short month,
-  the total, whether the buffer covers it).
-- An explanation box with a dashed "ตัวอย่าง" tag: the text is built from the plan's
-  numbers in the mock, labelled as a prototype example, never as real AI output. A
-  question box (`POST /payoff/ask`) answers with an example too.
-- When some month is over budget through the whole 12-month horizon,
-  `pause_beyond_horizon` is true and the pause row says so (never "no need to pause").
-- "ขอรวมหนี้" only when `consolidation_eligible` (some month is over budget).
-
-### 7.7 Screen 7: Consolidation request (`#/consolidate`, `screens/Consolidation.tsx`, MOCK)
-- Banner on top, always: "ตัวอย่างการประมาณเท่านั้น ไม่ใช่ข้อเสนอสินเชื่อ".
-- Steps to get the payoff amount, per app the user named (UI-23): "เปิดแอป
-  ShopDemo", "ไปที่รายการผ่อน หูฟังไร้สาย แล้วเลือก ขอยอดปิดบัญชี", "จดยอดที่แอปแจ้ง
-  แล้วกรอกด้านล่าง"; installments without an app come last under "ไม่ระบุแอป" ("เปิดแอป
-  ที่คุณผ่อน ตู้เย็น"). Then one checkbox and one amount per owed installment; term
-  12, 24 or 36 months; consent.
-- Result: BOTH the new monthly payment AND the total cost, side by side, then the
-  interest, the assumed example rate (12% a year, flat), and the comparison with
-  now. A warning says a lower monthly payment can cost more in total.
-- The mock rounds the monthly payment up to the satang; the total is what the
-  payments add up to, and the interest is total minus principal, so the three
-  numbers always agree (UI-15).
+### 7.6 Removed: payoff assistant and consolidation request
+Screens 6 (`#/payoff`) and 7 (`#/consolidate`) and their code were deleted in part
+4, with `payoffSteps.ts`, the old mock and their tests (UI-15, UI-23). Nothing
+else imported them, so deleting was safe. Their parts now live in 7.2 (cards 4 and
+6), 7.2b (the plan card), 7.3 (the hint) and 7.4 (the buffer plan).
 
 ### 7.8 Demo panel (`components/DemoPanel.tsx`)
 - A dashed "Demo" button in the header opens a sheet over the phone frame, marked
   "สำหรับนำเสนอเท่านั้น ไม่ใช่ส่วนหนึ่งของแอป".
 - Payday: pick a month, run `POST /demo/payday`, see the outcome in words; a
   second run for the same month says it already ran (L67, once a month).
-- Scenes (mock only): first launch, มิ้นท์ with settings, มิ้นท์ with an
-  over-budget month (records the YELLOW laptop). The screen on show reloads.
+- Scenes (mock only): first launch; มิ้นท์ with settings; "มีเดือนเกินงบ" (records
+  the YELLOW laptop from next month: 2 months over, the buffer covers it, no
+  consolidation); "เกินงบตั้งแต่เดือนนี้" (records the RED motorbike from this
+  month: 9 months over, the pause line, the buffer still short, consolidation
+  eligible). The screen on show reloads.
 
 ## 8. Thai copy
 
@@ -442,9 +469,8 @@ prefix; to be confirmed when wiring).
 | Demo | `POST /demo/payday` | `{ month: "YYYY-MM" }` | `PaydayOut` | 404 when demo endpoints are off |
 | 5 | `GET /notifications` **TODO, mock only** | | `NotificationsOut` (`notifications: NotificationOut[]`, newest first: `kind`, `title`, `body`, `created_at`, `read`; and `unread_count`) | |
 | 5 | `POST /notifications/read` **TODO, mock only** | | `NotificationsOut`, every item read, `unread_count: 0` | |
-| 6 | `GET /payoff/plan` **TODO, mock only** | | `PayoffPlanOut` (`back_in_budget_month`, `pause_until`, `headroom {amount, from_month}`, `buffer_plan {shortfalls, total_shortfall, buffer_balance, covered}`, `explanation`, `consolidation_eligible`) | 409 `SETTINGS_REQUIRED` |
-| 6 | `POST /payoff/ask` **TODO, mock only** | `PayoffAskIn {question}` | `PayoffAskOut {answer, is_example}` | 422 |
-| 7 | `POST /consolidation/estimate` **TODO, mock only** | `ConsolidationIn {payoffs: [{installment_id, payoff_amount}], months, consent}` | `ConsolidationOut` (`is_example`, `new_monthly_payment`, `total_cost`, `total_interest`, `annual_rate_example`, `monthly_now`, `remaining_now`) | 422 no consent or bad amount |
+| 2, 2b, 3, 4 | `GET /assistant/plan` (merged backend; mocked with the same shape and rules in `mock/assistant.ts`, UI-28) | | `AssistantPlanOut`: `months: PlanMonth[]` (`month, total, budget, over_budget, headroom`), `months_truncated`, `back_in_budget_month`, `pause_until`, `safe_new_monthly`, `safe_new_from`, `safe_new_months`, `buffer_plan {shortfall, balance, covered, still_short}`, `consolidation {eligible, reason, estimate}`; `EstimateOut` = `principal, annual_rate, rate_is_example, rate_note, term_months, first_due_month, monthly_payment, total_cost, current_remaining_total, extra_cost` | 409 `SETTINGS_REQUIRED` |
+| 2 | `POST /assistant/summary` **TODO (tomorrow), mock only** | | `AssistantSummaryOut {text, is_example}` | 409 `SETTINGS_REQUIRED` |
 | Demo | `POST /demo/scene` **mock only** | `{ scene }` | 204 | |
 
 Error bodies: `{"detail": {"code", "message"}}` for coded errors, a plain string
@@ -488,8 +514,11 @@ Now: 3,500.00 a month.
    the buffer, new total 4,700.00.
 7. **Home** again: the installments now total 4,700.00 a month (from next month), buffer 6,000.00.
 8. (PR B) The bell shows 1 (the ตู้เย็น manual-entry alert); open it, the badge
-   clears. Buffer, payday over budget, payoff assistant (also from the RED result's
-   "ดูผู้ช่วยปลดหนี้"), consolidation with steps per app.
+   clears. Home's "สรุปให้ฟัง" and "ควรรวมหนี้ไหม" ("ตอนนี้ยังไม่คุ้มที่จะรวมหนี้").
+9. (PR B) Demo, "มิ้นท์: เกินงบตั้งแต่เดือนนี้": Home's ควรรวมหนี้ไหม shows 3,369.88 a
+   month and 80,877.12 in total (example rate 18%, 24 months); "สนใจรวมหนี้". Tap
+   the month card: "กลับมาอยู่ในงบเดือน ก.ค. 2570" and "ตอนนี้ยังไม่ควรผ่อนเพิ่ม".
+   The form's hint. กันชน: 10,500.00 over in all, 900.00 still short. Demo payday.
 
 Shortcuts for slides: `http://127.0.0.1:5173/?persona#/home` starts with the
 settings saved; `?persona&scene=YELLOW#/think` fills that example and opens its

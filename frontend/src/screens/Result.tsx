@@ -61,11 +61,11 @@ export function ResultScreen() {
       {stage.name === "verdict" && stage.verdict.verdict === "RED" && (
         <button
           type="button"
-          onClick={() => navigate("payoff")}
+          onClick={() => navigate("months")}
           className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 self-center rounded-pill px-3 text-body font-semibold text-leaf-800 underline underline-offset-4 hover:bg-leaf-50"
         >
-          <Icon name="route" size={20} />
-          {THINK.seePayoff}
+          <Icon name="calendar" size={20} />
+          {THINK.seeMonths}
         </button>
       )}
     </div>

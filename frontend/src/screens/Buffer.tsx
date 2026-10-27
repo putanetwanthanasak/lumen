@@ -1,12 +1,14 @@
 /**
- * Screen 4: the buffer (DESIGN.md section 7.4, L66).
+ * Screen 4: the buffer, feature 2 (DESIGN.md section 7.4, L66). The balance, the
+ * plan for months over budget (GET /assistant/plan's buffer_plan), and the move back.
  * Moving money back is the user's own action and is never blocked; an amount above
  * the balance comes back as 422 AMOUNT_ABOVE_BALANCE and is shown next to the field.
  */
 import { useState, type FormEvent } from "react";
-import { ApiError, getBuffer, moveToMain } from "../api.ts";
+import { ApiError, getAssistantPlan, getBuffer, moveToMain } from "../api.ts";
+import { bufferPlanLines } from "../assistantText.ts";
 import type { BufferOut, MovedOut } from "../api-types.ts";
-import { BUFFER, MONEY_ERRORS } from "../copy.ts";
+import { ASSIST, BUFFER, MONEY_ERRORS } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Alert, Button, Card, ErrorState, Field, Loading } from "../components/ui.tsx";
@@ -90,6 +92,9 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
         <p className="text-body text-ink-muted">{BUFFER.monthlyTotal(formatBaht(buffer.monthly_total))}</p>
       </Card>
 
+      {/* Reloads after a move, so "covered" or "still short" matches the balance above. */}
+      <BufferPlanCard key={balance} />
+
       <Card className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <h2 className="text-lead font-bold text-ink">{BUFFER.moveTitle}</h2>
@@ -132,5 +137,21 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
         )}
       </Card>
     </>
+  );
+}
+
+/** The over-budget plan: the shortfall over every month, then covered or still short. */
+function BufferPlanCard() {
+  const [load] = useLoad(getAssistantPlan);
+  if (load.state !== "ready") return null; // an extra: no plan, no card
+  const { tone, lines } = bufferPlanLines(load.data.buffer_plan);
+  const [head = "", ...rest] = lines;
+  return (
+    <Card className="flex flex-col gap-2">
+      <h2 className="text-lead font-bold text-ink">{ASSIST.bufferTitle}</h2>
+      <Alert tone={tone} title={head}>
+        {rest.join(" ")}
+      </Alert>
+    </Card>
   );
 }

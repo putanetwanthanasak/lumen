@@ -238,56 +238,71 @@ export type NotificationOut = {
  */
 export type NotificationsOut = { notifications: NotificationOut[]; unread_count: number };
 
-// ---- Payoff assistant (screen 6) ----------------------------------------------
+// ---- Assistant plan (GET /assistant/plan, merged backend) -------------------------
 
 /**
- * TODO(backend, payoff assistant session): GET /payoff/plan. Not built yet; the
- * expected shape below is what screen 6 needs. Every amount and month is decided by
- * the server (it reuses app/affordability/months.month_totals).
+ * Copied from backend/app/assistant/schemas.py (PlanOut, read only, 2026-10-27).
+ * Every number comes from code, never from AI (L69, L70). Money is a string;
+ * months are "YYYY-MM". 409 SETTINGS_REQUIRED without settings.
  */
-export type PayoffPlanOut = {
-  over_budget_now: boolean;
-  /** The first month from which every month fits the budget; null if none in the horizon. */
-  back_in_budget_month: string | null;
-  /** Advice to pause new installments until this month (exclusive); null when not needed. */
-  pause_until: string | null;
-  /** True when some month is over budget through the whole horizon: pause, with no end month yet. */
-  pause_beyond_horizon: boolean;
-  /** "ผ่อนเพิ่มได้ไม่เกินเดือนละ X ตั้งแต่ Y": the smallest headroom from `from_month` on. */
-  headroom: { amount: Money; from_month: string } | null;
-  /** Over-budget months ahead and whether the buffer covers their shortfall. */
-  buffer_plan: {
-    buffer_balance: Money;
-    shortfalls: { month: string; amount: Money }[];
-    total_shortfall: Money;
-    covered: boolean;
-  };
-  /** Mock: an example of the explanation an assistant would give. Not generated. */
-  explanation: string;
-  consolidation_eligible: boolean;
+export type PlanMonth = {
+  month: string;
+  total: Money;
+  budget: Money;
+  over_budget: boolean;
+  headroom: Money; // max(0, budget - total)
 };
 
-/** TODO(backend): POST /payoff/ask. Mock answers are canned examples. */
-export type PayoffAskIn = { question: string };
-export type PayoffAskOut = { answer: string; is_example: true };
+export type BufferPlanOut = {
+  shortfall: Money; // total - budget, added over the months over budget
+  balance: Money; // the buffer (L66)
+  covered: boolean; // the buffer covers the whole shortfall
+  still_short: Money; // max(0, shortfall - balance)
+};
 
-// ---- Consolidation request (screen 7) -----------------------------------------
+/** Why consolidation is or is not offered (L70), checked in this order. */
+export type ConsolidationReason =
+  | "NOT_NEEDED"
+  | "OVERDUE_DEBT"
+  | "DISPUTED_DEBT"
+  | "ESTIMATE_TOO_LARGE"
+  | "PAYMENT_ABOVE_BUDGET"
+  | "ELIGIBLE";
 
-/** TODO(backend): POST /consolidation/estimate. An example estimate only. */
-export type ConsolidationIn = {
-  payoffs: { installment_id: string; payoff_amount: Money }[];
-  months: number; // 12 | 24 | 36
-  consent: boolean;
+/** One loan replacing every counted installment. The rate and term are EXAMPLE values. */
+export type EstimateOut = {
+  principal: Money;
+  annual_rate: string; // e.g. "0.18": an example yearly rate, not a real one
+  rate_is_example: true;
+  rate_note: "example, not a real rate";
+  term_months: number;
+  first_due_month: string;
+  monthly_payment: Money; // level payment, rounded up to 0.01
+  total_cost: Money; // monthly_payment x term_months
+  current_remaining_total: Money; // what is left on the current plans
+  extra_cost: Money; // total_cost - current_remaining_total
 };
 
 export type ConsolidationOut = {
-  is_example: true;
-  principal: Money; // the payoffs added up
-  months: number;
-  annual_rate_example: string; // "12.00": an assumed rate, not an offer
-  new_monthly_payment: Money;
-  total_cost: Money; // every payment of the new plan
-  total_interest: Money;
-  monthly_now: Money; // what the replaced installments cost per month today
-  remaining_now: Money; // what is left to pay on them today
+  eligible: boolean;
+  reason: ConsolidationReason;
+  estimate: EstimateOut | null; // only when eligible
 };
+
+export type AssistantPlanOut = {
+  months: PlanMonth[]; // this month to the last month due, at most 600
+  months_truncated: boolean;
+  back_in_budget_month: string | null; // null if every month already is
+  pause_until: string | null; // back_in_budget_month when this month is over budget
+  safe_new_monthly: Money; // for a new safe_new_months-month installment from safe_new_from
+  safe_new_from: string;
+  safe_new_months: number; // 12
+  buffer_plan: BufferPlanOut;
+  consolidation: ConsolidationOut;
+};
+
+/**
+ * TODO(backend, tomorrow): POST /assistant/summary, the AI summary of the plan.
+ * Mock now: a fixed example built from the plan's numbers, labelled ตัวอย่าง.
+ */
+export type AssistantSummaryOut = { text: string; is_example: boolean };
