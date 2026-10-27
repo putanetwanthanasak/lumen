@@ -1,5 +1,5 @@
 """Auto-save (04 section 6, step 5b and 5c; 05 section 4.6), for a webhook contract
-or a manual entry (L62)."""
+or a manual entry (L62), and the balance primitives the buffer (L66) shares."""
 
 import hashlib
 import json
@@ -38,6 +38,16 @@ def manual_transfer_key(user_id: str, client_request_id: str) -> str:
     request. Not the installment id: a retry after a failed commit gets a new one."""
     canonical = json.dumps(["auto_save_manual", user_id, client_request_id], separators=(",", ":"))
     return "auto-save-" + hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def move_key(user_id: str, client_request_id: str) -> str:
+    """As transfer_key, for a move from the buffer to the main account (L66): the
+    same on every submit of one request, so a retry after a lost commit credits the
+    main account once."""
+    canonical = json.dumps(
+        ["buffer_move_to_main", user_id, client_request_id], separators=(",", ":")
+    )
+    return "move-to-main-" + hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def saving_rule(settings: UserSettings) -> SavingRule | None:
@@ -80,8 +90,8 @@ def auto_save(
     # R3: hold this user's balance row until commit, before reading the bank. A second
     # purchase for the same user waits here and then reads the bank after the first
     # one's transfer, so two savings cannot jointly pass the safety net. The version
-    # check in _credit stays as a second layer.
-    _lock_balance(session, user_id)
+    # check in adjust_balance stays as a second layer.
+    lock_balance(session, user_id)
     amount = compute_saving(
         kind=kind,
         item_value=item_price,
@@ -103,11 +113,11 @@ def auto_save(
         )
     )
     session.flush()
-    _credit(session, user_id, amount)
+    adjust_balance(session, user_id, amount)
     return amount
 
 
-def _lock_balance(session: Session, user_id: str) -> None:
+def lock_balance(session: Session, user_id: str) -> None:
     """Create the user's balance row if missing, then SELECT ... FOR UPDATE it.
 
     Of two concurrent inserts, the second waits on the unique index for the first to
@@ -119,8 +129,9 @@ def _lock_balance(session: Session, user_id: str) -> None:
     ).one()
 
 
-def _credit(session: Session, user_id: str, amount: Decimal) -> None:
-    """savings_balance += amount with optimistic locking on version.
+def adjust_balance(session: Session, user_id: str, delta: Decimal) -> None:
+    """savings_balance += delta (negative for a withdrawal) with optimistic locking
+    on version. The CHECK savings_balance >= 0 (INV-2) stops an overdraw.
 
     The new balance is computed from the value read, so only the version check stops
     a lost update when two transactions read the same balance. Under READ COMMITTED,
@@ -137,7 +148,7 @@ def _credit(session: Session, user_id: str, amount: Decimal) -> None:
         updated = session.execute(
             update(UserBalance)
             .where(UserBalance.user_id == user_id, UserBalance.version == version)
-            .values(savings_balance=balance + amount, version=version + 1)
+            .values(savings_balance=balance + delta, version=version + 1)
             .execution_options(synchronize_session=False)
         )
         if updated.rowcount == 1:  # type: ignore[attr-defined]

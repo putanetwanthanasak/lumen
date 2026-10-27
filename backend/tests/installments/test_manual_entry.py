@@ -429,10 +429,10 @@ def test_RS_02_violation_rolls_back_the_whole_entry(
     """A simulated bug: the balance is credited one baht too much. Nothing of the
     entry may persist and no money may move."""
     opt_in(api.session)
-    real_credit = savings._credit
+    real_credit = savings.adjust_balance
     monkeypatch.setattr(
         savings,
-        "_credit",
+        "adjust_balance",
         lambda session, user_id, amount: real_credit(session, user_id, amount + Decimal(1)),
     )
     with caplog.at_level(logging.ERROR), pytest.raises(InvariantViolationError) as exc:

@@ -89,7 +89,7 @@ class LockProbingBank(MockBankAccountProvider):
 def test_R3_balance_row_locked_before_bank_balance_is_read(race: Race) -> None:
     """Deterministic companion to the race above, which catches a missing lock in only
     some runs: the safety-net read must happen while this user's row is locked. The
-    row exists (saved before); _credit's UPDATE locks it too, but only after the read."""
+    row exists (saved before); adjust_balance's UPDATE locks it too, but only after the read."""
     with race.session() as s, s.begin():
         s.add(UserBalance(user_id=race.user))
     bank = LockProbingBank(race)

@@ -48,10 +48,14 @@ def test_auto_save_installment_must_exist(db_session: Session) -> None:
 
 def test_withdrawals_need_no_installment(db_session: Session) -> None:
     add_installment(db_session)
-    for _ in range(2):
+    for n in range(2):
         assert_accepted(
             db_session,
             savings_tx(
-                type="withdrawal", source_vendor=None, source_event_id=None, installment_id=None
+                type="withdrawal",
+                source_vendor=None,
+                source_event_id=None,
+                installment_id=None,
+                client_request_id=f"move-{n}",
             ),
         )
