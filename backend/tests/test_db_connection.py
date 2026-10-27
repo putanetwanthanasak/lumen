@@ -24,7 +24,7 @@ def test_connects_to_real_test_database() -> None:
 @pytest.mark.db
 def test_R7_engine_pins_read_committed_whatever_the_server_default(test_db_url: str) -> None:
     # The connection asks the server for SERIALIZABLE by default; make_engine must
-    # still run every transaction at READ COMMITTED, which _credit's retry relies on.
+    # still run every transaction at READ COMMITTED, which adjust_balance's retry relies on.
     url = make_url(test_db_url).update_query_dict(
         {"options": "-c default_transaction_isolation=serializable"}
     )

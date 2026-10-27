@@ -104,16 +104,27 @@ def test_source_event_pair_must_be_complete(
     add_event(db_session)
     assert_rejected(
         db_session,
-        savings_tx(type="withdrawal", source_vendor=vendor, source_event_id=event_id),
+        savings_tx(
+            type="withdrawal",
+            source_vendor=vendor,
+            source_event_id=event_id,
+            client_request_id="move-1",
+        ),
         "ck_savings_transactions_source_event_pair_complete",
     )
 
 
 def test_INV_3_withdrawals_are_not_limited_per_event(db_session: Session) -> None:
     # The partial index covers auto_save only; withdrawals carry no event.
-    for _ in range(2):
+    for n in range(2):
         assert_accepted(
-            db_session, savings_tx(type="withdrawal", source_vendor=None, source_event_id=None)
+            db_session,
+            savings_tx(
+                type="withdrawal",
+                source_vendor=None,
+                source_event_id=None,
+                client_request_id=f"move-{n}",
+            ),
         )
 
 
@@ -481,3 +492,39 @@ def test_MI_10_manual_and_platform_rows_kept_apart(
     db_session: Session, row: Any, constraint: str
 ) -> None:
     assert_rejected(db_session, row(), constraint)
+
+
+# --- BF-10: buffer withdrawals (L66, Session 13) ---------------------------------------
+
+
+def withdrawal(**overrides: Any) -> Any:
+    fields: dict[str, Any] = {
+        "type": "withdrawal",
+        "source_vendor": None,
+        "source_event_id": None,
+        "client_request_id": "move-1",
+    }
+    return savings_tx(**(fields | overrides))
+
+
+def test_BF_10_withdrawal_needs_a_client_request_id(db_session: Session) -> None:
+    assert_rejected(
+        db_session,
+        withdrawal(client_request_id=None),
+        "ck_savings_transactions_withdrawal_has_client_request_id",
+    )
+
+
+def test_BF_10_only_a_withdrawal_carries_a_client_request_id(db_session: Session) -> None:
+    inst = add_auto_save_parents(db_session)
+    assert_rejected(
+        db_session,
+        savings_tx(installment_id=inst, client_request_id="move-1"),
+        "ck_savings_transactions_withdrawal_has_client_request_id",
+    )
+
+
+def test_BF_10_same_request_id_twice_for_one_user_rejected(db_session: Session) -> None:
+    assert_accepted(db_session, withdrawal())
+    assert_accepted(db_session, withdrawal(user_id="user-2"))  # per user
+    assert_rejected(db_session, withdrawal(), "uq_savings_transactions_user_client_request_id")

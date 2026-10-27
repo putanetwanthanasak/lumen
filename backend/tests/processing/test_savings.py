@@ -235,7 +235,7 @@ def test_INV_1_credit_retries_when_another_writer_wins(db_session: Session) -> N
 
     event.listen(db_session, "do_orm_execute", other_writer_first)
     try:
-        savings._credit(db_session, USER, Decimal("80.00"))
+        savings.adjust_balance(db_session, USER, Decimal("80.00"))
     finally:
         event.remove(db_session, "do_orm_execute", other_writer_first)
 

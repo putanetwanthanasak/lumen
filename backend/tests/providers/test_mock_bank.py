@@ -24,7 +24,7 @@ def test_transfers_move_exact_amounts() -> None:
     bank = MockBankAccountProvider(Decimal("100.00"))
     bank.transfer_to_savings("u1", Decimal("30.01"), idempotency_key="k1")
     assert bank.get_balance("u1") == Decimal("69.99")
-    bank.transfer_from_savings("u1", Decimal("0.01"))
+    bank.transfer_from_savings("u1", Decimal("0.01"), idempotency_key="m1")
     assert bank.get_balance("u1") == Decimal("70.00")
     bank.transfer_to_savings("u1", Decimal("70.00"), idempotency_key="k2")  # down to zero
     assert bank.get_balance("u1") == Decimal("0.00")
@@ -46,9 +46,10 @@ def test_non_money_amount_rejected(amount: object) -> None:
     bank = MockBankAccountProvider()
     with pytest.raises(ValueError, match="amount"):
         bank.transfer_to_savings("u1", amount, idempotency_key="k1")  # type: ignore[arg-type]
-    for call in (bank.transfer_from_savings, bank.set_balance):
-        with pytest.raises(ValueError, match="amount"):
-            call("u1", amount)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="amount"):
+        bank.transfer_from_savings("u1", amount, idempotency_key="m1")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="amount"):
+        bank.set_balance("u1", amount)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("amount", [Decimal("0.00"), Decimal("-1.00")])
@@ -57,7 +58,7 @@ def test_transfer_amount_must_be_positive(amount: Decimal) -> None:
     with pytest.raises(ValueError, match="> 0"):
         bank.transfer_to_savings("u1", amount, idempotency_key="k1")
     with pytest.raises(ValueError, match="> 0"):
-        bank.transfer_from_savings("u1", amount)
+        bank.transfer_from_savings("u1", amount, idempotency_key="m1")
 
 
 def test_negative_balance_cannot_be_seeded() -> None:
@@ -131,3 +132,32 @@ def test_S1_concurrent_retries_with_one_key_debit_once() -> None:
 def test_app_uses_one_shared_mock_in_mock_mode() -> None:
     assert isinstance(get_bank_provider(), MockBankAccountProvider)
     assert get_bank_provider() is get_bank_provider()
+
+
+def test_S1_move_to_main_applies_each_key_once() -> None:
+    # L66: a retry of the same move after a lost commit credits the main account once.
+    bank = MockBankAccountProvider(Decimal("100.00"))
+    for _ in range(2):
+        bank.transfer_from_savings("u1", Decimal("40.00"), idempotency_key="m1")
+    assert bank.get_balance("u1") == Decimal("140.00")
+    bank.transfer_from_savings("u1", Decimal("40.00"), idempotency_key="m2")
+    assert bank.get_balance("u1") == Decimal("180.00")
+
+
+@pytest.mark.parametrize(
+    ("direction", "user", "amount"),
+    [
+        ("to_savings", "u1", "40.00"),
+        ("from_savings", "u2", "40.00"),
+        ("from_savings", "u1", "41.00"),
+    ],
+)
+def test_S1_key_reused_for_another_transfer_is_refused(
+    direction: str, user: str, amount: str
+) -> None:
+    bank = MockBankAccountProvider(Decimal("100.00"))
+    bank.transfer_from_savings("u1", Decimal("40.00"), idempotency_key="k")
+    transfer = bank.transfer_to_savings if direction == "to_savings" else bank.transfer_from_savings
+    with pytest.raises(ValueError, match="reused"):
+        transfer(user, Decimal(amount), idempotency_key="k")
+    assert bank.get_balance("u1") == Decimal("140.00")

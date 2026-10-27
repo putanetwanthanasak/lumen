@@ -266,6 +266,20 @@ class SavingsTransaction(Base):
             unique=True,
             postgresql_where=text("type = 'auto_save'"),
         ),
+        # L66: a withdrawal is the user's own move to the main account, and only a
+        # withdrawal carries the client's request id. With the user it is the
+        # idempotency key: a double submit moves the money once.
+        CheckConstraint(
+            "(type = 'withdrawal') = (client_request_id IS NOT NULL)",
+            name="withdrawal_has_client_request_id",
+        ),
+        Index(
+            "uq_savings_transactions_user_client_request_id",
+            "user_id",
+            "client_request_id",
+            unique=True,
+            postgresql_where=text("client_request_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -279,6 +293,7 @@ class SavingsTransaction(Base):
     installment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("installments.id")
     )
+    client_request_id: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
 
 

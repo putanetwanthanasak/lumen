@@ -103,3 +103,26 @@ def test_NM_02_refused_not_me_audit_survives_commit(race: Race) -> None:
         assert s.scalar(select(Installment.status).where(Installment.user_id == race.user)) == (
             "active"
         )
+
+
+def test_BF_08_move_conflict_audit_survives_commit(race: Race) -> None:
+    created = race.post_manual(entry(race.id("req_seed"), "5000.00"))  # saves 500.00
+    assert created.status_code == 201
+    headers = {"X-Demo-User": race.user}
+    body = {"client_request_id": race.id("move"), "amount": "100.00"}
+
+    assert race.client.post("/buffer/move-to-main", json=body, headers=headers).status_code == 201
+    conflict = race.client.post(
+        "/buffer/move-to-main", json=body | {"amount": "120.00"}, headers=headers
+    )
+
+    assert conflict.status_code == 409
+    with race.session() as s:
+        actions = s.scalars(
+            select(AuditLog.action).where(AuditLog.user_id == race.user).order_by(AuditLog.id)
+        ).all()
+        assert actions == [
+            "installment_recorded",
+            "buffer_moved_to_main",
+            "client_request_id_reused",
+        ]
