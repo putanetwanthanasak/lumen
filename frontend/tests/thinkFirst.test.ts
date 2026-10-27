@@ -188,4 +188,14 @@ test("UI_21_preview_says_what_recording_would_save_and_recording_saves_that", ()
   assert.equal(recorded.saved_amount, preview.saving_if_recorded);
   const cash = handle("POST", "/installments/preview", { ...entry, kind: "cash_loan" }, "demo-mint").body as PreviewOut;
   assert.equal(cash.saving_if_recorded, "0.00");
+  // The safety net (L63): main 8,300.00 left; 10% of 78,000.00 would leave 500.00
+  // (allowed), 10% of 78,000.10 would leave 499.99 (skipped whole). The preview says
+  // so, and recording then saves exactly that.
+  const near = (price: string, id: string) => ({ ...entry, client_request_id: id, item_price: price, months: 12, monthly_amount: "6500.00" });
+  const atNet = handle("POST", "/installments/preview", near("78000.00", "n1"), "demo-mint").body as PreviewOut;
+  assert.equal(atNet.saving_if_recorded, "7800.00");
+  const belowNet = handle("POST", "/installments/preview", near("78000.10", "n2"), "demo-mint").body as PreviewOut;
+  assert.equal(belowNet.saving_if_recorded, "0.00");
+  const skipped = handle("POST", "/installments", near("78000.10", "n2"), "demo-mint").body as RecordedOut;
+  assert.equal(skipped.saved_amount, belowNet.saving_if_recorded);
 });

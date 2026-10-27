@@ -77,10 +77,9 @@ test("UI_20_no_settings_is_409_and_a_bad_count_is_422", () => {
 test("UI_20_month_status_is_icon_and_text_never_colour_only", () => {
   assert.deepEqual(monthStatus({ over_budget: false, over_one_third: false }), { tone: "ok", icon: "check", label: "อยู่ในงบ" });
   assert.deepEqual(monthStatus({ over_budget: true, over_one_third: false }), { tone: "over", icon: "alert", label: "เกินงบ" });
-  // Over one third wins, even when the budget itself is above one third of income.
-  assert.deepEqual(monthStatus({ over_budget: false, over_one_third: true }), {
-    tone: "risk",
-    icon: "stop",
-    label: "เกินเกณฑ์ที่ ธปท. แนะนำ",
-  });
+  // Over one third wins over over budget, and also shows when the budget itself is
+  // above one third of income (over one third, not over budget).
+  const risk = { tone: "risk", icon: "stop", label: "เกินเกณฑ์ที่ ธปท. แนะนำ" };
+  assert.deepEqual(monthStatus({ over_budget: true, over_one_third: true }), risk);
+  assert.deepEqual(monthStatus({ over_budget: false, over_one_third: true }), risk);
 });
