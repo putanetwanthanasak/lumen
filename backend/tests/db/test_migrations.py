@@ -222,11 +222,42 @@ def test_alembic_check_no_drift(migration_engine: Engine) -> None:
         command.check(alembic_config(conn))
 
 
+# The installments CHECKs as they were before L72 (the snapshot on main).
+CHECKS_BEFORE_L72 = {
+    "ck_installments_kind_valid": (
+        "CHECK ((kind = ANY (ARRAY['purchase'::text, 'cash_withdrawal'::text, 'cash_loan'::text])))"
+    ),
+    "ck_installments_status_valid": (
+        "CHECK ((status = ANY (ARRAY['active'::text, 'paid_off'::text, 'cancelled'::text, "
+        "'disputed'::text])))"
+    ),
+    "ck_installments_platform_debt_data_complete": (
+        "CHECK (((vendor = 'manual'::text) OR ((min_payment IS NOT NULL) AND "
+        "(late_fee_per_period IS NOT NULL) AND (monthly_rate IS NOT NULL))))"
+    ),
+}
+
+
+def _check_texts(conn: Connection, names: list[str]) -> dict[str, str]:
+    rows = conn.execute(
+        text(
+            "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conname = ANY(:names)"
+        ),
+        {"names": names},
+    )
+    return {str(name): str(definition) for name, definition in rows.all()}
+
+
 def test_CO_05_consolidation_loan_kind_downgrade_one_step(migration_engine: Engine) -> None:
     with migration_engine.begin() as conn:
         command.downgrade(alembic_config(conn), "8f1c2d4e6a90")
     with migration_engine.connect() as conn:
-        assert "ck_installments_consolidation_loan_vendor" not in _checks(conn, "installments")
+        checks = _checks(conn, "installments")
+        assert "ck_installments_consolidation_loan_vendor" not in checks
+        assert "ck_installments_consolidation_loan_terms" not in checks
+        # The widened CHECKs are narrowed back exactly (review F3).
+        assert _check_texts(conn, list(CHECKS_BEFORE_L72)) == CHECKS_BEFORE_L72
     with migration_engine.begin() as conn:
         command.upgrade(alembic_config(conn), "head")
     with migration_engine.connect() as conn:

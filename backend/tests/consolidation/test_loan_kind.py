@@ -2,8 +2,8 @@
 
 The loan never saves, counts in every month total, and "Not me" is refused on it.
 A consolidated installment is not owed, keeps its history, and keeps its status
-whatever the platform sends later. Only an approved consolidation creates the kind
-(tests/consolidation/test_requests.py, PR C); here the rows are written directly.
+whatever the platform sends later. Only an approved consolidation creates the kind;
+that request is not built yet, so here the rows are written directly.
 """
 
 from datetime import UTC, datetime
@@ -260,18 +260,23 @@ def test_CO_05_no_webhook_event_can_carry_the_loan_kind(webhook: Webhook, event_
 
 
 @pytest.mark.parametrize(
-    "overrides",
+    ("overrides", "constraint"),
     [
-        {"vendor": "shopdemo"},  # the kind needs the consolidation vendor
-        {"min_payment": None},
-        {"monthly_rate": None},
+        # A full platform row, so only the vendor rule can reject it (review F2).
+        (
+            {"vendor": "shopdemo", "late_fee_per_period": Decimal("0.00")},
+            "consolidation_loan_vendor",
+        ),
+        ({"vendor": "manual"}, "consolidation_loan_vendor"),
+        ({"min_payment": None}, "consolidation_loan_terms"),
+        ({"monthly_rate": None}, "consolidation_loan_terms"),
     ],
 )
 def test_CO_05_db_rejects_a_loan_without_its_vendor_or_terms(
-    db_session: Session, overrides: dict[str, Any]
+    db_session: Session, overrides: dict[str, Any], constraint: str
 ) -> None:
     db_session.add(consolidation_loan(**overrides))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError, match=constraint):
         db_session.flush()
 
 

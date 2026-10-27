@@ -107,8 +107,11 @@ def test_unknown_vendor_shown_by_its_id() -> None:
     assert "จาก othervendor 1 บาท" in body
 
 
-def test_every_kind_has_a_template_and_every_strong_kind_is_not_plain_new_debt() -> None:
+def test_NT_01_every_recordable_kind_has_a_template_and_strong_kinds_are_not_plain() -> None:
     assert set(TEMPLATES) == RECORDABLE_KINDS
+    # The loan is never recorded through a webhook or a manual entry (CO-05), so it
+    # has no new-debt template; its approval brings its own alert (L72).
+    assert InstallmentKind.CONSOLIDATION_LOAN not in TEMPLATES
     for kind in load_rules().alerts.strong_alert_kinds:
         assert TEMPLATES[kind].kind != NotificationKind.NEW_DEBT
 
