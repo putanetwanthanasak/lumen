@@ -96,7 +96,7 @@ def submit_request(
         else LoanOut(
             installment_id=loan.id,
             principal=loan.principal,
-            annual_rate=request.annual_rate,
+            annual_rate=request.annual_rate.normalize(),  # 0.180000 -> 0.18
             term_months=loan.months,
             first_due_month=month_of(loan.first_due_date),
             monthly_payment=loan.monthly_amount,

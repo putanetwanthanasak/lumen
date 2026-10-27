@@ -10,13 +10,23 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from app.money import MONEY_MAX, MoneyStr
 from app.schemas import Id
 
 MAX_PAYOFFS = 100
 MOCK_NOTE = "MOCK bank decision for the Lumen prototype. No bank was asked."
+
+
+def _must_be_true(consent: bool) -> bool:
+    if consent is not True:
+        raise ValueError("consent must be true")
+    return consent
+
+
+# Not Literal[True]: that accepts 1 and 1.0 even in strict mode, since 1 == True.
+Consent = Annotated[StrictBool, AfterValidator(_must_be_true)]
 
 
 class PayoffIn(BaseModel):
@@ -33,7 +43,7 @@ class ConsolidationRequestIn(BaseModel):
 
     # The idempotency key, with the user: a double submit is decided once.
     client_request_id: Id
-    consent: Literal[True]
+    consent: Consent
     payoffs: Annotated[list[PayoffIn], Field(min_length=1, max_length=MAX_PAYOFFS)]
 
     @model_validator(mode="after")
