@@ -387,6 +387,12 @@ npm run build       # typecheck + production build to dist/
 npm audit
 ```
 
+After switching branches (or after `npm ci`), stop the dev server and start it
+again with `npm run dev -- --force`. Vite keeps pre-bundled dependencies in
+`node_modules/.vite`, and a stale copy makes the browser get "504 (Outdated
+Optimize Dep)" for files such as `react-dom_client.js`, which leaves a blank page.
+If it still happens, delete `node_modules/.vite` and run `npm run dev -- --force`.
+
 To use the real backend: run it on `127.0.0.1:8000` with
 `DEMO_ENDPOINTS_ENABLED=true` for payday, then set `USE_MOCK = false` in
 `src/api.ts`.
