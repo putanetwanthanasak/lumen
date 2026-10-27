@@ -50,6 +50,7 @@ from app.ledger import reconcile
 from app.ledger.service import lock_contract
 from app.models import (
     CONSOLIDATION_VENDOR,
+    MANUAL_VENDOR,
     Actor,
     ConsolidationPayout,
     ConsolidationRequest,
@@ -65,6 +66,10 @@ from app.providers.base import Application, ConsolidationBankProvider, Payoff
 logger = logging.getLogger(__name__)
 
 PAYOFFS_DO_NOT_MATCH_PLAN = "PAYOFFS_DO_NOT_MATCH_PLAN"
+# Who a manual entry's payout goes to (Session 14, open question 16). The user has not
+# named the app yet (platform_name comes in the next session), and "manual" is not a
+# platform anyone could be paid at.
+UNNAMED_PLATFORM = "unnamed_platform"
 LOAN_NAME = "สินเชื่อรวมหนี้"
 MONTHLY_RATE = Decimal("0.000001")  # Numeric(7,6): the loan row's rate, for display
 
@@ -86,6 +91,11 @@ class Conflict:
 @dataclass(frozen=True)
 class NotEligible:
     reason: str  # a plan Reason, or PAYOFFS_DO_NOT_MATCH_PLAN
+
+
+def recipient(row: Installment) -> str:
+    """The platform a payout for this installment goes to."""
+    return UNNAMED_PLATFORM if row.vendor == MANUAL_VENDOR else row.vendor
 
 
 def request_key(user_id: str, body: ConsolidationRequestIn) -> str:
@@ -131,7 +141,7 @@ def submit(
     if earlier is not None:
         return _resubmitted(session, user_id=user_id, body=body, earlier=earlier)
 
-    require_profile(session, user_id)
+    profile = require_profile(session, user_id)
     plan = assistant.plan(session, user_id, today=today, settings=settings)
     reason = plan.consolidation.reason.value if not plan.consolidation.eligible else None
     # Open question 5: exactly the counted installments with something left to pay
@@ -150,6 +160,8 @@ def submit(
         reason = Reason.ESTIMATE_TOO_LARGE.value
     if reason is None and requested_payment > plan.budget:
         reason = Reason.PAYMENT_ABOVE_BUDGET.value
+    if reason is None and requested_payment * 3 > profile.income:
+        reason = Reason.PAYMENT_ABOVE_ONE_THIRD_OF_INCOME.value
     if reason is not None:
         _audit(session, user_id, "consolidation_not_eligible", body, {"reason": reason})
         return NotEligible(reason)
@@ -161,7 +173,7 @@ def submit(
         payoffs=tuple(
             Payoff(
                 p.installment_id,
-                rows[p.installment_id].vendor,
+                recipient(rows[p.installment_id]),
                 rows[p.installment_id].contract_id,
                 p.payoff_amount,
             )

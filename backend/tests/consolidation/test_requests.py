@@ -89,7 +89,8 @@ def payout_out(co: Co, installment_id: uuid.UUID, amount: str) -> dict[str, str]
     row = co.api.session.get_one(Installment, installment_id)
     return {
         "installment_id": str(installment_id),
-        "vendor": row.vendor,
+        # A manual entry is paid at an unnamed platform, never "manual" (open question 16).
+        "vendor": "unnamed_platform" if row.vendor == "manual" else row.vendor,
         "contract_id": row.contract_id,
         "amount": amount,
     }
@@ -901,3 +902,30 @@ def test_CO_11_the_bank_reference_changes_with_the_payoffs() -> None:
 
     assert key("2.00") == key("2.00")
     assert key("2.00") != key("2.01")
+
+
+# --- Session 14 answers 14 and 16 --------------------------------------------------------
+
+
+def test_CO_07_requested_amounts_that_make_a_month_red_are_409(co: Co) -> None:
+    """Open question 14: L70 (b) also needs the loan not to make any month RED. With
+    income 12,000.00 and budget 9,000.00 (above a third, the L64 warning case), the
+    plan's own 30,000.00 is 1,497.73 a month and eligible; the 90,000.00 asked for is
+    4,493.17 a month, within budget but above 4,000.00, a third of income."""
+    co.api.session.add(
+        UserSettings(
+            user_id=USER, auto_save_enabled=False, **(profile() | {"income": Decimal("12000.00")})
+        )
+    )
+    a, b = manual(co, "6000.00"), manual(co, "4000.00")
+
+    response = submit(co, body((a, b), ("54000.00", "36000.00")))
+
+    assert response.json() == not_eligible("PAYMENT_ABOVE_ONE_THIRD_OF_INCOME")
+    assert statuses(co) == {a: "active", b: "active"}
+    assert co.bank.payouts == []
+
+
+def test_CO_13_a_payout_goes_to_the_platform_or_to_an_unnamed_one_for_a_manual_entry() -> None:
+    assert service.recipient(installment(vendor="shopdemo")) == "shopdemo"
+    assert service.recipient(manual_installment()) == "unnamed_platform"

@@ -68,6 +68,8 @@ class Reason(StrEnum):
     DISPUTED_DEBT = "DISPUTED_DEBT"  # (d) never pay off a "Not me" debt
     ESTIMATE_TOO_LARGE = "ESTIMATE_TOO_LARGE"  # the loan would not fit Numeric(12,2)
     PAYMENT_ABOVE_BUDGET = "PAYMENT_ABOVE_BUDGET"  # (b)
+    # (b), Session 14 open question 14: the loan must not make any month L65 RED.
+    PAYMENT_ABOVE_ONE_THIRD_OF_INCOME = "PAYMENT_ABOVE_ONE_THIRD_OF_INCOME"
     ELIGIBLE = "ELIGIBLE"
 
 
@@ -208,6 +210,7 @@ def consolidation(
     over: Sequence[Span],
     *,
     now: Month,
+    income: Decimal,
     budget: Decimal,
     annual_rate: Decimal,
     term: int,
@@ -236,6 +239,10 @@ def consolidation(
         for r in rows_of(month_totals([loan], first=loan.first_month, count=term), budget)
     ):
         return Consolidation(Reason.PAYMENT_ABOVE_BUDGET, None)
+    # Nor RED in any month (L65): the loan alone is each month's total. Exactly one
+    # third is not RED; compared without division.
+    if payment * 3 > income:
+        return Consolidation(Reason.PAYMENT_ABOVE_ONE_THIRD_OF_INCOME, None)
     return Consolidation(
         Reason.ELIGIBLE,
         Estimate(
@@ -289,6 +296,12 @@ def build(
             still_short=max(ZERO, shortfall - buffer_balance),
         ),
         consolidation=consolidation(
-            debts, over, now=now, budget=budget, annual_rate=annual_rate, term=term
+            debts,
+            over,
+            now=now,
+            income=income,
+            budget=budget,
+            annual_rate=annual_rate,
+            term=term,
         ),
     )
