@@ -32,8 +32,12 @@ Spec docs are written in Thai. Read them for requirements; write everything you 
 - **L66** Buffer = the user's savings balance. Moving buffer money back to the main account is always the user's own action, never automatic, and never blocked (an amount above the balance is a 422, not a block).
 - **L67** Leftover saving on payday: if `leftover_saving_enabled` and auto-save is on with consent, save `budget - month total` when it is > 0. Same 500 THB safety net, all or nothing. At most once per user per month.
 - **L68** "Not me" is rejected on `vendor='manual'` installments: 409 `NOT_ME_UNAVAILABLE_FOR_MANUAL_ENTRY`, no platform signal, no status change, an audit row per attempt.
+- **L69** No prepayment advice. BNPL apps mostly cannot be paid early, so the payoff assistant never ranks which debt to pay off first.
+- **L70** Consolidation eligibility, all must hold: (a) the upcoming month totals (from the current month) contain a run of >= 3 consecutive months over budget; (b) the estimated consolidated payment brings every month total back within budget; (c) no counted installment is overdue; (d) no counted installment is `disputed` (Session 14, open question 4: never pay off a debt the user reported as "Not me"). Otherwise the plan says it is not needed or not worth it, and no button.
+- **L71** The bank decides with its own data. User-entered numbers start a consolidation request but never approve it. The mock bank decision is a provider interface with a mock implementation, like the bank provider.
+- **L72** An approved consolidation creates a new installment kind `consolidation_loan` in the Ledger. It never triggers saving, counts in month totals and in "คิดก่อน" (the L65 preview), and "Not me" is rejected on it (like L68). The paid-off installments get the status `consolidated`; their history is kept, never deleted.
 - **L51** INV-5 and "auto-save user = event user" are enforced in the service and checked in `reconcile.assert_user_invariants()`, not by DB triggers or composite FKs.
-- Installment `kind`: `purchase`, `cash_withdrawal`, `cash_loan` (the last two never trigger saving).
+- Installment `kind`: `purchase`, `cash_withdrawal`, `cash_loan`, and from L72 `consolidation_loan` (every kind but `purchase` never triggers saving).
 - Python 3.14 locally and in CI. If a package does not support it, stop and report. Do not downgrade on your own.
 
 ## Hard rules
