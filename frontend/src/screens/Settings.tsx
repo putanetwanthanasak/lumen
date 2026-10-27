@@ -5,88 +5,14 @@
  */
 import { useState, type FormEvent } from "react";
 import { getSettings, saveSettings } from "../api.ts";
-import { BUDGET_ABOVE_ONE_THIRD_OF_INCOME, type SettingsIn, type SettingsOut } from "../api-types.ts";
-import { MONEY_ERRORS, SETTINGS } from "../copy.ts";
+import { BUDGET_ABOVE_ONE_THIRD_OF_INCOME, type SettingsOut } from "../api-types.ts";
+import { SETTINGS } from "../copy.ts";
 import { Alert, Button, Card, Checkbox, ErrorState, Field, Loading, Toggle } from "../components/ui.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { PERSONA_SETTINGS } from "../mock/persona.ts";
-import { parseMoneyInput } from "../money.ts";
 import { navigate } from "../router.ts";
+import { EMPTY, fromSettings, toRequest, type Errors, type Form } from "../settingsForm.ts";
 import { useLoad } from "../useLoad.ts";
-
-type Form = {
-  income: string;
-  payday: string;
-  budget: string;
-  mode: "percent" | "fixed";
-  percent: string;
-  fixed: string;
-  autoSave: boolean;
-  leftover: boolean;
-  consent: boolean;
-};
-
-const EMPTY: Form = {
-  income: "",
-  payday: "",
-  budget: "",
-  mode: "percent",
-  percent: "10",
-  fixed: "",
-  autoSave: true,
-  leftover: true,
-  consent: false,
-};
-
-function fromSettings(s: SettingsIn | SettingsOut): Form {
-  return {
-    income: s.income,
-    payday: String(s.payday),
-    budget: s.monthly_installment_budget,
-    mode: s.saving_rule.mode,
-    percent: s.saving_rule.mode === "percent" ? String(s.saving_rule.percent) : "10",
-    fixed: s.saving_rule.mode === "fixed" ? s.saving_rule.amount : "",
-    autoSave: s.auto_save_enabled,
-    leftover: s.leftover_saving_enabled,
-    consent: "consent_at" in s ? s.consent_at !== null : s.auto_save_consent,
-  };
-}
-
-type Errors = Partial<Record<"income" | "payday" | "budget" | "percent" | "fixed" | "consent", string>>;
-
-const INT_1_TO_31 = /^([1-9]|[12][0-9]|3[01])$/;
-const INT_1_TO_100 = /^([1-9][0-9]?|100)$/;
-
-/** Build the request, or the errors to show. Money stays the string the user typed. */
-function toRequest(form: Form): { ok: true; body: SettingsIn } | { ok: false; errors: Errors } {
-  const errors: Errors = {};
-  const income = parseMoneyInput(form.income);
-  const budget = parseMoneyInput(form.budget);
-  const fixed = parseMoneyInput(form.fixed);
-  if (!income.ok) errors.income = MONEY_ERRORS[income.reason];
-  if (!budget.ok) errors.budget = MONEY_ERRORS[budget.reason];
-  if (!INT_1_TO_31.test(form.payday.trim())) errors.payday = SETTINGS.paydayError;
-  if (form.mode === "percent" && !INT_1_TO_100.test(form.percent.trim())) errors.percent = SETTINGS.percentError;
-  if (form.mode === "fixed" && !fixed.ok) errors.fixed = MONEY_ERRORS[fixed.reason];
-  if (form.autoSave && !form.consent) errors.consent = SETTINGS.consentError;
-  if (!income.ok || !budget.ok || Object.keys(errors).length > 0) return { ok: false, errors };
-  return {
-    ok: true,
-    body: {
-      income: income.value,
-      payday: Number(form.payday.trim()), // ui-06-allow: a day of the month
-      monthly_installment_budget: budget.value,
-      // L63: exactly one mode is sent, never both.
-      saving_rule:
-        form.mode === "percent"
-          ? { mode: "percent", percent: Number(form.percent.trim()) } // ui-06-allow: a whole percent
-          : { mode: "fixed", amount: fixed.ok ? fixed.value : "" },
-      auto_save_enabled: form.autoSave,
-      auto_save_consent: form.autoSave && form.consent,
-      leftover_saving_enabled: form.leftover,
-    },
-  };
-}
 
 export function SettingsScreen() {
   const [load, reload] = useLoad(getSettings);

@@ -9,6 +9,7 @@ import { HOME } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Button, Card, ErrorState, Loading, SettingsMissing } from "../components/ui.tsx";
+import { lineStatus } from "../installmentStatus.ts";
 import { PERSONA_NAME } from "../mock/persona.ts";
 import { barPermille, formatBaht } from "../money.ts";
 import { navigate } from "../router.ts";
@@ -137,11 +138,27 @@ function HomeBody({
         {summary.installments.length === 0 ? (
           <p className="text-body text-ink-muted">{HOME.emptyInstallments}</p>
         ) : (
-          <ul className="flex flex-col divide-y divide-line">
-            {summary.installments.map((line) => (
-              <InstallmentRow key={line.id} line={line} />
-            ))}
-          </ul>
+          <>
+            <ul className="flex flex-col divide-y divide-line">
+              {summary.installments
+                .filter((line) => lineStatus(line).counted)
+                .map((line) => (
+                  <InstallmentRow key={line.id} line={line} />
+                ))}
+            </ul>
+            {summary.installments.some((line) => !lineStatus(line).counted) && (
+              <>
+                <h3 className="pt-2 text-body font-semibold text-ink-muted">{HOME.notCounted}</h3>
+                <ul className="flex flex-col divide-y divide-line opacity-80">
+                  {summary.installments
+                    .filter((line) => !lineStatus(line).counted)
+                    .map((line) => (
+                      <InstallmentRow key={line.id} line={line} />
+                    ))}
+                </ul>
+              </>
+            )}
+          </>
         )}
       </Card>
     </>
@@ -152,6 +169,7 @@ const VENDOR_NAMES: Record<string, string> = { shopdemo: "ShopDemo" };
 
 function InstallmentRow({ line }: { line: InstallmentLine }) {
   const source = line.vendor === "manual" ? HOME.manual : (VENDOR_NAMES[line.vendor] ?? line.vendor);
+  const { label } = lineStatus(line);
   return (
     <li className="flex items-start justify-between gap-3 py-3">
       <div className="flex min-w-0 flex-col">
@@ -159,6 +177,12 @@ function InstallmentRow({ line }: { line: InstallmentLine }) {
         <span className="text-caption text-ink-muted">
           {source} · {HOME.monthsLeft(line.months)}
         </span>
+        {label !== null && (
+          <span className="mt-1 inline-flex items-center gap-1 self-start rounded-pill bg-info-bg px-2 py-0.5 text-caption font-semibold text-info-ink">
+            <Icon name="info" size={14} />
+            {label}
+          </span>
+        )}
       </div>
       <div className="flex shrink-0 flex-col items-end">
         <span className="text-body font-semibold text-ink">{HOME.perMonth(formatBaht(line.monthly_amount))}</span>

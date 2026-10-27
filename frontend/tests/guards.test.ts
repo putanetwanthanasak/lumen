@@ -38,23 +38,34 @@ function scan(files: string[], pattern: RegExp, allow?: RegExp): Hit[] {
 
 const files = sourceFiles(SRC);
 
+// Ways a money string becomes a float: Number(), unary plus, parseFloat/parseInt,
+// toFixed, Math.*, toLocaleString, a number input. One pattern, used by both tests
+// below (review F6).
+const FLOAT_ON_MONEY =
+  /\bparseFloat\(|\bparseInt\(|\.toFixed\(|\bNumber\(|\bMath\.|\btoLocaleString\(|type="number"|(^|[=(,!?:&|]|\breturn)\s*\+\s*[A-Za-z_(]/;
+
 test("UI_06_no_floating_point_handling_of_money_in_src", () => {
-  // Number(), Math.*, parseFloat, parseInt and toFixed are allowed only on a line that
-  // says why it is not money ("ui-06-allow: ..."): a day, a percent, a count, a size.
-  const hits = scan(
-    files,
-    /\bparseFloat\(|\bparseInt\(|\.toFixed\(|\bNumber\(|\bMath\.|\btoLocaleString\(|type="number"/,
-    /ui-06-allow: \S/,
-  );
-  assert.deepEqual(hits, []);
+  // Allowed only on a line that says why it is not money ("ui-06-allow: ..."):
+  // a day, a percent, a count, a drawing size.
+  assert.deepEqual(scan(files, FLOAT_ON_MONEY, /ui-06-allow: \S/), []);
 });
 
 test("UI_06_the_scanner_catches_a_float_on_money", () => {
-  // Guard the guard: the pattern must see the usual mistakes.
-  const sample = ["const t = parseFloat(total);", "x.toFixed(2)", "Number(row.total)", 'type="number"'];
-  for (const line of sample) {
-    assert.ok(/\bparseFloat\(|\.toFixed\(|\bNumber\(|type="number"/.test(line), line);
-  }
+  // Guard the guard, with the same pattern the scan uses.
+  const caught = [
+    "const t = parseFloat(total);",
+    "x.toFixed(2)",
+    "Number(row.total)",
+    'type="number"',
+    "const over = +thisMonth.total > +budget;",
+    "return +amount;",
+    "f(+a.total)",
+    "Math.round(x)",
+    "total.toLocaleString()",
+  ];
+  for (const line of caught) assert.ok(FLOAT_ON_MONEY.test(line), line);
+  const allowed = ["const a = b + c;", "i += 1;", "`${a}+${b}`", 'x = "+66";'];
+  for (const line of allowed) assert.ok(!FLOAT_ON_MONEY.test(line), line);
 });
 
 test("UI_07_only_api_ts_calls_fetch", () => {

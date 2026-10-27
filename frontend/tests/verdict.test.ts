@@ -61,6 +61,18 @@ for (const [scene, expected] of [
   });
 }
 
+test("UI_08_paid_off_persona_line_is_listed_but_not_counted", () => {
+  const summary = handle("GET", "/debts/summary", undefined, USER).body as {
+    monthly_total: string;
+    installments: { status: string; owed: boolean }[];
+  };
+  assert.equal(summary.monthly_total, "3500.00");
+  assert.deepEqual(
+    summary.installments.map((l) => [l.status, l.owed]),
+    [["active", true], ["active", true], ["paid_off", false]],
+  );
+});
+
 test("UI_08_green_example_month_totals_match_the_story", () => {
   const out = handle("POST", "/installments/preview", entry(), USER).body as VerdictOut;
   assert.equal(out.monthly_total, "3500.00");
@@ -174,9 +186,10 @@ test("UI_08_record_is_idempotent_on_client_request_id", () => {
 });
 
 test("UI_08_preview_writes_nothing_and_settings_are_required", () => {
+  const count = () => (handle("GET", "/debts/summary", undefined, USER).body as { installments: unknown[] }).installments.length;
+  const before = count();
   handle("POST", "/installments/preview", entry(), USER);
-  const summary = handle("GET", "/debts/summary", undefined, USER).body as { installments: unknown[] };
-  assert.equal(summary.installments.length, 2);
+  assert.equal(count(), before);
   resetMock(TODAY);
   const res = handle("POST", "/installments/preview", entry(), USER);
   assert.equal(res.status, 409);

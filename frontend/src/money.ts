@@ -36,8 +36,10 @@ export function formatBaht(value: Money): string {
   return `${formatAmount(value)} บาท`;
 }
 
-// What a user may type: digits with optional thousands commas, at most 2 decimals.
-const TYPED_MONEY = /^[0-9][0-9,]*(\.[0-9]{1,2})?$/;
+// What a user may type: plain digits, or digits grouped in threes by commas
+// ("12,000"), then at most 2 decimals. A comma anywhere else is refused, never
+// dropped: "1,5" is not 15 (review F5).
+const TYPED_MONEY = /^([0-9]+|[0-9]{1,3}(,[0-9]{3})+)(\.[0-9]{1,2})?$/;
 const MAX_WHOLE_DIGITS = 10; // Numeric(12,2)
 
 export type MoneyInput =

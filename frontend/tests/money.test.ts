@@ -33,6 +33,7 @@ test("UI_02_format_baht_refuses_anything_that_is_not_an_api_money_string", () =>
 test("UI_03_typed_money_is_kept_as_typed_and_never_rounded", () => {
   assert.deepEqual(parseMoneyInput("12000"), { ok: true, value: "12000" });
   assert.deepEqual(parseMoneyInput("12,000.50"), { ok: true, value: "12000.50" });
+  assert.deepEqual(parseMoneyInput("1,234,567.89"), { ok: true, value: "1234567.89" });
   assert.deepEqual(parseMoneyInput("  1200.5 "), { ok: true, value: "1200.5" });
   assert.deepEqual(parseMoneyInput("0.01"), { ok: true, value: "0.01" });
   assert.deepEqual(parseMoneyInput("007"), { ok: true, value: "7" });
@@ -45,7 +46,8 @@ test("UI_03_typed_money_is_refused_with_a_reason", () => {
   // L49: more than 2 decimals is refused, never rounded to 1200.56.
   assert.deepEqual(parseMoneyInput("1200.555"), { ok: false, reason: "decimals" });
   assert.deepEqual(parseMoneyInput("0.001"), { ok: false, reason: "decimals" });
-  for (const bad of ["1e3", "-5", "abc", "12.", ".5", "1.2.3", "12 000", "๑๒๐๐"]) {
+  // Review F5: a comma is a thousands separator only; "1,5" must not become 15.
+  for (const bad of ["1e3", "-5", "abc", "12.", ".5", "1.2.3", "12 000", "๑๒๐๐", "1,5", "1,00", "12,00", "12,00.50", ",100", "1,2345", "1,,000", "1000,000"]) {
     assert.deepEqual(parseMoneyInput(bad), { ok: false, reason: "format" }, bad);
   }
   assert.deepEqual(parseMoneyInput("0"), { ok: false, reason: "zero" });

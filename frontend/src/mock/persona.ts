@@ -66,6 +66,20 @@ export function personaInstallments(today: Date): MockInstallment[] {
       remaining: "12000.00",
       first_due_month: addMonths(now, -1), // last due: now + 8
     },
+    {
+      // Paid off: listed on Home but not counted (owed is false).
+      id: "c41f8e22-9d3a-4b7e-8f61-0a2b3c4d5e6f",
+      vendor: "shopdemo",
+      contract_id: "SD-19802",
+      kind: "purchase",
+      item_name: "กระเป๋าเป้",
+      principal: "2400.00",
+      monthly_amount: "800.00",
+      months: 3,
+      paid_amount: "2400.00",
+      remaining: "0.00",
+      first_due_month: addMonths(now, -5), // last due: now - 3
+    },
   ];
 }
 

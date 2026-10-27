@@ -20,7 +20,8 @@ shopping apps, and two or three BNPL plans already running.
 them up month by month, so the month when three plans overlap arrives as a
 surprise on payday.
 
-**What KidNee does** (a feature inside a bank app, shown here standalone):
+**What KidNee does** (a concept for a banking-style app, shown here standalone; it is
+not any bank's service):
 1. Keeps every installment in one list, with this month's total against a budget
    the user chose.
 2. **คิดก่อน**: before buying, the user enters the price and the plan, and sees
@@ -78,7 +79,7 @@ fits passes through".
 1. **Never** use the names or logos of real banks, their tech arms or app names,
    or real shopping platforms (CLAUDE.md rule 5), and no wording that suggests an
    official bank service. The only vendor name is **ShopDemo**. A green family
-   like Thai banking apps is allowed; no bank logo or mark is copied.
+   common in Thai personal-finance apps is used; no logo or mark is copied.
 2. **Footer on every screen:** "Concept prototype สำหรับการแข่งขัน".
 3. **Thai text has no em dash**, anywhere (rule 10). Use a space, a colon or a
    new sentence.
@@ -234,7 +235,10 @@ Every screen has the footer and handles **loading** (skeleton), **error**
   `BUDGET_ABOVE_ONE_THIRD_OF_INCOME`, a warn alert explains the ธปท. guidance and
   says the settings are saved anyway (L64). Then "ไปหน้าหลัก".
 - Errors per field: money format, more than 2 decimals (refused, not rounded),
-  payday out of range, percent out of range, consent missing.
+  payday out of range, percent out of range, consent missing. A comma is accepted
+  only as a thousands separator ("12,000"); "1,5" is refused, never read as 15.
+- With auto-save off, the rule fields are hidden and not checked; an unfinished
+  rule is sent as the default 10% (the API needs a rule; it is unused while off).
 - States: loading (GET /settings), error, save failed (info alert, try again).
 
 ### 7.2 Screen 2: Home (`#/home`)
@@ -246,7 +250,11 @@ Every screen has the footer and handles **loading** (skeleton), **error**
 4. **Upcoming over-budget months** (the next 5), or "5 เดือนข้างหน้ายังไม่มีเดือนไหนเกินงบ".
 5. **Buffer card:** balance and "พอจ่ายค่างวดได้ประมาณ N เดือน".
 6. **Installments:** name, source (ShopDemo or บันทึกเอง), months, amount per month,
-   remaining. Empty: "ยังไม่มีรายการผ่อน ก่อนซื้อชิ้นต่อไป ลองกด คิดก่อน ดูนะ".
+   remaining. Lines the API marks as not owed (paid off, cancelled) are listed
+   under "ไม่นับในยอดต่อเดือน", so the rows above always add up to the total. A
+   status chip says "ผ่อนครบแล้ว", "ยกเลิกแล้ว", "คุณแจ้งว่าไม่ใช่รายการของคุณ" or
+   "ยกเลิกแล้ว หลังจากคุณแจ้งว่าไม่ใช่รายการของคุณ" (L59(3): the report is never lost).
+   Empty: "ยังไม่มีรายการผ่อน ก่อนซื้อชิ้นต่อไป ลองกด คิดก่อน ดูนะ".
 - States: loading, error, settings missing, empty list.
 
 ### 7.3 Screen 3: คิดก่อน (`#/think`)
@@ -338,6 +346,7 @@ account 9,500.00, buffer 4,800.00.
 Existing installments (months relative to the demo month; on 27 Oct 2026):
 - หูฟังไร้สาย, ShopDemo: 2,000.00 a month, last month ธ.ค. 2569 (ends soon).
 - ตู้เย็น, recorded by hand: 1,500.00 a month, last month มิ.ย. 2570.
+- กระเป๋าเป้, ShopDemo: paid off (listed under "ไม่นับในยอดต่อเดือน").
 Now: 3,500.00 a month.
 
 | Example | Price | Plan | Busiest month | Verdict |
@@ -372,7 +381,7 @@ Node 22.12 or later (Vite 8). From `frontend/`:
 ```bash
 npm ci              # exact versions from package-lock.json
 npm run dev         # http://127.0.0.1:5173 (loopback only, never 0.0.0.0)
-npm test            # UI-01 to UI-10 (compiled with tsc, run with node --test)
+npm test            # UI-01 to UI-12 (compiled with tsc, run with node --test)
 npm run typecheck   # tsc --noEmit, strict
 npm run build       # typecheck + production build to dist/
 npm audit
@@ -402,7 +411,8 @@ Used:
 
 Overridden (our rules win):
 - Its palette (gold and purple on dark) and "personal finance" palette (blue on
-  dark): replaced by the green family, light mode only, for a bank-app feel.
+  dark): replaced by the green family, light mode only, for a calm and
+  trustworthy feel.
 - Its font pairing (IBM Plex Sans via Google Fonts): replaced by the system Thai
   font stack; no Google Fonts, no CDN.
 - "Use `type=number`" for numbers: replaced by `type="text"` +
