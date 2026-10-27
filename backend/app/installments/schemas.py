@@ -12,6 +12,8 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
+from app.affordability.months import Month, Scheduled
+from app.affordability.schemas import VerdictOut
 from app.models import InstallmentKind
 from app.money import MONEY_MAX, MoneyStr
 from app.schemas import MAX_MONTHS, NO_CONTROL_CHARS, Id
@@ -61,6 +63,11 @@ class ManualEntryIn(BaseModel):
         price (a rounded-down plan such as 3 x 333.33 for 1,000.00)."""
         return max(Decimal("0.00"), self.months * self.monthly_amount - self.item_price)
 
+    @property
+    def schedule(self) -> Scheduled:
+        """The plan as the affordability check (L65) sees it."""
+        return Scheduled(Month.of(self.first_due_month), self.months, self.monthly_amount)
+
 
 class RecordedOut(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -69,3 +76,6 @@ class RecordedOut(BaseModel):
     status: Literal["created", "duplicate"]
     saved_amount: Decimal
     monthly_total: Decimal  # L43: every installment owed, this one included
+    # L65: the verdict over this entry's term, as the Ledger stands now. Advice only:
+    # the entry is recorded whatever it says (rule 6).
+    warnings: VerdictOut

@@ -1,4 +1,5 @@
-"""Writes through the app API must survive commit (review F2, Session 12).
+"""Writes through the app API must survive commit (review F2, Session 12; NM-02,
+Session 13).
 
 The ST-xx and MI-xx tests share one rolled-back session with the app, so they read
 uncommitted rows back and cannot see a missing or misplaced commit. These run on
@@ -80,3 +81,25 @@ def test_MI_06_conflict_audit_survives_commit(race: Race) -> None:
         ).all()
         assert actions == ["installment_recorded", "client_request_id_reused"]
         assert s.scalar(select(func.count()).where(Installment.user_id == race.user)) == 1
+
+
+def test_NM_02_refused_not_me_audit_survives_commit(race: Race) -> None:
+    # L68: the 409 must still commit its audit row, so the router commits first.
+    created = race.post_manual(entry(race.id("req_not_me")))
+    assert created.status_code == 201
+    installment_id = created.json()["installment_id"]
+
+    response = race.client.post(
+        f"/debts/{installment_id}/not-me", headers={"X-Demo-User": race.user}
+    )
+
+    assert response.status_code == 409
+    assert race.platform.signals == []
+    with race.session() as s:
+        actions = s.scalars(
+            select(AuditLog.action).where(AuditLog.user_id == race.user).order_by(AuditLog.id)
+        ).all()
+        assert actions == ["installment_recorded", "not_me_rejected_manual_entry"]
+        assert s.scalar(select(Installment.status).where(Installment.user_id == race.user)) == (
+            "active"
+        )

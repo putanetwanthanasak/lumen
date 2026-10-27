@@ -1,0 +1,48 @@
+"""POST /installments/preview: "think before you buy" (L65). Writes nothing.
+
+The same body as POST /installments, so a client can preview exactly what it is
+about to record. The verdict is advice only; recording never depends on it (rule 6).
+"""
+
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app.affordability.schemas import VerdictOut
+from app.affordability.service import (
+    SETTINGS_REQUIRED,
+    SettingsRequiredError,
+    assess,
+    require_profile,
+)
+from app.api_body import json_body
+from app.db import get_session
+from app.errors import coded
+from app.installments.schemas import ManualEntryIn
+from app.users import demo_user
+
+router = APIRouter()
+
+SETTINGS_REQUIRED_ERROR = coded(
+    409, SETTINGS_REQUIRED, "set income and budget with POST /settings first"
+)
+RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {"description": "No or malformed X-Demo-User"},
+    409: {"description": "SETTINGS_REQUIRED: no income and budget to check against"},
+}
+
+
+@router.post("/installments/preview", responses=RESPONSES)
+def preview_installment(
+    user_id: Annotated[str, Depends(demo_user)],
+    entry: Annotated[ManualEntryIn, Depends(json_body(ManualEntryIn))],
+    session: Annotated[Session, Depends(get_session)],
+) -> VerdictOut:
+    """The month-by-month verdict if this entry were recorded. Nothing is written:
+    the session is never committed."""
+    try:
+        profile = require_profile(session, user_id)
+    except SettingsRequiredError:
+        raise SETTINGS_REQUIRED_ERROR from None
+    return VerdictOut.of(assess(session, user_id, entry.schedule, profile, include_candidate=True))

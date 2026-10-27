@@ -2,7 +2,9 @@
 
 201 for a new entry, 200 with the same body for a repeat of the same request
 (nothing new is saved or pushed), 409 for the same client_request_id with
-different fields. Recording never depends on affordability (rule 6).
+different fields. The L65 verdict comes back in `warnings`; recording never depends
+on it (rule 6). With no income and budget set, 409 SETTINGS_REQUIRED and nothing
+is written: the verdict needs them, and they are never guessed.
 """
 
 from typing import Annotated, Any
@@ -11,6 +13,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from app.affordability.router import SETTINGS_REQUIRED_ERROR
+from app.affordability.schemas import VerdictOut
+from app.affordability.service import SettingsRequiredError, assess, require_profile
 from app.api_body import json_body
 from app.db import get_session
 from app.installments.schemas import ManualEntryIn, RecordedOut
@@ -25,7 +30,11 @@ router = APIRouter()
 RESPONSES: dict[int | str, dict[str, Any]] = {
     200: {"description": "The same request again: the first entry, unchanged"},
     401: {"description": "No or malformed X-Demo-User"},
-    409: {"description": "client_request_id already used with different fields"},
+    409: {
+        "description": (
+            "client_request_id already used with different fields, or SETTINGS_REQUIRED"
+        )
+    },
 }
 
 
@@ -37,6 +46,10 @@ def record_installment(
     bank: Annotated[BankAccountProvider, Depends(get_bank_provider)],
     push: Annotated[PushProvider, Depends(get_push_provider)],
 ) -> JSONResponse:
+    try:
+        profile = require_profile(session, user_id)
+    except SettingsRequiredError:
+        raise SETTINGS_REQUIRED_ERROR from None
     result = record(session, user_id=user_id, entry=entry, bank=bank)
     session.commit()  # the conflict's audit row commits too
     if result.outcome == Outcome.CONFLICT:
@@ -49,6 +62,11 @@ def record_installment(
         status=result.outcome.value,
         saved_amount=result.saved_amount,
         monthly_total=result.monthly_total,
+        # The entry is in the Ledger now (or was already, on a repeat), so it is
+        # counted from there and not added again as a candidate.
+        warnings=VerdictOut.of(
+            assess(session, user_id, entry.schedule, profile, include_candidate=False)
+        ),
     )
     status_code = 201 if result.outcome == Outcome.CREATED else 200
     return JSONResponse(status_code=status_code, content=body.model_dump(mode="json"))
