@@ -37,6 +37,7 @@ def plan(session: Session, user_id: str, *, today: date, settings: Settings) -> 
     return build(
         debts(session, user_id),
         now=Month.of(today),
+        income=profile.income,
         budget=profile.budget,
         buffer_balance=balance(session, user_id),
         annual_rate=settings.consolidation_example_annual_rate,

@@ -69,8 +69,10 @@ class ConsolidationOut(_Out):
 
 class PlanOut(_Out):
     months: list[PlanMonth] = Field(
-        description="From the current month to the last month anything counted is due."
+        description="From the current month to the last month anything counted is due, "
+        "at most 600 months. Every other number covers every month, shown or not."
     )
+    months_truncated: bool = Field(description="True when months stops at 600.")
     back_in_budget_month: str | None = Field(
         description="First month from which every later month is within budget; "
         "null if every month already is."
@@ -80,7 +82,8 @@ class PlanOut(_Out):
     )
     safe_new_monthly: Decimal = Field(
         description=f"Largest monthly amount a new {SAFE_NEW_TERM}-month installment from "
-        "safe_new_from could add without any of its months going over budget."
+        "safe_new_from could add without any of its months going over budget or over "
+        "a third of income (the L65 RED line)."
     )
     safe_new_from: str
     safe_new_months: int = SAFE_NEW_TERM
@@ -101,6 +104,7 @@ class PlanOut(_Out):
                 )
                 for r in plan.rows
             ],
+            months_truncated=plan.months_truncated,
             back_in_budget_month=month_str(plan.back_in_budget_month),
             pause_until=month_str(plan.pause_until),
             safe_new_monthly=plan.safe_new_monthly,

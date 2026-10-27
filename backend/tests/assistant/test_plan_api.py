@@ -112,6 +112,7 @@ def test_AS_01_doc_example_over_http(plan_api: Api) -> None:
                 "headroom": "1300.00",
             },
         ],
+        "months_truncated": False,
         "back_in_budget_month": "2027-01",
         "pause_until": "2027-01",
         "safe_new_monthly": "1300.00",
@@ -306,3 +307,36 @@ def test_AS_08_example_rate_defaults_and_bounds() -> None:
     ):
         with pytest.raises(ValidationError):
             Settings(**bad)
+
+
+# --- Review F2: the safe amount never gets RED from "think before you buy" ----------
+
+
+def test_AS_03_safe_new_monthly_previews_without_red_when_the_budget_is_above_a_third(
+    plan_api: Api,
+) -> None:
+    # L64 saves a budget above a third of income with a warning; L65 still gives RED
+    # above 4,000.00 a month here.
+    plan_api.session.add(
+        UserSettings(
+            user_id=USER,
+            auto_save_enabled=False,
+            **profile()
+            | {"income": Decimal("12000.00"), "monthly_installment_budget": Decimal("5000.00")},
+        )
+    )
+    plan_api.session.flush()
+    body = get_plan(plan_api).json()
+    entry = {
+        "client_request_id": "req-safe",
+        "kind": "purchase",
+        "item_price": "1.00",
+        "months": 12,
+        "monthly_amount": body["safe_new_monthly"],
+        "first_due_month": body["safe_new_from"],
+    }
+
+    verdict = plan_api.call("POST", "/installments/preview", entry).json()["verdict"]
+
+    assert verdict == "GREEN"
+    assert body["safe_new_monthly"] == "4000.00"

@@ -12,7 +12,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from app.affordability.months import Month, Scheduled, month_totals
+from app.affordability.months import Month, Scheduled, Verdict, month_totals, month_verdict
 from app.assistant.plan import (
     HORIZON_CAP,
     SAFE_NEW_TERM,
@@ -21,13 +21,13 @@ from app.assistant.plan import (
     Reason,
     amortised_payment,
     build,
-    horizon,
     months_left,
     remaining_for_payoff,
 )
 from app.money import MONEY_MAX
 
 NOW = Month(2026 * 12 + 10)  # 2026-11
+INCOME = Decimal("30000.00")  # a third is 10,000.00, above every budget used here
 RATE = Decimal("0.18")  # the config example, not a real rate
 TERM = 24
 
@@ -54,10 +54,13 @@ def debt(
     )
 
 
-def plan(debts: list[Debt], budget: str = "5000.00", buffer: str = "0.00") -> Plan:
+def plan(
+    debts: list[Debt], budget: str = "5000.00", buffer: str = "0.00", income: Decimal = INCOME
+) -> Plan:
     return build(
         debts,
         now=NOW,
+        income=income,
         budget=Decimal(budget),
         buffer_balance=Decimal(buffer),
         annual_rate=RATE,
@@ -133,10 +136,12 @@ def test_AS_02_nothing_owed_is_one_empty_month_with_the_whole_budget_free() -> N
 
 
 def test_AS_02_horizon_runs_to_the_last_month_due_and_is_capped_at_600() -> None:
-    assert horizon([debt("1.00", 3), debt("1.00", 5, offset=4)], NOW) == 9
-    assert horizon([debt("1.00", 3, offset=-6)], NOW) == 1  # all in the past
-    assert horizon([debt("1.00", 600, offset=10)], NOW) == HORIZON_CAP
-    assert len(plan([debt("1.00", 600, offset=10)]).rows) == HORIZON_CAP
+    assert len(plan([debt("1.00", 3), debt("1.00", 5, offset=4)]).rows) == 9
+    assert len(plan([debt("1.00", 3, offset=-6)]).rows) == 1  # all in the past
+    assert len(plan([debt("1.00", 590, offset=10)]).rows) == HORIZON_CAP
+    assert plan([debt("1.00", 590, offset=10)]).months_truncated is False
+    capped = plan([debt("1.00", 591, offset=10)])
+    assert (len(capped.rows), capped.months_truncated) == (HORIZON_CAP, True)
 
 
 # --- AS-03: safe_new_monthly is the min headroom over the 12 months -----------------
@@ -163,6 +168,26 @@ def test_AS_03_a_debt_due_only_in_month_13_does_not_limit_the_12_months() -> Non
     result = plan([debt("5000.00", 1, offset=SAFE_NEW_TERM)])
 
     assert result.safe_new_monthly == Decimal("5000.00")
+
+
+@pytest.mark.parametrize(
+    ("income", "safe"),
+    [
+        ("12000.00", "4000.00"),  # a third of income is below the 5,000.00 budget
+        ("12000.02", "4000.00"),  # 4,000.01 x 3 = 12,000.03: RED, so rounded down
+        ("15000.00", "5000.00"),  # exactly a third is the budget
+        ("30000.00", "5000.00"),  # the budget is the lower line
+    ],
+)
+def test_AS_03_safe_new_monthly_also_stays_within_a_third_of_income(income: str, safe: str) -> None:
+    """Review F2: a "safe" amount must not get L65 RED from the preview."""
+    assert plan([], income=Decimal(income)).safe_new_monthly == Decimal(safe)
+
+
+def test_AS_03_a_third_of_income_already_used_leaves_nothing_safe() -> None:
+    result = plan([debt("4500.00", 12)], budget="9000.00", income=Decimal("12000.00"))
+
+    assert result.safe_new_monthly == Decimal("0.00")
 
 
 # --- AS-04: the buffer plan ---------------------------------------------------------
@@ -326,9 +351,14 @@ def exact_payment(principal: Decimal, rate: Decimal, term: int) -> Fraction:
 
 
 def documented_rounding(exact: Fraction) -> Fraction:
-    """To 20 places (half even, as Decimal.quantize), then up to the satang."""
-    places = Fraction(round(exact * 10**20), 10**20)
-    return Fraction(math.ceil(places * 100), 100)
+    """To 20 places, half even as Decimal.quantize does, then up to the satang.
+    Integer arithmetic only: no round() on money (review F5)."""
+    scaled = exact * 10**20
+    whole, rest = divmod(scaled.numerator, scaled.denominator)
+    twice = 2 * rest
+    if twice > scaled.denominator or (twice == scaled.denominator and whole % 2 == 1):
+        whole += 1
+    return Fraction(math.ceil(Fraction(whole, 10**20) * 100), 100)
 
 
 @settings(max_examples=1500, deadline=None)
@@ -409,8 +439,9 @@ debts_strategy = st.lists(
             disputed=False,
         ),
         money("0.01", "20000.00"),
-        st.integers(min_value=1, max_value=36),
-        st.integers(min_value=-24, max_value=24),
+        # Mostly short plans; some long enough to pass the 600-month cap (review F1).
+        st.one_of(st.integers(min_value=1, max_value=36), st.integers(500, 600)),
+        st.one_of(st.integers(min_value=-24, max_value=24), st.integers(100, 140)),
         st.booleans(),
     ),
     max_size=6,
@@ -418,12 +449,22 @@ debts_strategy = st.lists(
 
 
 @settings(max_examples=EXAMPLES, deadline=None)
-@given(debts=debts_strategy, budget=money("0.00", "40000.00"))
+@given(
+    debts=debts_strategy,
+    budget=money("0.00", "40000.00"),
+    income=money("0.01", "120000.00"),
+)
 def test_AS_09_headroom_is_never_negative_and_safe_new_monthly_always_fits(
-    debts: list[Debt], budget: Decimal
+    debts: list[Debt], budget: Decimal, income: Decimal
 ) -> None:
     result = build(
-        debts, now=NOW, budget=budget, buffer_balance=Decimal("0.00"), annual_rate=RATE, term=TERM
+        debts,
+        now=NOW,
+        income=income,
+        budget=budget,
+        buffer_balance=Decimal("0.00"),
+        annual_rate=RATE,
+        term=TERM,
     )
     schedules = [d.schedule for d in debts]
 
@@ -433,38 +474,88 @@ def test_AS_09_headroom_is_never_negative_and_safe_new_monthly_always_fits(
     with_new = month_totals(
         schedules, first=result.safe_new_from, count=SAFE_NEW_TERM, candidate=candidate
     )
-    assert all(m.total <= budget for m in with_new)
-    # And it is the largest such amount: one satang more goes over in some month.
-    assert any(m.total + Decimal("0.01") > budget for m in with_new)
+    before = month_totals(schedules, first=result.safe_new_from, count=SAFE_NEW_TERM)
+    for old, new in zip(before, with_new, strict=True):
+        if month_verdict(old.total, income=income, budget=budget) is Verdict.GREEN:
+            # The new installment keeps the month GREEN in the L65 verdict: within
+            # budget and within a third of income.
+            assert month_verdict(new.total, income=income, budget=budget) is Verdict.GREEN
+        else:
+            # Already over a third of income (the window is within budget): nothing
+            # more is safe.
+            assert result.safe_new_monthly == 0
+    # And it is the largest such amount: one satang more leaves GREEN in some month.
+    assert any(
+        month_verdict(m.total + Decimal("0.01"), income=income, budget=budget) is not Verdict.GREEN
+        for m in with_new
+    )
+
+
+def full_totals(debts: list[Debt]) -> list[Decimal]:
+    """The oracle: every month from NOW to the last month due, with no cap."""
+    last = max([NOW.index, *(d.schedule.last_month.index for d in debts)])
+    rows = month_totals([d.schedule for d in debts], first=NOW, count=last - NOW.index + 1)
+    return [r.total for r in rows]
 
 
 @settings(max_examples=EXAMPLES, deadline=None)
 @given(
     debts=debts_strategy,
     budget=money("0.00", "40000.00"),
-    buffer=money("0.00", "100000.00"),
+    buffer=money("0.00", "100000000.00"),
 )
-def test_AS_10_back_in_budget_is_the_first_month_from_which_all_are_within(
+def test_AS_10_back_in_budget_shortfall_and_run_match_every_month_uncapped(
     debts: list[Debt], budget: Decimal, buffer: Decimal
 ) -> None:
     result = build(
-        debts, now=NOW, budget=budget, buffer_balance=buffer, annual_rate=RATE, term=TERM
+        debts,
+        now=NOW,
+        income=INCOME,
+        budget=budget,
+        buffer_balance=buffer,
+        annual_rate=RATE,
+        term=TERM,
     )
-    back = result.back_in_budget_month
+    totals = full_totals(debts)
+    over = [i for i, t in enumerate(totals) if t > budget]
 
-    if back is None:
-        assert not any(r.over_budget for r in result.rows)
-    else:
-        assert all(not r.over_budget for r in result.rows if r.month >= back)
-        assert next(r for r in result.rows if r.month == back.plus(-1)).over_budget
-    assert result.pause_until == (back if result.rows[0].over_budget else None)
-    shortfall = sum((r.total - budget for r in result.rows if r.total > budget), Decimal(0))
+    assert [r.total for r in result.rows] == totals[:HORIZON_CAP]
+    assert result.months_truncated is (len(totals) > HORIZON_CAP)
+    assert result.back_in_budget_month == (NOW.plus(over[-1] + 1) if over else None)
+    assert result.pause_until == (result.back_in_budget_month if 0 in over else None)
+    shortfall = sum((totals[i] - budget for i in over), Decimal(0))
     assert result.buffer.shortfall == shortfall
     assert result.buffer.covered is (buffer >= shortfall)
     assert result.buffer.still_short == max(Decimal(0), shortfall - buffer)
+    run = any(all(i + k in over for k in range(3)) for i in over)
+    assert (result.consolidation.reason is not Reason.NOT_NEEDED) is run
     estimate = result.consolidation.estimate
     assert (estimate is not None) is result.consolidation.eligible
     if estimate is not None:
         assert estimate.total_cost == estimate.monthly_payment * TERM
         assert estimate.monthly_payment <= budget
         assert estimate.total_cost <= MONEY_MAX
+
+
+# --- Review F1: months past the 600-month display cap still count -------------------
+
+
+def test_AS_02_months_over_budget_past_the_cap_still_count() -> None:
+    # 6,000.00 a month for 600 months from 2027-06: over budget until now + 606.
+    result = plan([debt("6000.00", 600, offset=7)], buffer="595000.00")
+
+    assert len(result.rows) == HORIZON_CAP
+    assert result.months_truncated is True
+    assert result.back_in_budget_month == NOW.plus(607)
+    assert result.buffer.shortfall == Decimal("600000.00")  # 600 x 1,000.00
+    assert result.buffer.covered is False
+    assert result.buffer.still_short == Decimal("5000.00")
+
+
+def test_AS_05_a_run_past_the_cap_still_makes_consolidation_needed() -> None:
+    result = plan([debt("100.00", 1), debt("6000.00", 3, offset=650)])
+
+    assert result.months_truncated is True
+    assert not any(r.over_budget for r in result.rows)
+    assert result.back_in_budget_month == NOW.plus(653)
+    assert result.consolidation.reason is Reason.ELIGIBLE

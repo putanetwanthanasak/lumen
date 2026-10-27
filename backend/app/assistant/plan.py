@@ -12,16 +12,23 @@ L65 verdict, so the plan and "think before you buy" never disagree.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from decimal import ROUND_UP, Decimal, localcontext
+from decimal import ROUND_DOWN, ROUND_UP, Decimal, localcontext
 from enum import StrEnum
+from itertools import pairwise
 
-from app.affordability.months import Month, MonthTotal, Scheduled, month_totals, over_budget
+from app.affordability.months import (
+    Month,
+    MonthTotal,
+    Scheduled,
+    month_totals,
+    over_budget,
+)
 from app.money import MONEY_MAX
 
 ZERO = Decimal("0.00")
 CENT = Decimal("0.01")
 NOISE = Decimal("1E-20")
-HORIZON_CAP = 600  # months, the R2 bound on a schedule (L59 6)
+HORIZON_CAP = 600  # months shown, the R2 bound on a schedule (L59 6)
 SAFE_NEW_TERM = 12  # safe_new_monthly is for a new 12-month installment
 CONSOLIDATION_RUN = 3  # L70 (a): consecutive months over budget
 
@@ -97,7 +104,8 @@ class Consolidation:
 @dataclass(frozen=True)
 class Plan:
     budget: Decimal
-    rows: list[MonthRow]
+    rows: list[MonthRow]  # at most HORIZON_CAP; the numbers below cover every month
+    months_truncated: bool
     back_in_budget_month: Month | None
     pause_until: Month | None
     safe_new_monthly: Decimal
@@ -106,15 +114,40 @@ class Plan:
     consolidation: Consolidation
 
 
-def horizon(debts: Sequence[Debt], now: Month) -> int:
-    """Months from now to the last month any counted schedule is due: at least the
-    current month, at most HORIZON_CAP."""
-    last = max((d.schedule.last_month.index for d in debts), default=now.index)
-    return min(max(last - now.index + 1, 1), HORIZON_CAP)
+@dataclass(frozen=True)
+class Span:
+    """Consecutive months with the same total. A total changes only where a schedule
+    starts or ends, so a few spans cover any range, however long (review F1)."""
+
+    first: Month
+    months: int
+    total: Decimal
+
+    @property
+    def after(self) -> Month:
+        return self.first.plus(self.months)
+
+
+def spans(schedules: Sequence[Scheduled], now: Month) -> list[Span]:
+    """Every month from now to the last month anything is due (at least the current
+    month), as spans. Each span's total comes from month_totals, like the rows."""
+    end = max([now.index + 1, *(s.last_month.index + 1 for s in schedules)])
+    edges = {s.first_month.index for s in schedules} | {s.last_month.index + 1 for s in schedules}
+    cuts = sorted({now.index, end} | {e for e in edges if now.index < e < end})
+    return [
+        Span(Month(a), b - a, month_totals(schedules, first=Month(a), count=1)[0].total)
+        for a, b in pairwise(cuts)
+    ]
 
 
 def headroom(total: Decimal, budget: Decimal) -> Decimal:
     return max(ZERO, budget - total)
+
+
+def third_headroom(total: Decimal, income: Decimal) -> Decimal:
+    """The most a month can add and stay at or below a third of income (L65 RED,
+    review F2): rounded DOWN to the satang, so total + it never passes the third."""
+    return max(ZERO, ((income - 3 * total) / 3).quantize(CENT, rounding=ROUND_DOWN))
 
 
 def rows_of(totals: Sequence[MonthTotal], budget: Decimal) -> list[MonthRow]:
@@ -124,12 +157,11 @@ def rows_of(totals: Sequence[MonthTotal], budget: Decimal) -> list[MonthRow]:
     ]
 
 
-def back_in_budget(rows: Sequence[MonthRow]) -> Month | None:
+def back_in_budget(over: Sequence[Span]) -> Month | None:
     """The first month from which every later month is within budget: the month
-    after the last one over budget. None if no month is over budget. Past the
-    horizon nothing is due, so the month after the horizon is always within."""
-    over = [r.month for r in rows if r.over_budget]
-    return over[-1].plus(1) if over else None
+    after the last one over budget. None if no month is over budget. After the last
+    span nothing is due, so that month is always within."""
+    return over[-1].after if over else None
 
 
 def months_left(schedule: Scheduled, now: Month) -> int:
@@ -160,18 +192,20 @@ def amortised_payment(principal: Decimal, annual_rate: Decimal, term: int) -> De
         return exact.quantize(NOISE).quantize(CENT, rounding=ROUND_UP)
 
 
-def has_run(rows: Sequence[MonthRow], length: int) -> bool:
-    run = 0
-    for row in rows:
-        run = run + 1 if row.over_budget else 0
+def has_run(over: Sequence[Span], length: int) -> bool:
+    """A run of `length` consecutive months over budget; adjacent spans join."""
+    run, after = 0, None
+    for span in over:
+        run = (run if span.first == after else 0) + span.months
         if run >= length:
             return True
+        after = span.after
     return False
 
 
 def consolidation(
     debts: Sequence[Debt],
-    rows: Sequence[MonthRow],
+    over: Sequence[Span],
     *,
     now: Month,
     budget: Decimal,
@@ -179,7 +213,7 @@ def consolidation(
     term: int,
 ) -> Consolidation:
     """L70: every condition must hold, or the reason of the first that fails."""
-    if not has_run(rows, CONSOLIDATION_RUN):
+    if not has_run(over, CONSOLIDATION_RUN):
         return Consolidation(Reason.NOT_NEEDED, None)
     if any(d.overdue for d in debts):
         return Consolidation(Reason.OVERDUE_DEBT, None)
@@ -216,25 +250,33 @@ def build(
     debts: Sequence[Debt],
     *,
     now: Month,
+    income: Decimal,
     budget: Decimal,
     buffer_balance: Decimal,
     annual_rate: Decimal,
     term: int,
 ) -> Plan:
     schedules = [d.schedule for d in debts]
-    rows = rows_of(month_totals(schedules, first=now, count=horizon(debts, now)), budget)
-    back = back_in_budget(rows)
+    every = spans(schedules, now)
+    over = [span for span in every if over_budget(span.total, budget)]
+    shown = min(every[-1].after.index - now.index, HORIZON_CAP)
+    rows = rows_of(month_totals(schedules, first=now, count=shown), budget)
+    back = back_in_budget(over)
     # A new installment fits from the month the totals are back within budget; its
-    # 12 months may run past the horizon, where nothing else is due.
+    # 12 months may run past the last month due, where nothing else is. "Safe" also
+    # means no L65 RED: at most a third of income in every month (review F2).
     safe_from = back or now
     window = month_totals(schedules, first=safe_from, count=SAFE_NEW_TERM)
-    shortfall = sum((r.total - budget for r in rows if r.over_budget), ZERO)
+    shortfall = sum(((span.total - budget) * span.months for span in over), ZERO)
     return Plan(
         budget=budget,
         rows=rows,
+        months_truncated=shown < every[-1].after.index - now.index,
         back_in_budget_month=back,
-        pause_until=back if rows[0].over_budget else None,
-        safe_new_monthly=min(headroom(t.total, budget) for t in window),
+        pause_until=back if over and over[0].first == now else None,
+        safe_new_monthly=min(
+            min(headroom(t.total, budget), third_headroom(t.total, income)) for t in window
+        ),
         safe_new_from=safe_from,
         buffer=BufferPlan(
             shortfall=shortfall,
@@ -243,6 +285,6 @@ def build(
             still_short=max(ZERO, shortfall - buffer_balance),
         ),
         consolidation=consolidation(
-            debts, rows, now=now, budget=budget, annual_rate=annual_rate, term=term
+            debts, over, now=now, budget=budget, annual_rate=annual_rate, term=term
         ),
     )
