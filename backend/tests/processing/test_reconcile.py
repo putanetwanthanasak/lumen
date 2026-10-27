@@ -91,7 +91,13 @@ def test_INV_1_ledger_row_without_balance_row(db_session: Session) -> None:
 
 def test_INV_1_withdrawal_counts_against_ledger(history: Session) -> None:
     history.add(
-        savings_tx(user_id=USER, type="withdrawal", source_vendor=None, source_event_id=None)
+        savings_tx(
+            user_id=USER,
+            type="withdrawal",
+            source_vendor=None,
+            source_event_id=None,
+            client_request_id="move-1",
+        )
     )
     history.flush()
     assert violations(history) == ["INV-1"]
@@ -114,6 +120,7 @@ def test_INV_2_negative_balance(owner_history: Session) -> None:
             amount=Decimal("100.00"),
             source_vendor=None,
             source_event_id=None,
+            client_request_id="move-1",
         )
     )
     owner_history.execute(
@@ -268,10 +275,10 @@ def test_RS_02_violation_rolls_back_whole_event_and_logs(
 ) -> None:
     """A simulated bug: the balance is credited one baht too much."""
     opt_in(db_session)
-    real_credit = savings._credit
+    real_credit = savings.adjust_balance
     monkeypatch.setattr(
         savings,
-        "_credit",
+        "adjust_balance",
         lambda session, user_id, amount: real_credit(session, user_id, amount + Decimal(1)),
     )
 

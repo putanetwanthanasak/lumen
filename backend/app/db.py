@@ -25,7 +25,7 @@ class Base(DeclarativeBase):
 
 
 def make_engine(url: str, **pool: Any) -> Engine:
-    # R7: _credit's retry loop needs READ COMMITTED (a losing UPDATE must see the
+    # R7: adjust_balance's retry loop needs READ COMMITTED (a losing UPDATE must see the
     # winner's row, not raise a serialization error), so it does not depend on the
     # server's default_transaction_isolation. S12: hide_parameters keeps user refs and
     # alert text out of DB error messages, and so out of the logs.

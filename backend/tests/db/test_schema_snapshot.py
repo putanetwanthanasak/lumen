@@ -63,6 +63,7 @@ EXPECTED_CONSTRAINTS: dict[str, dict[str, str]] = {
         "ck_savings_transactions_auto_save_has_installment": "CHECK (((type <> 'auto_save'::text) OR (installment_id IS NOT NULL)))",
         "ck_savings_transactions_source_event_pair_complete": "CHECK (((source_vendor IS NULL) = (source_event_id IS NULL)))",
         "ck_savings_transactions_type_valid": "CHECK ((type = ANY (ARRAY['auto_save'::text, 'withdrawal'::text])))",
+        "ck_savings_transactions_withdrawal_has_client_request_id": "CHECK (((type = 'withdrawal'::text) = (client_request_id IS NOT NULL)))",
         "fk_savings_transactions_installment_id_installments": "FOREIGN KEY (installment_id) REFERENCES installments(id)",
         "fk_savings_transactions_source_vendor_webhook_events": "FOREIGN KEY (source_vendor, source_event_id) REFERENCES webhook_events(vendor, event_id)",
         "pk_savings_transactions": "PRIMARY KEY (id)",
@@ -113,6 +114,7 @@ EXPECTED_INDEXES: dict[str, dict[str, str]] = {
         "pk_savings_transactions": "CREATE UNIQUE INDEX pk_savings_transactions ON public.savings_transactions USING btree (id)",
         "uq_savings_transactions_auto_save_installment_id": "CREATE UNIQUE INDEX uq_savings_transactions_auto_save_installment_id ON public.savings_transactions USING btree (installment_id) WHERE (type = 'auto_save'::text)",
         "uq_savings_transactions_auto_save_source_event": "CREATE UNIQUE INDEX uq_savings_transactions_auto_save_source_event ON public.savings_transactions USING btree (source_vendor, source_event_id) WHERE (type = 'auto_save'::text)",
+        "uq_savings_transactions_user_client_request_id": "CREATE UNIQUE INDEX uq_savings_transactions_user_client_request_id ON public.savings_transactions USING btree (user_id, client_request_id) WHERE (client_request_id IS NOT NULL)",
     },
     "user_balances": {
         "pk_user_balances": "CREATE UNIQUE INDEX pk_user_balances ON public.user_balances USING btree (user_id)",

@@ -11,7 +11,10 @@ class BankAccountProvider(Protocol):
         retry with the same key after a lost commit is a no-op, not a second debit."""
         ...
 
-    def transfer_from_savings(self, user_id: str, amount: Decimal) -> None: ...
+    def transfer_from_savings(self, user_id: str, amount: Decimal, *, idempotency_key: str) -> None:
+        """Move amount from savings back to the main account (L66), with the same
+        at-most-once guarantee per key as transfer_to_savings."""
+        ...
 
 
 class PushProvider(Protocol):
