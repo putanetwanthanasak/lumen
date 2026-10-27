@@ -69,6 +69,14 @@ export type VerdictOut = {
   monthly_total: Money; // what is owed per month now (L43)
 };
 
+/**
+ * POST /installments/preview as the result screen needs it.
+ * TODO(backend, Session 15): add `saving_if_recorded`, the amount POST /installments
+ * would save for this entry right now (L63: same rule, same 500.00 safety net,
+ * "0.00" when nothing would be saved). Mocked until then.
+ */
+export type PreviewOut = VerdictOut & { saving_if_recorded: Money };
+
 // ---- /installments (backend/app/installments/schemas.py) ----------------------
 
 export type InstallmentKind = "purchase" | "cash_withdrawal" | "cash_loan";
@@ -82,7 +90,21 @@ export type ManualEntryIn = {
   monthly_amount: Money;
   first_due_month: string; // "YYYY-MM"
   item_name: string; // may be ""
+  /**
+   * TODO(backend, Session 15): the app the user pays through, free text, at most
+   * 60 characters, null when not given. Never a list of real platform names (rule 5).
+   * The backend's ManualEntryIn has extra="forbid", so it rejects this field (422)
+   * until it is added. Mocked until then.
+   */
+  platform_name: string | null;
 };
+
+/**
+ * TODO(backend, Session 15): GET /installments/suggested-monthly?item_price=&months=
+ * The 0% monthly amount the ตรวจสอบก่อนผ่อน form prefills: item_price / months, rounded UP
+ * to 0.01 (so the payments never add up to less than the price). Mocked until then.
+ */
+export type SuggestedMonthlyOut = { monthly_amount: Money };
 
 /** POST /installments: 201 new, 200 repeat; 409 reused id or SETTINGS_REQUIRED. */
 export type RecordedOut = {
@@ -112,6 +134,7 @@ export type InstallmentLine = {
   status: InstallmentStatus;
   disputed_at: string | null;
   owed: boolean;
+  platform_name: string | null; // TODO(backend, Session 15): see ManualEntryIn
 };
 
 /** GET /debts/summary. */
@@ -122,12 +145,28 @@ export type DebtSummary = {
   installments: InstallmentLine[];
 };
 
+/** One installment due in a month (GET /debts/months). */
+export type MonthInstallment = {
+  installment_id: string;
+  item_name: string;
+  platform_name: string | null;
+  monthly_amount: Money;
+  installment_no: number; // "งวดที่ x": 1 in the first due month
+  installments_total: number; // "จาก y": the installment's months
+  is_last: boolean; // its last due month
+};
+
+export type MonthDetail = MonthRow & { installments: MonthInstallment[] };
+
 /**
- * TODO(backend, Session 15): GET /debts/months?from=YYYY-MM&count=N.
- * Not built yet. Expected shape: the preview's MonthRow per month with no candidate,
- * so Home can list upcoming over-budget months. Mocked until then.
+ * TODO(backend, Session 15): GET /debts/months[?count=N]. Not built yet.
+ * From this month: N months when `count` is given (Home asks for 6), otherwise up
+ * to the last month with an installment due. Each row is the preview's MonthRow
+ * with no candidate (the L43 owed set, full monthly amount in every scheduled
+ * month, L65 flags) plus the installments due that month, in the order recorded.
+ * 409 SETTINGS_REQUIRED without settings. Mocked until then.
  */
-export type UpcomingMonthsOut = { months: MonthRow[] };
+export type MonthsOut = { months: MonthDetail[] };
 
 // ---- /buffer (backend/app/buffer/schemas.py) ----------------------------------
 

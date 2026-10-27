@@ -11,11 +11,14 @@ import type {
   ErrorBody,
   InstallmentLine,
   ManualEntryIn,
+  MonthDetail,
   MonthRow,
+  MonthsOut,
+  PreviewOut,
   RecordedOut,
   SettingsIn,
   SettingsOut,
-  UpcomingMonthsOut,
+  SuggestedMonthlyOut,
   Verdict,
   VerdictOut,
 } from "../api-types.ts";
@@ -35,7 +38,8 @@ import { fromSatang, sum, toSatang } from "./satang.ts";
 export type MockResponse = { status: number; body: unknown };
 
 const SAFETY_NET = toSatang("500.00");
-const UPCOMING_MONTHS = 6;
+const PLATFORM_MAX = 60;
+const CONTROL = /[\u0000-\u001f]/; // L55: no control characters in text fields
 
 type Recorded = { fingerprint: string; installmentId: string; savedAmount: Money };
 
@@ -221,7 +225,14 @@ function checkEntry(body: unknown): ManualEntryIn | MockResponse {
   if (typeof b.first_due_month !== "string" || !/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(b.first_due_month)) {
     return invalid("first_due_month");
   }
-  return b as ManualEntryIn;
+  // TODO(backend): platform_name is mock only for now.
+  const platform = b.platform_name;
+  if (platform !== null && platform !== undefined) {
+    if (typeof platform !== "string" || platform.trim() === "" || [...platform].length > PLATFORM_MAX || CONTROL.test(platform)) {
+      return invalid("platform_name");
+    }
+  }
+  return { ...(b as ManualEntryIn), platform_name: platform ?? null };
 }
 
 const isResponse = (v: unknown): v is MockResponse =>
@@ -234,7 +245,14 @@ function previewOrRecord(body: unknown, record: boolean): MockResponse {
   if (settings === null) return SETTINGS_REQUIRED;
   const entry = checkEntry(body);
   if (isResponse(entry)) return entry;
-  if (!record) return ok(assess(settings, store.installments, entry, true));
+  if (!record) {
+    // TODO(backend): saving_if_recorded is mock only for now.
+    const out: PreviewOut = {
+      ...assess(settings, store.installments, entry, true),
+      saving_if_recorded: savingFor(settings, entry, store.mainBalance),
+    };
+    return ok(out);
+  }
 
   const { client_request_id: key, ...fields } = entry;
   const fingerprint = JSON.stringify(fields);
@@ -258,6 +276,7 @@ function previewOrRecord(body: unknown, record: boolean): MockResponse {
       paid_amount: "0.00",
       remaining: fromSatang(toSatang(entry.monthly_amount) * BigInt(entry.months)),
       first_due_month: entry.first_due_month,
+      platform_name: entry.platform_name,
     });
     store.mainBalance = fromSatang(toSatang(store.mainBalance) - toSatang(saved));
     store.bufferBalance = fromSatang(toSatang(store.bufferBalance) + toSatang(saved));
@@ -291,6 +310,7 @@ function debtSummary(): DebtSummary {
     status: owed(i) ? "active" : "paid_off",
     disputed_at: null,
     owed: owed(i),
+    platform_name: i.platform_name,
   }));
   const owedLines = store.installments.filter(owed);
   const last = owedLines.map(lastMonth).sort().at(-1);
@@ -302,18 +322,61 @@ function debtSummary(): DebtSummary {
   };
 }
 
-/** TODO(backend): GET /debts/months. The months from now, with no candidate. */
-function upcomingMonths(): MockResponse {
+/**
+ * TODO(backend): GET /debts/months. From this month, with no candidate: `count`
+ * months, or up to the last month an owed installment is due.
+ */
+function months(path: string): MockResponse {
   const settings = store.settings;
   if (settings === null) return SETTINGS_REQUIRED;
   const from = monthOf(store.today);
-  const verdict = assess(
-    settings,
-    store.installments,
-    { first_due_month: from, months: UPCOMING_MONTHS, monthly_amount: "0.00" },
-    false,
-  );
-  const out: UpcomingMonthsOut = { months: verdict.months };
+  const counted = store.installments.filter(owed);
+  const countParam = new URLSearchParams(path.split("?")[1] ?? "").get("count");
+  let count: number;
+  if (countParam === null) {
+    const last = counted.map(lastMonth).sort().at(-1);
+    count = last === undefined || last < from ? 0 : monthsBetween(from, last) + 1;
+  } else {
+    count = Number(countParam); // ui-06-allow: a count of months
+    if (!isInt(count, 1, 600)) return invalid("count");
+  }
+  const rows = count === 0 ? [] : assess(settings, store.installments, { first_due_month: from, months: count, monthly_amount: "0.00" }, false).months;
+  const out: MonthsOut = {
+    months: rows.map(
+      (row): MonthDetail => ({
+        ...row,
+        installments: counted
+          .filter((i) => dueIn(i, row.month))
+          .map((i) => ({
+            installment_id: i.id,
+            item_name: i.item_name,
+            platform_name: i.platform_name,
+            monthly_amount: i.monthly_amount,
+            installment_no: monthsBetween(i.first_due_month, row.month) + 1,
+            installments_total: i.months,
+            is_last: row.month === lastMonth(i),
+          })),
+      }),
+    ),
+  };
+  return ok(out);
+}
+
+function monthsBetween(from: string, to: string): number {
+  const [fy, fm] = from.split("-").map(Number); // ui-06-allow: a date
+  const [ty, tm] = to.split("-").map(Number); // ui-06-allow: a date
+  return ((ty ?? 0) - (fy ?? 0)) * 12 + ((tm ?? 0) - (fm ?? 0));
+}
+
+/** TODO(backend): GET /installments/suggested-monthly. price / months, rounded UP to 0.01. */
+function suggestedMonthly(path: string): MockResponse {
+  const query = new URLSearchParams(path.split("?")[1] ?? "");
+  const price = query.get("item_price");
+  const monthsParam = query.get("months");
+  if (!isMoney(price) || toSatang(price) === 0n) return invalid("item_price");
+  const n = monthsParam !== null && /^[0-9]{1,3}$/.test(monthsParam) ? BigInt(monthsParam) : 0n;
+  if (n < 1n || n > 600n) return invalid("months");
+  const out: SuggestedMonthlyOut = { monthly_amount: fromSatang((toSatang(price) + n - 1n) / n) };
   return ok(out);
 }
 
@@ -350,7 +413,9 @@ export function handle(
     case "GET /debts/summary":
       return ok(debtSummary());
     case "GET /debts/months":
-      return upcomingMonths();
+      return months(path);
+    case "GET /installments/suggested-monthly":
+      return suggestedMonthly(path);
     case "GET /buffer": {
       const total = monthlyTotal();
       const t = toSatang(total);

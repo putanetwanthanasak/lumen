@@ -25,6 +25,7 @@ function entry(overrides: Partial<ManualEntryIn> = {}): ManualEntryIn {
     monthly_amount: "1200.00",
     first_due_month: "2026-11",
     item_name: "",
+    platform_name: null,
     ...overrides,
   };
 }
@@ -35,9 +36,9 @@ test("UI_05_each_verdict_has_an_icon_and_the_exact_thai_label", () => {
   assert.deepEqual(
     Object.fromEntries(Object.entries(VERDICT).map(([k, v]) => [k, [v.icon, v.label]])),
     {
-      GREEN: ["check", "ไหว"],
-      YELLOW: ["alert", "เสี่ยง: บางเดือนเกินงบ"],
-      RED: ["stop", "ไม่ไหว: เกิน 1 ใน 3 ของรายได้"],
+      GREEN: ["check", "อยู่ในงบ"],
+      YELLOW: ["alert", "บางเดือนเกินงบ"],
+      RED: ["stop", "เกินเกณฑ์ที่ ธปท. แนะนำ (1 ใน 3 ของรายได้)"],
     },
   );
   for (const v of Object.values(VERDICT)) assert.ok(v.detail.length > 0);
@@ -116,6 +117,7 @@ test("UI_08_only_months_where_an_installment_is_due_are_counted", () => {
     paid_amount: "0.00",
     remaining: "2000.00",
     first_due_month: "2026-11",
+    platform_name: null,
   };
   const out = assess(PROFILE, [ends], { ...candidate("2500.00"), months: 2 }, true);
   assert.deepEqual(out.months.map((m) => [m.month, m.total, m.over_budget]), [

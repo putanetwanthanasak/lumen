@@ -19,6 +19,7 @@ const ACTIVE: InstallmentLine = {
   status: "active",
   disputed_at: null,
   owed: true,
+  platform_name: null,
 };
 
 test("UI_12_active_owed_line_has_no_label_and_counts", () => {

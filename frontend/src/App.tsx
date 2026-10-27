@@ -7,6 +7,8 @@ import { getSettings } from "./api.ts";
 import { Loading } from "./components/ui.tsx";
 import { navigate, useRoute, type Route } from "./router.ts";
 import { HomeScreen } from "./screens/Home.tsx";
+import { MonthsScreen } from "./screens/Months.tsx";
+import { ResultScreen } from "./screens/Result.tsx";
 import { SettingsScreen } from "./screens/Settings.tsx";
 import { ThinkFirstScreen } from "./screens/ThinkFirst.tsx";
 
@@ -14,6 +16,8 @@ const SCREENS: Record<Route, () => React.JSX.Element> = {
   settings: SettingsScreen,
   home: HomeScreen,
   think: ThinkFirstScreen,
+  result: ResultScreen,
+  months: MonthsScreen,
 };
 
 export function App() {

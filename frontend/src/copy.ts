@@ -25,18 +25,18 @@ export type VerdictCopy = {
 export const VERDICT: Record<Verdict, VerdictCopy> = {
   GREEN: {
     icon: "check",
-    label: "ไหว",
-    detail: "ทุกเดือนค่างวดรวมยังอยู่ในงบที่คุณตั้งไว้",
+    label: "อยู่ในงบ",
+    detail: "ค่างวดรวมทุกเดือนตลอดแผนผ่อนนี้ไม่เกินงบที่คุณตั้งไว้",
   },
   YELLOW: {
     icon: "alert",
-    label: "เสี่ยง: บางเดือนเกินงบ",
-    detail: "มีบางเดือนที่ค่างวดรวมเกินงบ ลองดูกราฟด้านล่างว่าเป็นเดือนไหน",
+    label: "บางเดือนเกินงบ",
+    detail: "มีบางเดือนที่ค่างวดรวมเกินงบที่คุณตั้งไว้ ดูได้จากกราฟด้านล่าง",
   },
   RED: {
     icon: "stop",
-    label: "ไม่ไหว: เกิน 1 ใน 3 ของรายได้",
-    detail: "บางเดือนค่างวดรวมสูงกว่าที่ ธปท. แนะนำ คือค่างวดหนี้ทั้งหมดต่อเดือนไม่ควรเกิน 1 ใน 3 ของรายได้",
+    label: "เกินเกณฑ์ที่ ธปท. แนะนำ (1 ใน 3 ของรายได้)",
+    detail: "บางเดือนค่างวดรวมสูงกว่าเกณฑ์ที่ ธปท. แนะนำ คือค่างวดหนี้ทั้งหมดต่อเดือนไม่ควรเกิน 1 ใน 3 ของรายได้",
   },
 };
 
@@ -44,11 +44,14 @@ export const ADVISORY_NOTE = "นี่เป็นคำแนะนำเท�
 
 export const NAV = {
   home: "หน้าหลัก",
-  think: "คิดก่อน",
+  think: "ตรวจสอบก่อนผ่อน",
   buffer: "กันชน",
+  payoff: "ผู้ช่วยปลดหนี้",
   alerts: "แจ้งเตือน",
+  alertsUnread: (count: number) => `แจ้งเตือน ยังไม่ได้อ่าน ${count} รายการ`,
   settings: "ตั้งค่า",
   back: "ย้อนกลับ",
+  menu: "เมนูหลัก",
 };
 
 export const COMMON = {
@@ -74,7 +77,7 @@ export const MONEY_ERRORS = {
 
 export const SETTINGS = {
   title: "เริ่มต้นใช้ KidNee",
-  intro: "ตั้งค่าครั้งเดียว KidNee จะช่วยดูว่าผ่อนเพิ่มแล้วยังไหวไหม",
+  intro: "ตั้งค่าครั้งเดียว KidNee จะช่วยประเมินว่าผ่อนเพิ่มแล้วค่างวดรวมยังอยู่ในงบหรือไม่",
   editTitle: "ตั้งค่า",
   income: "รายได้ต่อเดือน",
   incomeHelp: "รายได้หลังหักภาษีและประกันสังคม",
@@ -109,12 +112,14 @@ export const HOME = {
   greeting: (name: string) => `สวัสดี ${name}`,
   greetingPlain: "สวัสดี",
   thisMonthTitle: (month: string) => `ค่างวดรวมเดือน ${month}`,
+  seeAllMonths: "ดูทุกเดือน ›",
   ofBudget: (budget: string) => `จากงบ ${budget}`,
   overBudgetNow: "เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้",
   withinBudgetNow: "เดือนนี้ยังอยู่ในงบ",
   installments: "รายการผ่อนของคุณ",
   totalPerMonth: (total: string) => `รวม ${total} ต่อเดือน`,
-  emptyInstallments: "ยังไม่มีรายการผ่อน ก่อนซื้อชิ้นต่อไป ลองกด คิดก่อน ดูนะ",
+  emptyInstallments: "ยังไม่มีรายการผ่อน ก่อนผ่อนชิ้นต่อไป กด ตรวจสอบก่อนผ่อน ได้เลย",
+  noPlatform: "ไม่ระบุแอป",
   unnamed: "รายการผ่อน",
   perMonth: (amount: string) => `${amount}/เดือน`,
   remaining: (amount: string) => `คงเหลือ ${amount}`,
@@ -131,13 +136,13 @@ export const HOME = {
   upcomingTitle: "เดือนข้างหน้าที่ค่างวดรวมเกินงบ",
   upcomingNone: "5 เดือนข้างหน้ายังไม่มีเดือนไหนเกินงบ",
   upcomingRow: (total: string) => `รวม ${total}`,
-  thinkCta: "คิดก่อน",
-  thinkCtaHelp: "ก่อนกดผ่อนชิ้นต่อไป เช็กก่อนว่ายังไหวไหม",
+  thinkCta: "ตรวจสอบก่อนผ่อน",
+  thinkCtaHelp: "ก่อนกดผ่อนชิ้นต่อไป ประเมินภาระผ่อนรายเดือนได้ที่นี่",
 };
 
 export const THINK = {
-  title: "คิดก่อนผ่อน",
-  intro: "กรอกราคาและแผนผ่อน KidNee จะดูให้ว่าทุกเดือนยังไหวไหม",
+  title: "ตรวจสอบก่อนผ่อน",
+  intro: "กรอกราคาและแผนผ่อน KidNee จะประเมินค่างวดรวมของทุกเดือนตลอดแผนผ่อนนี้",
   kindTitle: "ประเภทรายการ",
   kinds: { purchase: "ผ่อนสินค้า", cash_withdrawal: "กดเงินสด", cash_loan: "สินเชื่อเงินสด" },
   cashNoSaving: "รายการเงินสดจะไม่กันเงินเข้ากันชน",
@@ -148,15 +153,23 @@ export const THINK = {
   months: "จำนวนเดือนที่ผ่อน",
   monthsError: "กรอกจำนวนเต็ม 1 ถึง 600",
   monthly: "ค่างวดต่อเดือน",
+  monthlyHelp: "คิดแบบผ่อน 0% ถ้าแอปแจ้งยอดต่อเดือนไม่ตรงนี้ แก้ให้ตรงกับแอปได้",
+  platform: "แอปที่ผ่อน (ไม่บังคับ)",
+  platformPlaceholder: "เช่น ShopDemo",
+  platformTooLong: "ชื่อแอปยาวได้ไม่เกิน 60 ตัวอักษร",
   firstDue: "เริ่มจ่ายงวดแรก",
-  check: "ดูว่าไหวไหม",
-  checking: "กำลังคิด...",
+  firstDueHelp: "ดูได้ในหน้าสรุปก่อนกดผ่อนของแอปผ่อน",
+  firstDueThis: (month: string) => `เดือนนี้ (${month})`,
+  firstDueNext: (month: string) => `เดือนหน้า (${month})`,
+  firstDueError: "เลือกเดือนที่เริ่มจ่ายงวดแรก",
+  check: "ประเมินภาระผ่อน",
+  checking: "กำลังประเมิน...",
   monthsTitle: "ค่างวดรวมแต่ละเดือน ถ้าผ่อนชิ้นนี้",
   budgetLine: (budget: string) => `เส้นประ คืองบ ${budget}`,
   overMonths: (months: string) => `เดือนที่เกินงบ: ${months}`,
   legendOk: "อยู่ในงบ",
   legendOver: "เกินงบ",
-  legendRisk: "เกิน 1 ใน 3 ของรายได้",
+  legendRisk: "เกินเกณฑ์ที่ ธปท. แนะนำ",
   nowTotal: (total: string) => `ตอนนี้ค่างวดรวมเดือนละ ${total}`,
   record: "บันทึก",
   recording: "กำลังบันทึก...",
@@ -168,9 +181,35 @@ export const THINK = {
   newTotalLabel: "ค่างวดรวมต่อเดือนตอนนี้",
   failed: "ติดต่อระบบไม่สำเร็จ ลองกดอีกครั้งได้เลย",
   demoTitle: "Demo: ลองตัวอย่างของมิ้นท์",
-  demoScenario: { GREEN: "ไหว", YELLOW: "เสี่ยง", RED: "ไม่ไหว" },
+  demoScenario: { GREEN: "อยู่ในงบ", YELLOW: "เกินงบ", RED: "เกินเกณฑ์" },
   backHome: "กลับหน้าหลัก",
-  another: "คิดอีกรายการ",
+  another: "ตรวจสอบรายการอื่น",
+  resultTitle: "ผลการประเมิน",
+  edit: "แก้ไข",
+  summary: (what: string, price: string, months: number, monthly: string, start: string) =>
+    `${what} ${price} · ${months} เดือน · เดือนละ ${monthly} · เริ่ม ${start}`,
+  summaryCash: "เงินสด",
+  summaryItem: "สินค้า",
+  savingTitle: "ถ้าบันทึก จะกันเงินเข้ากันชน",
+  savingNone: "ถ้าบันทึก ครั้งนี้จะไม่ได้กันเงินเข้ากันชน",
+  savingNoneHelp: "เช่น รายการเงินสด ปิดการออมอัตโนมัติ หรือเงินในบัญชีหลักจะเหลือน้อยกว่า 500 บาท",
+  seePayoff: "ดูผู้ช่วยปลดหนี้",
+  noDraft: "ยังไม่มีรายการที่ประเมิน กรอกข้อมูลก่อนนะ",
+  toForm: "ไปกรอกข้อมูล",
+};
+
+export const MONTHS_VIEW = {
+  title: "ภาระผ่อนรายเดือน",
+  intro: "ค่างวดรวมของทุกเดือน ตั้งแต่เดือนนี้ถึงเดือนสุดท้ายที่มีงวดผ่อน แตะเดือนเพื่อดูรายการ",
+  ofBudget: (total: string, budget: string) => `${total} จากงบ ${budget}`,
+  ok: "อยู่ในงบ",
+  over: "เกินงบ",
+  risk: "เกินเกณฑ์ที่ ธปท. แนะนำ",
+  showItems: "ดูรายการ",
+  hideItems: "ซ่อนรายการ",
+  instalmentOf: (n: number, total: number) => `งวดที่ ${n} จาก ${total}`,
+  lastInstalment: "งวดสุดท้าย",
+  empty: "ไม่มีงวดผ่อนที่ต้องจ่ายตั้งแต่เดือนนี้",
 };
 
 export const BUFFER = {

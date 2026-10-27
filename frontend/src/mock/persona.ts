@@ -35,6 +35,7 @@ export type MockInstallment = {
   paid_amount: Money;
   remaining: Money;
   first_due_month: string; // "YYYY-MM"
+  platform_name: string | null; // the user's own text, never a list of real platforms
 };
 
 export function personaInstallments(today: Date): MockInstallment[] {
@@ -42,8 +43,8 @@ export function personaInstallments(today: Date): MockInstallment[] {
   return [
     {
       id: "8f0c2a4e-1b7d-4c55-9a7e-2f1d3c4b5a61",
-      vendor: "shopdemo",
-      contract_id: "SD-24117",
+      vendor: "manual",
+      contract_id: "manual-8f0c2a4e",
       kind: "purchase",
       item_name: "หูฟังไร้สาย",
       principal: "12000.00",
@@ -52,6 +53,7 @@ export function personaInstallments(today: Date): MockInstallment[] {
       paid_amount: "8000.00",
       remaining: "4000.00",
       first_due_month: addMonths(now, -3), // last due: now + 2
+      platform_name: "ShopDemo",
     },
     {
       id: "3b9e7d10-6a2f-4e8c-b1d4-7c0a5e9f2b38",
@@ -65,12 +67,13 @@ export function personaInstallments(today: Date): MockInstallment[] {
       paid_amount: "3000.00",
       remaining: "12000.00",
       first_due_month: addMonths(now, -1), // last due: now + 8
+      platform_name: null,
     },
     {
       // Paid off: listed on Home but not counted (owed is false).
       id: "c41f8e22-9d3a-4b7e-8f61-0a2b3c4d5e6f",
-      vendor: "shopdemo",
-      contract_id: "SD-19802",
+      vendor: "manual",
+      contract_id: "manual-c41f8e22",
       kind: "purchase",
       item_name: "กระเป๋าเป้",
       principal: "2400.00",
@@ -79,6 +82,7 @@ export function personaInstallments(today: Date): MockInstallment[] {
       paid_amount: "2400.00",
       remaining: "0.00",
       first_due_month: addMonths(now, -5), // last due: now - 3
+      platform_name: "ShopDemo",
     },
   ];
 }
@@ -96,7 +100,7 @@ export type ScenarioEntry = {
   monthly_amount: Money;
 };
 
-/** The three คิดก่อน examples the demo switches between. */
+/** The three ตรวจสอบก่อนผ่อน examples the demo switches between. */
 export const SCENARIOS: Record<Scenario, ScenarioEntry> = {
   // Next month: 2,000 + 1,500 + 1,200 = 4,700 <= 5,000 budget. Every month fits.
   GREEN: { item_name: "โทรศัพท์", item_price: "12000.00", months: 10, monthly_amount: "1200.00" },

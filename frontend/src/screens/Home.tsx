@@ -1,29 +1,32 @@
 /**
  * Screen 2: Home, the debt overview (DESIGN.md section 7.2).
- * This month's total against the budget, the คิดก่อน button, upcoming over-budget
- * months, the buffer, and every installment. All amounts are API strings.
+ * This month's total against the budget (tap for every month), the ตรวจสอบก่อนผ่อน
+ * button, upcoming over-budget months, the buffer, and every installment grouped by
+ * the app the user named. All amounts are API strings.
  */
-import { getBuffer, getDebtSummary, getSettings, getUpcomingMonths, USE_MOCK } from "../api.ts";
-import type { BufferOut, DebtSummary, InstallmentLine, SettingsOut, UpcomingMonthsOut } from "../api-types.ts";
+import { getBuffer, getDebtSummary, getMonths, getSettings, USE_MOCK } from "../api.ts";
+import type { BufferOut, DebtSummary, InstallmentLine, MonthsOut, SettingsOut } from "../api-types.ts";
 import { HOME } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Button, Card, ErrorState, Loading, SettingsMissing } from "../components/ui.tsx";
-import { lineStatus } from "../installmentStatus.ts";
+import { groupByPlatform, lineStatus } from "../installmentStatus.ts";
 import { PERSONA_NAME } from "../mock/persona.ts";
 import { barPermille, formatBaht } from "../money.ts";
 import { navigate } from "../router.ts";
 import { thaiMonth } from "../thaiMonth.ts";
 import { useLoad } from "../useLoad.ts";
 
+const UPCOMING_MONTHS = 6; // this month and the next five
+
 type HomeData =
   | { settings: null }
-  | { settings: SettingsOut; summary: DebtSummary; buffer: BufferOut; upcoming: UpcomingMonthsOut };
+  | { settings: SettingsOut; summary: DebtSummary; buffer: BufferOut; upcoming: MonthsOut };
 
 async function loadHome(): Promise<HomeData> {
   const settings = await getSettings();
   if (settings === null) return { settings: null };
-  const [summary, buffer, upcoming] = await Promise.all([getDebtSummary(), getBuffer(), getUpcomingMonths()]);
+  const [summary, buffer, upcoming] = await Promise.all([getDebtSummary(), getBuffer(), getMonths(UPCOMING_MONTHS)]);
   return { settings, summary, buffer, upcoming };
 }
 
@@ -52,7 +55,7 @@ function HomeBody({
   settings: SettingsOut;
   summary: DebtSummary;
   buffer: BufferOut;
-  upcoming: UpcomingMonthsOut;
+  upcoming: MonthsOut;
 }) {
   const [thisMonth, ...later] = upcoming.months;
   const overLater = later.filter((m) => m.over_budget);
@@ -62,30 +65,33 @@ function HomeBody({
       <p className="text-lead font-semibold text-ink">{USE_MOCK ? HOME.greeting(PERSONA_NAME) : HOME.greetingPlain}</p>
 
       {thisMonth !== undefined && (
-        <Card className="flex flex-col gap-3">
-          <p className="text-body text-ink-muted">
-            {HOME.thisMonthTitle(thaiMonth(thisMonth.month))}
-          </p>
-          <p className="text-display font-bold text-ink">{formatBaht(thisMonth.total)}</p>
-          <p className="text-body text-ink-muted">{HOME.ofBudget(formatBaht(budget))}</p>
-          <div
-            className="h-3 overflow-hidden rounded-pill bg-leaf-50"
-            role="presentation"
-          >
-            <div
-              className={`h-full rounded-pill ${thisMonth.over_budget ? "bg-bar-over" : "bg-bar-ok"}`}
+        <button
+          type="button"
+          onClick={() => navigate("months")}
+          className="flex cursor-pointer flex-col gap-3 rounded-card bg-card p-5 text-left shadow-card hover:bg-leaf-50 focus-visible:outline-2 focus-visible:outline-leaf-600"
+        >
+          <span className="flex items-center justify-between gap-2">
+            <span className="text-body text-ink-muted">{HOME.thisMonthTitle(thaiMonth(thisMonth.month))}</span>
+            <span className="text-body font-semibold text-leaf-800">{HOME.seeAllMonths}</span>
+          </span>
+          {/* Inside a button: spans only (phrasing content). */}
+          <span className="text-display font-bold text-ink">{formatBaht(thisMonth.total)}</span>
+          <span className="text-body text-ink-muted">{HOME.ofBudget(formatBaht(budget))}</span>
+          <span className="block h-3 overflow-hidden rounded-pill bg-leaf-50" role="presentation">
+            <span
+              className={`block h-full rounded-pill ${thisMonth.over_budget ? "bg-bar-over" : "bg-bar-ok"}`}
               style={{ width: `${barPermille(thisMonth.total, budget) / 10}%` }}
             />
-          </div>
-          <p
+          </span>
+          <span
             className={`flex items-center gap-2 text-body font-semibold ${
               thisMonth.over_budget ? "text-warn-ink" : "text-ok-ink"
             }`}
           >
             <Icon name={thisMonth.over_budget ? "alert" : "check"} size={20} />
             {thisMonth.over_budget ? HOME.overBudgetNow : HOME.withinBudgetNow}
-          </p>
-        </Card>
+          </span>
+        </button>
       )}
 
       <div className="flex flex-col gap-2">
@@ -139,13 +145,19 @@ function HomeBody({
           <p className="text-body text-ink-muted">{HOME.emptyInstallments}</p>
         ) : (
           <>
-            <ul className="flex flex-col divide-y divide-line">
-              {summary.installments
-                .filter((line) => lineStatus(line).counted)
-                .map((line) => (
-                  <InstallmentRow key={line.id} line={line} />
-                ))}
-            </ul>
+            {groupByPlatform(summary.installments.filter((line) => lineStatus(line).counted)).map((group) => (
+              <div key={group.label} className="flex flex-col">
+                <h3 className="flex items-center gap-2 pt-2 text-body font-bold text-leaf-800">
+                  <Icon name="wallet" size={18} />
+                  {group.label}
+                </h3>
+                <ul className="flex flex-col divide-y divide-line">
+                  {group.lines.map((line) => (
+                    <InstallmentRow key={line.id} line={line} />
+                  ))}
+                </ul>
+              </div>
+            ))}
             {summary.installments.some((line) => !lineStatus(line).counted) && (
               <>
                 <h3 className="pt-2 text-body font-semibold text-ink-muted">{HOME.notCounted}</h3>
@@ -165,17 +177,15 @@ function HomeBody({
   );
 }
 
-const VENDOR_NAMES: Record<string, string> = { shopdemo: "ShopDemo" };
-
 function InstallmentRow({ line }: { line: InstallmentLine }) {
-  const source = line.vendor === "manual" ? HOME.manual : (VENDOR_NAMES[line.vendor] ?? line.vendor);
   const { label } = lineStatus(line);
   return (
     <li className="flex items-start justify-between gap-3 py-3">
       <div className="flex min-w-0 flex-col">
         <span className="truncate text-body font-semibold text-ink">{line.item_name || HOME.unnamed}</span>
         <span className="text-caption text-ink-muted">
-          {source} · {HOME.monthsLeft(line.months)}
+          {line.platform_name !== null && !lineStatus(line).counted ? `${line.platform_name} · ` : ""}
+          {HOME.monthsLeft(line.months)}
         </span>
         {label !== null && (
           <span className="mt-1 inline-flex items-center gap-1 self-start rounded-pill bg-info-bg px-2 py-0.5 text-caption font-semibold text-info-ink">

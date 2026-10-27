@@ -93,3 +93,18 @@ test("UI_10_no_banned_brand_names_in_src_or_design_md", () => {
   const pattern = new RegExp(BANNED.map((n) => n.replace(/ /g, "\\s*")).join("|"), "i");
   assert.deepEqual(scan([...files, DESIGN], pattern), []);
 });
+
+test("UI_22_the_scrollbar_is_hidden_inside_the_phone_frame_only", () => {
+  // The phone frame's scrolling body hides its scrollbar (Firefox and WebKit rules)...
+  const css = readFileSync(join(SRC, "index.css"), "utf8");
+  assert.match(css, /\.phone-scroll\s*\{\s*scrollbar-width:\s*none;\s*\}/);
+  assert.match(css, /\.phone-scroll::-webkit-scrollbar\s*\{\s*display:\s*none;\s*\}/);
+  // ...and nothing else does: no global rule on html, body or *.
+  assert.deepEqual(
+    scan(files, /scrollbar-width|::-webkit-scrollbar/).map((h) => h.text),
+    ["scrollbar-width: none;", ".phone-scroll::-webkit-scrollbar {"],
+  );
+  // It still scrolls, and takes keyboard focus so arrow keys and Page Down work.
+  const screen = readFileSync(join(SRC, "components", "Screen.tsx"), "utf8");
+  assert.match(screen, /<main tabIndex=\{0\} className="phone-scroll [^"]*overflow-y-auto/);
+});

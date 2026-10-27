@@ -24,9 +24,9 @@ surprise on payday.
 not any bank's service):
 1. Keeps every installment in one list, with this month's total against a budget
    the user chose.
-2. **คิดก่อน**: before buying, the user enters the price and the plan, and sees
-   every month of that plan with the new total, and a verdict: ไหว, เสี่ยง or
-   ไม่ไหว.
+2. **ตรวจสอบก่อนผ่อน**: before buying, the user enters the price and the plan, and
+   sees every month of that plan with the new total, and a verdict: อยู่ในงบ,
+   บางเดือนเกินงบ or เกินเกณฑ์ที่ ธปท. แนะนำ.
 3. Saves a little into a **buffer** each time an installment is recorded, so a
    heavy month can be covered.
 4. Alerts on every new debt and on payday when a month is over budget.
@@ -39,8 +39,10 @@ holds the user's money. Recording is always allowed, whatever the verdict.
 - **Name:** KidNee, with the Thai คิดหนี้ ("think about debt") next to it.
   CLAUDE.md rule 5 still says the display name is "Lumen"; the backend session
   updates that rule on 2026-10-28. Lumen stays the name of the backend system.
-- **Primary action:** "คิดก่อน" (think first). It is the largest button on Home.
-- **Tone:** a friendly older sibling who is good with money. Short sentences,
+- **Primary action:** "ตรวจสอบก่อนผ่อน" (check before paying in installments). It
+  is the largest button on Home and the raised centre tab of the bottom nav. Its
+  form button is "ประเมินภาระผ่อน".
+- **Tone:** formal but easy, like a friendly older sibling who is good with money. Short sentences,
   "เรา/คุณ", no scolding, no fear. Say what is true and what the user can do next.
   - Yes: "มีบางเดือนที่ค่างวดรวมเกินงบ ลองดูกราฟด้านล่างว่าเป็นเดือนไหน"
   - No: "คุณกำลังก่อหนี้เกินตัว" (judges the person)
@@ -89,9 +91,11 @@ fits passes through".
 5. **The verdict is never colour only:** an icon, the Thai label and a sentence.
    | Verdict | Icon | Label |
    |---|---|---|
-   | GREEN | check | ไหว |
-   | YELLOW | triangle | เสี่ยง: บางเดือนเกินงบ |
-   | RED | octagon | ไม่ไหว: เกิน 1 ใน 3 ของรายได้ |
+   | GREEN | check | อยู่ในงบ |
+   | YELLOW | triangle | บางเดือนเกินงบ |
+   | RED | octagon | เกินเกณฑ์ที่ ธปท. แนะนำ (1 ใน 3 ของรายได้) |
+
+   The RED label breaks before the brackets, never inside them.
 6. **Money is display only on the client.** The API sends strings ("1500.00");
    the client formats them ("1,500.00 บาท") by string operations and never adds,
    subtracts or rounds. Inputs are checked and sent as typed strings, never
@@ -208,15 +212,25 @@ Tones `ok`, `warn`, `risk`, `info`, each with its own icon. Connection errors us
 `SettingsMissing` (info alert + "ไปตั้งค่า").
 
 ### 5.8 Shell (`Screen.tsx`)
-Header (logo, or back button + title), scrolling body, footer, bottom navigation
-(หน้าหลัก, คิดก่อน, ตั้งค่า; กันชน and แจ้งเตือน join in PR B).
+- **Header:** logo, or back button + title; on the right, settings as a gear icon
+  (PR B adds the notifications bell with an unread-count badge next to it).
+- **Body:** scrolls; inside the phone frame its scrollbar is hidden
+  (`.phone-scroll`: `scrollbar-width: none` and `::-webkit-scrollbar`), while
+  wheel, touchpad, touch and keyboard scrolling still work (the body takes focus,
+  with a visible focus ring). Nothing outside the frame hides a scrollbar (UI-22).
+- **Action bar** (optional): fixed under the body, above the nav (the result
+  screen's บันทึก / ยังไม่ซื้อ).
+- **Bottom nav:** หน้าหลัก, **ตรวจสอบก่อนผ่อน** (centre, a raised 56px round button,
+  the most prominent), กันชน, ผู้ช่วยปลดหนี้ (the last two join in PR B). Settings
+  and notifications are not tabs.
 
 ## 6. Layout and navigation
 
 - On a desktop the app sits in a 390x844 phone frame centred on the `desk`
   background. Below 640px wide it fills the screen.
 - Hash routes, no router package (`src/router.ts`): `#/settings`, `#/home`,
-  `#/think` (PR B adds `#/buffer`, `#/alerts`, `#/payoff`, `#/consolidate`).
+  `#/months`, `#/think`, `#/result` (PR B adds `#/buffer`, `#/alerts`, `#/payoff`,
+  `#/consolidate`).
 - With no route, a user without settings starts on screen 1; otherwise Home.
 
 ## 7. Screens and their states
@@ -243,35 +257,67 @@ Every screen has the footer and handles **loading** (skeleton), **error**
 
 ### 7.2 Screen 2: Home (`#/home`)
 1. Greeting "สวัสดี มิ้นท์".
-2. **This month card:** "ค่างวดรวมเดือน ต.ค. 2569", the total, "จากงบ ...", a
-   progress bar, and "เดือนนี้ยังอยู่ในงบ" / "เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้" with an
-   icon (from the API's `over_budget`).
-3. **คิดก่อน**, the 56px primary button, with a one-line hint.
+2. **This month card** (tappable, opens 7.2b): "ค่างวดรวมเดือน ต.ค. 2569" with
+   "ดูทุกเดือน ›", the total, "จากงบ ...", a progress bar, and "เดือนนี้ยังอยู่ในงบ" /
+   "เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้" with an icon (from the API's `over_budget`).
+3. **ตรวจสอบก่อนผ่อน**, the 56px primary button, with a one-line hint.
 4. **Upcoming over-budget months** (the next 5), or "5 เดือนข้างหน้ายังไม่มีเดือนไหนเกินงบ".
 5. **Buffer card:** balance and "พอจ่ายค่างวดได้ประมาณ N เดือน".
-6. **Installments:** name, source (ShopDemo or บันทึกเอง), months, amount per month,
-   remaining. Lines the API marks as not owed (paid off, cancelled) are listed
+6. **Installments**, grouped by the app the user named (apps in the order they
+   first appear, then "ไม่ระบุแอป"): name, months, amount per month, remaining. Lines the API marks as not owed (paid off, cancelled) are listed
    under "ไม่นับในยอดต่อเดือน", so the rows above always add up to the total. A
    status chip says "ผ่อนครบแล้ว", "ยกเลิกแล้ว", "คุณแจ้งว่าไม่ใช่รายการของคุณ" or
    "ยกเลิกแล้ว หลังจากคุณแจ้งว่าไม่ใช่รายการของคุณ" (L59(3): the report is never lost).
-   Empty: "ยังไม่มีรายการผ่อน ก่อนซื้อชิ้นต่อไป ลองกด คิดก่อน ดูนะ".
+   Empty: "ยังไม่มีรายการผ่อน ก่อนผ่อนชิ้นต่อไป กด ตรวจสอบก่อนผ่อน ได้เลย".
 - States: loading, error, settings missing, empty list.
 
-### 7.3 Screen 3: คิดก่อน (`#/think`)
-1. Form: item name (optional), price, months, monthly amount, first due month
-   (next month by default, a choice of four).
-2. "ดูว่าไหวไหม" calls the preview (writes nothing).
-3. Result: the verdict card, the month bars, "ตอนนี้ค่างวดรวมเดือนละ ...", then
-   "ยังไม่ซื้อ" and "บันทึก" side by side. Both are always enabled (advice only).
-4. Changing any field after a verdict clears it: a changed plan is a new plan.
-5. **บันทึก** sends the same body with the same `client_request_id` as the
-   preview, so a retry records once. Recorded: a check, "บันทึกรายการผ่อนแล้ว",
-   the new monthly total, the amount saved to the buffer (or "ครั้งนี้ไม่ได้กันเงิน
-   เข้ากันชน"), and the verdict again if it was not GREEN.
-6. **ยังไม่ซื้อ**: "โอเค ยังไม่ซื้อ ไว้ค่อยคิดใหม่ได้เสมอ", nothing is written.
-- Demo strip: three buttons fill มิ้นท์'s GREEN, YELLOW and RED examples.
+### 7.2b ภาระผ่อนรายเดือน (`#/months`)
+- Every month from this month to the last month with an installment, from
+  `GET /debts/months` (mock now, see section 9).
+- Per month: "3,500.00 บาท จากงบ 5,000.00 บาท", a bar on one scale for all months
+  with a budget mark, and a status chip with icon + text: "อยู่ในงบ" (check),
+  "เกินงบ" (triangle) or "เกินเกณฑ์ที่ ธปท. แนะนำ" (octagon; wins over เกินงบ).
+- Tap a month (a button with `aria-expanded`) to list its installments: name, app
+  if given, monthly amount, "งวดที่ x จาก y", and "งวดสุดท้าย" on its last month.
+- No money arithmetic: totals, flags and instalment numbers come from the API.
+- States: loading, error, settings missing, no months.
+
+### 7.3 Screen 3: ตรวจสอบก่อนผ่อน, the form (`#/think`)
+1. Fields: kind, item name (optional), **แอปที่ผ่อน** (optional free text, at most
+   60 characters, placeholder "เช่น ShopDemo"; never a list of real platforms,
+   rule 5), price, months, monthly amount, first due month.
+2. **Monthly amount:** once price and months are valid, it is prefilled with the
+   0% suggestion from `src/api.ts` (price / months rounded UP to 0.01; the screen
+   computes nothing). Help: "คิดแบบผ่อน 0% ถ้าแอปแจ้งยอดต่อเดือนไม่ตรงนี้
+   แก้ให้ตรงกับแอปได้". Once the user types in it, a suggestion never replaces it
+   (UI-18).
+3. **First due month:** no default. Two required choices, "เดือนนี้ (ต.ค. 2569)"
+   and "เดือนหน้า (พ.ย. 2569)". Help: "ดูได้ในหน้าสรุปก่อนกดผ่อนของแอปผ่อน".
+   "ประเมินภาระผ่อน" stays disabled until one is chosen.
+4. "ประเมินภาระผ่อน" calls the preview (writes nothing) and opens 7.3b. The form
+   is kept, so "แก้ไข" there returns to it with every value.
+5. Changing a field while the preview is in flight drops its answer.
+- Demo strip: three buttons (อยู่ในงบ, เกินงบ, เกินเกณฑ์) fill มิ้นท์'s examples,
+  first due month next month.
 - States: loading, error (try again), settings missing (also from a 409
   `SETTINGS_REQUIRED`).
+
+### 7.3b ผลการประเมิน (`#/result`), the main slide screenshot
+1. Top: a one-line summary ("โน้ตบุ๊ก 30,000.00 บาท · 10 เดือน · เดือนละ 3,000.00
+   บาท · เริ่ม พ.ย. 2569 · ShopDemo") and "แก้ไข" (back to the form, values kept).
+2. A large verdict card: 64px icon, the label, the sentence, the advice note.
+3. Month bars against the dashed budget line; over-budget months are striped,
+   their column is tinted and their label bold.
+4. "ถ้าบันทึก จะกันเงินเข้ากันชน" and the amount (`saving_if_recorded`), or why
+   nothing is saved this time.
+5. Action bar: **บันทึก** (primary, wider) and **ยังไม่ซื้อ** (secondary), always
+   enabled (advice only). On RED, PR B adds a link "ดูผู้ช่วยปลดหนี้".
+6. **บันทึก** sends the previewed body with the same `client_request_id`, so a
+   retry records once. Recorded: a check, "บันทึกรายการผ่อนแล้ว", the new monthly
+   total, the amount saved (or "ครั้งนี้ไม่ได้กันเงินเข้ากันชน"), and the verdict
+   again if it was not GREEN.
+7. **ยังไม่ซื้อ**: "โอเค ยังไม่ซื้อ ไว้ค่อยคิดใหม่ได้เสมอ", nothing is written.
+- Opened without a preview (a reload): "ยังไม่มีรายการที่ประเมิน กรอกข้อมูลก่อนนะ" and "ไปกรอกข้อมูล".
 
 ### 7.4 to 7.7 and the Demo panel (PR B)
 - **4. Buffer** (`#/buffer`): balance, months covered, "ย้ายกลับบัญชีหลัก" with an
@@ -293,10 +339,13 @@ Source of truth: `frontend/src/copy.ts`. The key strings:
 | Where | Thai |
 |---|---|
 | Footer | Concept prototype สำหรับการแข่งขัน |
-| Primary button | คิดก่อน |
-| GREEN | ไหว · ทุกเดือนค่างวดรวมยังอยู่ในงบที่คุณตั้งไว้ |
-| YELLOW | เสี่ยง: บางเดือนเกินงบ · มีบางเดือนที่ค่างวดรวมเกินงบ ลองดูกราฟด้านล่างว่าเป็นเดือนไหน |
-| RED | ไม่ไหว: เกิน 1 ใน 3 ของรายได้ · บางเดือนค่างวดรวมสูงกว่าที่ ธปท. แนะนำ คือค่างวดหนี้ทั้งหมดต่อเดือนไม่ควรเกิน 1 ใน 3 ของรายได้ |
+| Primary button | ตรวจสอบก่อนผ่อน |
+| Preview button | ประเมินภาระผ่อน |
+| GREEN | อยู่ในงบ · ค่างวดรวมทุกเดือนตลอดแผนผ่อนนี้ไม่เกินงบที่คุณตั้งไว้ |
+| YELLOW | บางเดือนเกินงบ · มีบางเดือนที่ค่างวดรวมเกินงบที่คุณตั้งไว้ ดูได้จากกราฟด้านล่าง |
+| RED | เกินเกณฑ์ที่ ธปท. แนะนำ (1 ใน 3 ของรายได้) · บางเดือนค่างวดรวมสูงกว่าเกณฑ์ที่ ธปท. แนะนำ คือค่างวดหนี้ทั้งหมดต่อเดือนไม่ควรเกิน 1 ใน 3 ของรายได้ |
+| Monthly help | คิดแบบผ่อน 0% ถ้าแอปแจ้งยอดต่อเดือนไม่ตรงนี้ แก้ให้ตรงกับแอปได้ |
+| First due help | ดูได้ในหน้าสรุปก่อนกดผ่อนของแอปผ่อน |
 | Advice note | นี่เป็นคำแนะนำเท่านั้น คุณบันทึกรายการได้เสมอ |
 | Budget warning (L64) | งบนี้เกิน 1 ใน 3 ของรายได้ ธปท. แนะนำว่าค่างวดหนี้ทั้งหมดต่อเดือนไม่ควรเกิน 1 ใน 3 ของรายได้ บันทึกไว้แล้ว ปรับได้ทุกเมื่อ |
 | Safety net | ถ้าเงินในบัญชีหลักจะเหลือน้อยกว่า 500 บาท ระบบจะข้ามการออมครั้งนั้นทั้งก้อน |
@@ -324,10 +373,11 @@ prefix; to be confirmed when wiring).
 | 1 | `GET /settings` | | `SettingsOut` | 404 = none yet |
 | 1 | `POST /settings` / `PUT /settings` | `SettingsIn` (`saving_rule` is `{mode:"percent",percent}` or `{mode:"fixed",amount}`) | `SettingsOut` with `warnings` | 409 exists (POST), 404 none (PUT), 422 |
 | 2 | `GET /debts/summary` | | `DebtSummary` (`installments: InstallmentLine[]`) | |
-| 2 | `GET /debts/months` **TODO, mock only** | `?count=6` | `{ months: MonthRow[] }` from this month, no candidate | 409 `SETTINGS_REQUIRED` |
+| 2, 2b | `GET /debts/months` **TODO, mock only** | `?count=N` (optional; without it, up to the last month due) | `MonthsOut { months: MonthDetail[] }` from this month, no candidate; `MonthDetail` = `MonthRow` + `installments: MonthInstallment[]` (`installment_id, item_name, platform_name, monthly_amount, installment_no, installments_total, is_last`) | 409 `SETTINGS_REQUIRED`, 422 bad count |
+| 3 | `GET /installments/suggested-monthly` **TODO, mock only** | `?item_price=&months=` | `SuggestedMonthlyOut { monthly_amount }`: price / months rounded UP to 0.01 | 422 |
 | 2, 4 | `GET /buffer` | | `BufferOut` (`months_covered` null when nothing is owed) | |
-| 3 | `POST /installments/preview` | `ManualEntryIn` | `VerdictOut` | 409 `SETTINGS_REQUIRED`, 422 |
-| 3 | `POST /installments` | `ManualEntryIn` (same `client_request_id`) | `RecordedOut` (`saved_amount`, `monthly_total`, `warnings: VerdictOut`); 201 new, 200 repeat | 409 reused id with other fields, 409 `SETTINGS_REQUIRED` |
+| 3 | `POST /installments/preview` | `ManualEntryIn` | `PreviewOut` = `VerdictOut` + `saving_if_recorded` (**TODO**: the field is new) | 409 `SETTINGS_REQUIRED`, 422 |
+| 3b | `POST /installments` | `ManualEntryIn` (same `client_request_id`; **TODO**: new optional `platform_name`, at most 60 characters, no control characters; the backend forbids extra fields today, so it 422s until added) | `RecordedOut` (`saved_amount`, `monthly_total`, `warnings: VerdictOut`); 201 new, 200 repeat | 409 reused id with other fields, 409 `SETTINGS_REQUIRED` |
 | 4 | `POST /buffer/move-to-main` | `MoveIn` | `MovedOut`; 201, 200 repeat | 409, 422 `AMOUNT_ABOVE_BALANCE` |
 | Demo | `POST /demo/payday` | `{ month: "YYYY-MM" }` | `PaydayOut` | 404 when demo endpoints are off |
 | 5 | `GET /notifications` **TODO** | | shape in PR B | |
@@ -344,34 +394,41 @@ and `code`.
 account 9,500.00, buffer 4,800.00.
 
 Existing installments (months relative to the demo month; on 27 Oct 2026):
-- หูฟังไร้สาย, ShopDemo: 2,000.00 a month, last month ธ.ค. 2569 (ends soon).
-- ตู้เย็น, recorded by hand: 1,500.00 a month, last month มิ.ย. 2570.
-- กระเป๋าเป้, ShopDemo: paid off (listed under "ไม่นับในยอดต่อเดือน").
+All recorded by hand; the app is the user's own text.
+- หูฟังไร้สาย, app ShopDemo: 2,000.00 a month, last month ธ.ค. 2569 (ends soon).
+- ตู้เย็น, no app given ("ไม่ระบุแอป"): 1,500.00 a month, last month มิ.ย. 2570.
+- กระเป๋าเป้, app ShopDemo: paid off (listed under "ไม่นับในยอดต่อเดือน").
 Now: 3,500.00 a month.
 
 | Example | Price | Plan | Busiest month | Verdict |
 |---|---|---|---|---|
-| โทรศัพท์ | 12,000.00 | 10 x 1,200.00 | 4,700.00 (in budget) | GREEN ไหว |
-| โน้ตบุ๊ก | 30,000.00 | 10 x 3,000.00 | 6,500.00 (over budget, under one third: 19,500 <= 20,000) | YELLOW เสี่ยง |
-| มอเตอร์ไซค์ | 48,000.00 | 12 x 4,000.00 | 7,500.00 (7,500 x 3 = 22,500 > 20,000) | RED ไม่ไหว |
+| โทรศัพท์ | 12,000.00 | 10 x 1,200.00 | 4,700.00 (in budget) | GREEN อยู่ในงบ |
+| โน้ตบุ๊ก | 30,000.00 | 10 x 3,000.00 | 6,500.00 (over budget, under one third: 19,500 <= 20,000) | YELLOW บางเดือนเกินงบ |
+| มอเตอร์ไซค์ | 48,000.00 | 12 x 4,000.00 | 7,500.00 (7,500 x 3 = 22,500 > 20,000) | RED เกินเกณฑ์ที่ ธปท. แนะนำ |
 
 ### Scenes, in order
 1. **Settings** (`/#/settings`): empty first-time form. Tap "Demo: กรอกข้อมูลตัวอย่างของ
    มิ้นท์", save. Optionally change the budget to 7,000 to show the one-third
    warning (7,000 x 3 > 20,000), then back to 5,000.
 2. **Home**: 3,500.00 of 5,000.00, no over-budget month ahead, buffer 4,800.00
-   (about 1 month), two installments. Tap **คิดก่อน**.
-3. **คิดก่อน, YELLOW**: tap "เสี่ยง". Nov and Dec are striped and listed. Point
-   out "บันทึกได้เสมอ". Tap "ยังไม่ซื้อ".
-4. **คิดก่อน, RED**: tap "ไม่ไหว". The ธปท. guidance sentence.
-5. **คิดก่อน, GREEN**: tap "ไหว", then **บันทึก**: 1,200.00 saved to the buffer,
-   new total 4,700.00.
-6. **Home** again: the installments now total 4,700.00 a month (from next month), buffer 6,000.00.
-7. (PR B) Buffer, payday over budget, notifications, payoff assistant,
+   (about 1 month), installments grouped by app. Tap the month card for
+   "ภาระผ่อนรายเดือน" (Oct 2569 to Jun 2570; open ธ.ค. to see "งวดสุดท้าย"), back,
+   then tap **ตรวจสอบก่อนผ่อน**.
+3. **Form**: type 1000 and 3 months to show the 0% suggestion 333.34; point out
+   that the first due month must be chosen.
+4. **YELLOW**: tap "เกินงบ", then **ประเมินภาระผ่อน**. On the result screen, Nov
+   and Dec are striped and listed. Point out "บันทึกได้เสมอ". Tap "ยังไม่ซื้อ".
+5. **RED**: "แก้ไข" back, tap "เกินเกณฑ์", ประเมินภาระผ่อน. The ธปท. guidance
+   sentence.
+6. **GREEN**: tap "อยู่ในงบ", ประเมินภาระผ่อน, then **บันทึก**: 1,200.00 saved to
+   the buffer, new total 4,700.00.
+7. **Home** again: the installments now total 4,700.00 a month (from next month), buffer 6,000.00.
+8. (PR B) Buffer, payday over budget, notifications, payoff assistant,
    consolidation.
 
 Shortcuts for slides: `http://127.0.0.1:5173/?persona#/home` starts with the
-settings saved; `?persona&scene=YELLOW#/think` opens with that example checked.
+settings saved; `?persona&scene=YELLOW#/think` fills that example and opens its
+result screen.
 Reloading the page resets the mock.
 
 ## 11. How to run

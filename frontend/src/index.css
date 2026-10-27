@@ -97,3 +97,14 @@
     }
   }
 }
+
+/*
+ * Inside the phone frame only: hide the scrollbar but keep scrolling (wheel,
+ * touchpad, touch, keyboard). Nothing outside the frame uses this class.
+ */
+.phone-scroll {
+  scrollbar-width: none;
+}
+.phone-scroll::-webkit-scrollbar {
+  display: none;
+}

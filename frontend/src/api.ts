@@ -10,14 +10,16 @@ import type {
   CodedDetail,
   DebtSummary,
   ManualEntryIn,
+  MonthsOut,
+  PreviewOut,
   RecordedOut,
   SettingsIn,
   SettingsOut,
-  UpcomingMonthsOut,
-  VerdictOut,
+  SuggestedMonthlyOut,
 } from "./api-types.ts";
 import { handle } from "./mock/server.ts";
 import { DEMO_USER } from "./mock/persona.ts";
+import type { Money } from "./money.ts";
 
 export const USE_MOCK = true;
 const API_PREFIX = "/api";
@@ -102,20 +104,32 @@ export async function getDebtSummary(): Promise<DebtSummary> {
   return (await call<DebtSummary>("GET", "/debts/summary")).body;
 }
 
-/** TODO(backend): GET /debts/months is not built yet; answered by the mock only. */
-export async function getUpcomingMonths(): Promise<UpcomingMonthsOut> {
-  return (await call<UpcomingMonthsOut>("GET", "/debts/months?count=6")).body;
+/**
+ * TODO(backend): GET /debts/months is not built yet; answered by the mock only.
+ * With `count`, that many months from now; without, up to the last month due.
+ */
+export async function getMonths(count?: number): Promise<MonthsOut> {
+  return (await call<MonthsOut>("GET", count === undefined ? "/debts/months" : `/debts/months?count=${count}`)).body;
 }
 
 export async function getBuffer(): Promise<BufferOut> {
   return (await call<BufferOut>("GET", "/buffer")).body;
 }
 
-// ---- คิดก่อน (screen 3) ------------------------------------------------------
+// ---- ตรวจสอบก่อนผ่อน (screen 3) ------------------------------------------------------
 
 /** Writes nothing. 409 SETTINGS_REQUIRED without settings. */
-export async function previewInstallment(entry: ManualEntryIn): Promise<VerdictOut> {
-  return (await call<VerdictOut>("POST", "/installments/preview", entry)).body;
+export async function previewInstallment(entry: ManualEntryIn): Promise<PreviewOut> {
+  return (await call<PreviewOut>("POST", "/installments/preview", entry)).body;
+}
+
+/**
+ * The 0% monthly amount to prefill: price / months rounded up to 0.01. Worked out
+ * by the API, never by screen code. TODO(backend): mock only for now.
+ */
+export async function suggestMonthly(itemPrice: Money, months: number): Promise<Money> {
+  const query = `item_price=${encodeURIComponent(itemPrice)}&months=${months}`;
+  return (await call<SuggestedMonthlyOut>("GET", `/installments/suggested-monthly?${query}`)).body.monthly_amount;
 }
 
 /** 201 new or 200 repeat (same client_request_id): the body says which. */

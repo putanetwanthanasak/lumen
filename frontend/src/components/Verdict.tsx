@@ -18,16 +18,24 @@ const VERDICT_STYLE: Record<Verdict, { box: string; badge: string }> = {
   RED: { box: "bg-risk-bg border-risk-line text-risk-ink", badge: "bg-risk-ink text-white" },
 };
 
-export function VerdictCard({ verdict }: { verdict: Verdict }) {
+/** "hero" is the result screen's large card: a bigger icon and label, the same words. */
+export function VerdictCard({ verdict, size = "md" }: { verdict: Verdict; size?: "md" | "hero" }) {
   const copy = VERDICT[verdict];
   const style = VERDICT_STYLE[verdict];
+  const hero = size === "hero";
   return (
-    <div role="status" aria-live="polite" className={`flex flex-col gap-3 rounded-card border-2 p-5 ${style.box}`}>
-      <div className="flex items-center gap-3">
-        <span className={`inline-flex h-12 w-12 items-center justify-center rounded-pill ${style.badge}`}>
-          <Icon name={copy.icon} size={28} />
+    <div
+      role="status"
+      aria-live="polite"
+      className={`flex flex-col rounded-card border-2 ${hero ? "gap-4 px-5 py-6 shadow-card" : "gap-3 p-5"} ${style.box}`}
+    >
+      <div className={`flex items-center ${hero ? "gap-4" : "gap-3"}`}>
+        <span
+          className={`inline-flex shrink-0 items-center justify-center rounded-pill ${style.badge} ${hero ? "h-16 w-16" : "h-12 w-12"}`}
+        >
+          <Icon name={copy.icon} size={hero ? 36 : 28} />
         </span>
-        <VerdictLabel label={copy.label} />
+        <VerdictLabel label={copy.label} hero={hero} />
       </div>
       <p className="text-body">{copy.detail}</p>
       <p className="text-body">{ADVISORY_NOTE}</p>
@@ -35,18 +43,15 @@ export function VerdictCard({ verdict }: { verdict: Verdict }) {
   );
 }
 
-/** "ไม่ไหว: เกิน 1 ใน 3 ของรายได้" breaks after the colon, never inside a word. */
-function VerdictLabel({ label }: { label: string }) {
-  const [head, tail] = label.split(": ");
+/** "เกินเกณฑ์ที่ ธปท. แนะนำ (1 ใน 3 ของรายได้)" breaks before the brackets, never inside them. */
+function VerdictLabel({ label, hero }: { label: string; hero: boolean }) {
+  const at = label.indexOf(" (");
+  const size = hero ? "text-display" : "text-title";
+  if (at === -1) return <p className={`${size} font-bold`}>{label}</p>;
   return (
-    <p className="text-title font-bold">
-      {tail === undefined ? (
-        head
-      ) : (
-        <>
-          {head}: <span className="whitespace-nowrap">{tail}</span>
-        </>
-      )}
+    <p className="flex flex-col">
+      <span className={`${hero ? "text-title" : "text-lead"} font-bold`}>{label.slice(0, at)}</span>
+      <span className="text-body font-semibold whitespace-nowrap">{label.slice(at + 1)}</span>
     </p>
   );
 }
@@ -77,7 +82,10 @@ export function MonthBars({ months, budget, caption = THINK.monthsTitle }: BarsP
         />
         <div className="absolute inset-0 flex items-end gap-1.5">
           {months.map((row) => (
-            <div key={row.month} className="flex h-full flex-1 flex-col justify-end">
+            <div
+              key={row.month}
+              className={`flex h-full flex-1 flex-col justify-end rounded-t-md ${row.over_budget ? "bg-warn-bg" : ""}`}
+            >
               <div
                 className={`w-full rounded-t-md ${barClass(row)}`}
                 style={{
@@ -91,7 +99,10 @@ export function MonthBars({ months, budget, caption = THINK.monthsTitle }: BarsP
       </div>
       <div className="flex gap-1.5" aria-hidden="true">
         {months.map((row) => (
-          <span key={row.month} className="flex-1 text-center text-[0.75rem] leading-tight text-ink-muted">
+          <span
+            key={row.month}
+            className={`flex-1 text-center text-[0.75rem] leading-tight ${row.over_budget ? "font-bold text-warn-ink" : "text-ink-muted"}`}
+          >
             {thaiMonthShort(row.month)}
           </span>
         ))}
