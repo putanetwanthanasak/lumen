@@ -1,5 +1,5 @@
 /**
- * Screen 3: ตรวจสอบก่อนผ่อน, the form (DESIGN.md section 7.3).
+ * Screen 3: เช็กก่อนผ่อน, the form (DESIGN.md section 7.3).
  * Kind, item, app, price, months, monthly amount (prefilled with the API's 0%
  * suggestion until the user edits it) and the first due month (no default). The
  * preview opens the result screen (screens/Result.tsx); the form survives the trip.

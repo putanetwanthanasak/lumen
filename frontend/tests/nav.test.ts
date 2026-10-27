@@ -15,12 +15,16 @@ test("UI_25_the_centre_tab_looks_selected_only_when_it_is_selected", () => {
 
 test("UI_25_nav_labels_are_short_and_never_wrap", () => {
   const labels = [NAV.home, NAV.think, NAV.buffer];
-  assert.deepEqual(labels, ["หน้าหลัก", "ตรวจสอบ", "กันชน"]);
-  // A third of 390px holds well over 8 Thai characters at 14px; kept short anyway.
-  for (const label of labels) assert.ok([...label].length <= 8, label);
+  assert.deepEqual(labels, ["หน้าหลัก", "เช็กก่อนผ่อน", "กันชน"]);
+  // Count the characters that take space: Thai vowel and tone marks above or below
+  // a letter take none. Measured in Chrome at 14px: "เช็กก่อนผ่อน" (9) is 74px, one
+  // line in a 130px tab at 390px (120px at 360px). 10 keeps that margin.
+  const wide = (label: string) => [...label].filter((c) => !/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/.test(c)).length;
+  assert.equal(wide("เช็กก่อนผ่อน"), 9);
+  for (const label of labels) assert.ok(wide(label) <= 10, label);
   for (const active of [true, false]) assert.ok(navLabelClass(active).includes("whitespace-nowrap"));
-  // The full names stay on the screens themselves.
-  assert.equal(THINK.title, "ตรวจสอบก่อนผ่อน");
+  // The tab and the screen use the same name.
+  assert.equal(THINK.title, "เช็กก่อนผ่อน");
 });
 
 test("UI_27_the_scroll_area_clears_the_raised_centre_button", () => {

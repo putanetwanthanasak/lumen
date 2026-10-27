@@ -1,5 +1,5 @@
 /**
- * The ตรวจสอบก่อนผ่อน form and its stages (screen 3): UI-16 (review round 2, F2, F3,
+ * The เช็กก่อนผ่อน form and its stages (screen 3): UI-16 (review round 2, F2, F3,
  * F5), UI-18 (first due month, the 0% suggestion), UI-19 (the app), UI-21 (saving).
  */
 import assert from "node:assert/strict";

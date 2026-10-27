@@ -23,7 +23,7 @@ export function planLines(plan: AssistantPlanOut): PlanLines {
   };
 }
 
-/** The small hint on the ตรวจสอบก่อนผ่อน form; null when nothing more fits. */
+/** The small hint on the เช็กก่อนผ่อน form; null when nothing more fits. */
 export function formHint(plan: AssistantPlanOut): string | null {
   if (toSatang(plan.safe_new_monthly) === 0n) return ASSIST.safeNone(thaiMonth(plan.safe_new_from));
   return ASSIST.formHint(formatBaht(plan.safe_new_monthly), thaiMonth(plan.safe_new_from));

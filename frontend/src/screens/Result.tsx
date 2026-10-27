@@ -29,7 +29,7 @@ export function ResultScreen() {
   const [problem, setProblem] = useState<"failed" | "settings" | null>(null);
 
   function finish(next: View) {
-    setDraft(null); // the next ตรวจสอบก่อนผ่อน starts with an empty form
+    setDraft(null); // the next เช็กก่อนผ่อน starts with an empty form
     setView(next);
   }
 

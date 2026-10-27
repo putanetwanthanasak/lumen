@@ -11,7 +11,7 @@ panel are PR B. All data is mocked in `src/mock/` until the next backend
 session sets `USE_MOCK = false` in `src/api.ts`.
 
 **Structure (user decision, 2026-10-27, final): two features and one card.**
-- **Feature 1, ภาพรวมหนี้:** Home, recording, ตรวจสอบก่อนผ่อน, ภาระผ่อนรายเดือน.
+- **Feature 1, ภาพรวมหนี้:** Home, recording, เช็กก่อนผ่อน, ภาระผ่อนรายเดือน.
 - **Feature 2, กันชน:** saving on each installment, leftover saving on payday, and
   using the buffer when a month is over budget.
 - **The "ควรรวมหนี้ไหม" card** on Home.
@@ -35,7 +35,7 @@ surprise on payday.
 not any bank's service):
 1. Keeps every installment in one list, with this month's total against a budget
    the user chose.
-2. **ตรวจสอบก่อนผ่อน**: before buying, the user enters the price and the plan, and
+2. **เช็กก่อนผ่อน**: before buying, the user enters the price and the plan, and
    sees every month of that plan with the new total, and a verdict: อยู่ในงบ,
    บางเดือนเกินงบ or เกินเกณฑ์ที่ ธปท. แนะนำ.
 3. Saves a little into a **buffer** each time an installment is recorded, so a
@@ -53,7 +53,7 @@ holds the user's money. Recording is always allowed, whatever the verdict.
 - **Name:** KidNee, with the Thai คิดหนี้ ("think about debt") next to it.
   CLAUDE.md rule 5 still says the display name is "Lumen"; the backend session
   updates that rule on 2026-10-28. Lumen stays the name of the backend system.
-- **Primary action:** "ตรวจสอบก่อนผ่อน" (check before paying in installments). It
+- **Primary action:** "เช็กก่อนผ่อน" (check before paying in installments). It
   is the largest button on Home and the raised centre tab of the bottom nav. Its
   form button is "ประเมินภาระผ่อน".
 - **Tone:** formal but easy, like a friendly older sibling who is good with money. Short sentences,
@@ -237,10 +237,12 @@ Tones `ok`, `warn`, `risk`, `info`, each with its own icon. Connection errors us
 - **Action bar** (optional): fixed under the body, above the nav (the result
   screen's บันทึก / ยังไม่ซื้อ).
 - **Bottom nav: three tabs**, one line each at 390px: หน้าหลัก (feature 1),
-  **ตรวจสอบ** (centre, a raised 56px round button), กันชน (feature 2). The list and
+  **เช็กก่อนผ่อน** (centre, a raised 56px round button), กันชน (feature 2). The list and
   which tab is selected live in `navStyle.ts` (`NAV_TABS`, `navActive`, UI-30):
-  หน้าหลัก stays selected on ภาระผ่อนรายเดือน, ตรวจสอบ on the result. The full names
-  stay on screen titles and Home's big button. Settings and notifications are not
+  หน้าหลัก stays selected on ภาระผ่อนรายเดือน, เช็กก่อนผ่อน on the result. The centre
+  tab uses the full name: at 14px it is 74px wide, one line in a 130px tab at 390px
+  (and in 120px at 360px), so the short "เช็ก" is not needed (UI-25). Always "เช็ก"
+  ending in ก (ก ไก่), never in ค (ค ควาย) (UI-32). The preview button stays "ประเมินภาระผ่อน". Settings and notifications are not
   tabs.
   - **Selected is the same for every tab:** a filled green icon background and a bold
     green label (`navStyle.ts`, UI-25). The centre button is larger but, when not
@@ -289,7 +291,7 @@ Every screen has the footer and handles **loading** (skeleton), **error**
 2. **This month card** (tappable, opens 7.2b): "ค่างวดรวมเดือน ต.ค. 2569" with
    "ดูทุกเดือน ›", the total, "จากงบ ...", a progress bar, and "เดือนนี้ยังอยู่ในงบ" /
    "เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้" with an icon (from the API's `over_budget`).
-3. **ตรวจสอบก่อนผ่อน**, the 56px primary button, with a one-line hint.
+3. **เช็กก่อนผ่อน**, the 56px primary button, with a one-line hint.
 4. **ผู้ช่วย KidNee สรุปให้ฟัง** (PR B, `AssistantCards.tsx`): the sparkle icon (a
    four-point star and a small one), "สรุปให้ฟัง" shows a short Thai summary of
    the back-in-budget month, the safe amount, the buffer plan and the consolidation
@@ -311,7 +313,7 @@ Every screen has the footer and handles **loading** (skeleton), **error**
    Lines the API marks as not owed (paid off, cancelled) are listed under "ไม่นับในยอดต่อเดือน", so the rows above always add up to the total. A
    status chip says "ผ่อนครบแล้ว", "ยกเลิกแล้ว", "คุณแจ้งว่าไม่ใช่รายการของคุณ" or
    "ยกเลิกแล้ว หลังจากคุณแจ้งว่าไม่ใช่รายการของคุณ" (L59(3): the report is never lost).
-   Empty: "ยังไม่มีรายการผ่อน ก่อนผ่อนชิ้นต่อไป กด ตรวจสอบก่อนผ่อน ได้เลย".
+   Empty: "ยังไม่มีรายการผ่อน ก่อนผ่อนชิ้นต่อไป กด เช็กก่อนผ่อน ได้เลย".
 - States: loading, error, settings missing, empty list. If the plan fails to load,
   Home still shows; only cards 4 and 6 are left out.
 
@@ -332,7 +334,7 @@ Every screen has the footer and handles **loading** (skeleton), **error**
 - No money arithmetic: totals, flags and instalment numbers come from the API.
 - States: loading, error, settings missing, no months.
 
-### 7.3 Screen 3: ตรวจสอบก่อนผ่อน, the form (`#/think`)
+### 7.3 Screen 3: เช็กก่อนผ่อน, the form (`#/think`)
 0. **Hint** under the intro (PR B, from the plan): "ผ่อนเพิ่มได้ไม่เกินเดือนละ
    {safe_new_monthly} ตั้งแต่ {safe_new_from}", or "ตั้งแต่ ... ยังผ่อนเพิ่มไม่ได้โดยไม่เกินงบ"
    when it is 0.00. Advice only; nothing is blocked. Left out if the plan fails.
@@ -426,7 +428,7 @@ Source of truth: `frontend/src/copy.ts`. The key strings:
 | Where | Thai |
 |---|---|
 | Footer | Concept prototype สำหรับการแข่งขัน |
-| Primary button | ตรวจสอบก่อนผ่อน |
+| Primary button | เช็กก่อนผ่อน |
 | Preview button | ประเมินภาระผ่อน |
 | GREEN | อยู่ในงบ · ค่างวดรวมทุกเดือนตลอดแผนผ่อนนี้ไม่เกินงบที่คุณตั้งไว้ |
 | YELLOW | บางเดือนเกินงบ · มีบางเดือนที่ค่างวดรวมเกินงบที่คุณตั้งไว้ ดูได้จากกราฟด้านล่าง |
@@ -503,7 +505,7 @@ Now: 3,500.00 a month.
 2. **Home**: 3,500.00 of 5,000.00, no over-budget month ahead, buffer 4,800.00
    (about 1 month), installments grouped by app. Tap the month card for
    "ภาระผ่อนรายเดือน" (Oct 2569 to Jun 2570; open ธ.ค. to see "งวดสุดท้าย"), back,
-   then tap **ตรวจสอบก่อนผ่อน**.
+   then tap **เช็กก่อนผ่อน**.
 3. **Form**: type 1000 and 3 months to show the 0% suggestion 333.34; point out
    that the first due month must be chosen.
 4. **YELLOW**: tap "เกินงบ", then **ประเมินภาระผ่อน**. On the result screen, Nov

@@ -1,6 +1,6 @@
 /**
  * Screen 2: Home, ภาพรวมหนี้ (DESIGN.md section 7.2).
- * This month's total against the budget (tap for every month), the ตรวจสอบก่อนผ่อน
+ * This month's total against the budget (tap for every month), the เช็กก่อนผ่อน
  * button, the assistant's summary, upcoming over-budget months, the buffer,
  * "ควรรวมหนี้ไหม", and every installment grouped by the app the user named. All
  * amounts are API strings.

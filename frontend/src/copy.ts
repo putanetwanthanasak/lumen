@@ -45,7 +45,7 @@ export const ADVISORY_NOTE = "นี่เป็นคำแนะนำเท�
 export const NAV = {
   home: "หน้าหลัก",
   // Short labels: a quarter of 390px, one line each. Full names stay on titles and buttons.
-  think: "ตรวจสอบ",
+  think: "เช็กก่อนผ่อน",
   buffer: "กันชน",
   alerts: "แจ้งเตือน",
   alertsUnread: (count: number) => `แจ้งเตือน ยังไม่ได้อ่าน ${count} รายการ`,
@@ -118,7 +118,7 @@ export const HOME = {
   withinBudgetNow: "เดือนนี้ยังอยู่ในงบ",
   installments: "รายการผ่อนของคุณ",
   totalPerMonth: (total: string) => `รวม ${total} ต่อเดือน`,
-  emptyInstallments: "ยังไม่มีรายการผ่อน ก่อนผ่อนชิ้นต่อไป กด ตรวจสอบก่อนผ่อน ได้เลย",
+  emptyInstallments: "ยังไม่มีรายการผ่อน ก่อนผ่อนชิ้นต่อไป กด เช็กก่อนผ่อน ได้เลย",
   noPlatform: "ไม่ระบุแอป",
   unnamed: "รายการผ่อน",
   perMonth: (amount: string) => `${amount}/เดือน`,
@@ -136,12 +136,12 @@ export const HOME = {
   upcomingTitle: "เดือนข้างหน้าที่ค่างวดรวมเกินงบ",
   upcomingNone: "5 เดือนข้างหน้ายังไม่มีเดือนไหนเกินงบ",
   upcomingRow: (total: string) => `รวม ${total}`,
-  thinkCta: "ตรวจสอบก่อนผ่อน",
+  thinkCta: "เช็กก่อนผ่อน",
   thinkCtaHelp: "ก่อนกดผ่อนชิ้นต่อไป ประเมินภาระผ่อนรายเดือนได้ที่นี่",
 };
 
 export const THINK = {
-  title: "ตรวจสอบก่อนผ่อน",
+  title: "เช็กก่อนผ่อน",
   intro: "กรอกราคาและแผนผ่อน KidNee จะประเมินค่างวดรวมของทุกเดือนตลอดแผนผ่อนนี้",
   kindTitle: "ประเภทรายการ",
   kinds: { purchase: "ผ่อนสินค้า", cash_withdrawal: "กดเงินสด", cash_loan: "สินเชื่อเงินสด" },

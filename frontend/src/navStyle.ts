@@ -1,7 +1,7 @@
 /**
  * The bottom nav's look, kept apart from React so it can be tested (UI-25).
  * Selected is the same for every tab: a filled green icon background and a bold
- * label. The centre tab (ตรวจสอบ) is larger and raised, but unselected it is an
+ * label. The centre tab (เช็กก่อนผ่อน) is larger and raised, but unselected it is an
  * outline only, never filled, so it never looks selected on another screen.
  * Labels never wrap (`whitespace-nowrap`); copy.ts keeps them short.
  */

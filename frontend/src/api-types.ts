@@ -101,7 +101,7 @@ export type ManualEntryIn = {
 
 /**
  * TODO(backend, Session 15): GET /installments/suggested-monthly?item_price=&months=
- * The 0% monthly amount the ตรวจสอบก่อนผ่อน form prefills: item_price / months, rounded UP
+ * The 0% monthly amount the เช็กก่อนผ่อน form prefills: item_price / months, rounded UP
  * to 0.01 (so the payments never add up to less than the price). Mocked until then.
  */
 export type SuggestedMonthlyOut = { monthly_amount: Money };

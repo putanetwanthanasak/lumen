@@ -122,7 +122,7 @@ export async function getBuffer(): Promise<BufferOut> {
   return (await call<BufferOut>("GET", "/buffer")).body;
 }
 
-// ---- ตรวจสอบก่อนผ่อน (screen 3) ------------------------------------------------------
+// ---- เช็กก่อนผ่อน (screen 3) ------------------------------------------------------
 
 /** Writes nothing. 409 SETTINGS_REQUIRED without settings. */
 export async function previewInstallment(entry: ManualEntryIn): Promise<PreviewOut> {
