@@ -1,0 +1,14 @@
+{
+  // Node here has no built-in TypeScript (ERR_NO_TYPESCRIPT), so the tests are
+  // compiled with the project's own tsc, then run with node --test. No extra package.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".test-build",
+    "rootDir": ".",
+    "rewriteRelativeImportExtensions": true,
+    "noEmitOnError": true,
+    "types": []
+  },
+  "include": ["tests"]
+}
