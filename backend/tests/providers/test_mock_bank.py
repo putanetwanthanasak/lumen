@@ -161,3 +161,22 @@ def test_S1_key_reused_for_another_transfer_is_refused(
     with pytest.raises(ValueError, match="reused"):
         transfer(user, Decimal(amount), idempotency_key="k")
     assert bank.get_balance("u1") == Decimal("140.00")
+
+
+def test_LO_06_applied_to_savings_reports_what_a_key_moved() -> None:
+    bank = MockBankAccountProvider(Decimal("100.00"))
+    assert bank.applied_to_savings("u1", "k1") is None
+    bank.transfer_to_savings("u1", Decimal("30.01"), idempotency_key="k1")
+    assert bank.applied_to_savings("u1", "k1") == Decimal("30.01")
+    assert bank.applied_to_savings("u1", "k2") is None
+
+
+@pytest.mark.parametrize("move", ["other_user", "from_savings"])
+def test_LO_06_applied_to_savings_refuses_a_key_used_for_another_transfer(move: str) -> None:
+    bank = MockBankAccountProvider()
+    if move == "other_user":
+        bank.transfer_to_savings("u2", Decimal("1.00"), idempotency_key="k1")
+    else:
+        bank.transfer_from_savings("u1", Decimal("1.00"), idempotency_key="k1")
+    with pytest.raises(ValueError, match="idempotency key reused"):
+        bank.applied_to_savings("u1", "k1")

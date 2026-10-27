@@ -43,7 +43,7 @@ class SettingsIn(_Body):
     auto_save_enabled: bool
     # Turning auto-save on needs explicit consent in the same request (L46 consent).
     auto_save_consent: bool = False
-    leftover_saving_enabled: bool  # stored only; its behaviour comes in a later session
+    leftover_saving_enabled: bool  # L67: save what is left of the budget on payday
 
     @model_validator(mode="after")
     def _consent_to_auto_save(self) -> Self:

@@ -118,3 +118,38 @@ def compute_saving(
         if bank_balance - saving < protected_min:
             return ZERO
         return saving
+
+
+def compute_leftover_saving(
+    *,
+    budget: Decimal,
+    month_total: Decimal,
+    bank_balance: Decimal,
+    protected_min: Decimal,
+) -> Decimal:
+    """L67: what is left of the month's installment budget, or 0.00.
+
+    budget - month_total when that is above 0. The same safety net as auto-save, all
+    or nothing: if saving would leave bank_balance below protected_min, 0.00 (exactly
+    protected_min left is allowed). Never negative and never above the budget. The
+    caller checks that the user opted in. Raises ValueError on invalid input.
+    """
+    for name, money in (
+        ("budget", budget),
+        ("month_total", month_total),
+        ("bank_balance", bank_balance),
+        ("protected_min", protected_min),
+    ):
+        _require_money(name, money)
+    if budget < 0 or month_total < 0:
+        raise ValueError("budget and month_total must be >= 0")
+    if protected_min < 0:
+        raise ValueError("protected_min must be >= 0")
+
+    with localcontext(CONTEXT):
+        leftover = budget - month_total
+        if leftover <= ZERO:
+            return ZERO
+        if bank_balance - leftover < protected_min:
+            return ZERO
+        return leftover.quantize(CENT)

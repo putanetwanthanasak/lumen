@@ -48,6 +48,16 @@ class MockBankAccountProvider:
     def transfer_from_savings(self, user_id: str, amount: Decimal, *, idempotency_key: str) -> None:
         self._apply("from_savings", user_id, amount, idempotency_key)
 
+    def applied_to_savings(self, user_id: str, idempotency_key: str) -> Decimal | None:
+        with self._lock:
+            applied = self._applied.get(idempotency_key)
+        if applied is None:
+            return None
+        direction, owner, amount = applied
+        if (direction, owner) != ("to_savings", user_id):
+            raise ValueError("idempotency key reused for a different transfer")
+        return amount
+
     def _apply(self, direction: str, user_id: str, amount: Decimal, key: str) -> None:
         """Change the main-account balance once per key (S1). Savings itself lives in
         Lumen's ledger, so only the main account is tracked here."""
