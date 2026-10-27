@@ -13,21 +13,26 @@ from app.assistant.plan import Debt, Plan, build
 from app.buffer.service import balance
 from app.config import Settings
 from app.debts.service import remaining
-from app.models import MANUAL_VENDOR, InstallmentStatus
+from app.models import CONSOLIDATION_VENDOR, MANUAL_VENDOR, Installment, InstallmentStatus
+
+# No platform reports payments on these, so their earlier months are taken as paid
+# (open question 2): a manual entry, and the consolidation loan (review F2).
+NO_PAYMENTS_REPORTED = (MANUAL_VENDOR, CONSOLIDATION_VENDOR)
+
+
+def debt_of(row: Installment) -> Debt:
+    return Debt(
+        schedule=schedule_of(row),
+        ledger_remaining=remaining(row),
+        manual=row.vendor in NO_PAYMENTS_REPORTED,
+        overdue=row.overdue_days > 0,
+        disputed=row.status == InstallmentStatus.DISPUTED,
+    )
 
 
 def debts(session: Session, user_id: str) -> list[Debt]:
     """The counted installments (the L43 owed set, as the L65 verdict counts them)."""
-    return [
-        Debt(
-            schedule=schedule_of(row),
-            ledger_remaining=remaining(row),
-            manual=row.vendor == MANUAL_VENDOR,
-            overdue=row.overdue_days > 0,
-            disputed=row.status == InstallmentStatus.DISPUTED,
-        )
-        for row in counted_installments(session, user_id)
-    ]
+    return [debt_of(row) for row in counted_installments(session, user_id)]
 
 
 def plan(session: Session, user_id: str, *, today: date, settings: Settings) -> Plan:

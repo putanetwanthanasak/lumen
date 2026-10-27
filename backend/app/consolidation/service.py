@@ -3,9 +3,13 @@
 Order, so that a double submit is decided once however it arrives:
 1. A request already stored under (user, client_request_id) gets its first answer
    again (the same payoffs) or a conflict (other payoffs, audited, as L55).
-2. A per-user advisory lock serialises every request of this user, and the counted
-   installments are locked FOR UPDATE, so the eligibility below is current and no
-   other request or platform event can change those rows before commit.
+2. A per-user advisory lock serialises every request of this user. Then the lock of
+   each counted contract (ledger.lock_contract, which the webhook processor and
+   "Not me" take first too), then the counted rows FOR UPDATE. So the eligibility
+   below is current, and no other request or platform event can change those rows
+   before commit: a platform event waits instead of writing over `consolidated`
+   (review F3). The contract locks come before the row locks, in the same order as
+   the webhook path takes them, so the two cannot deadlock.
 3. The lookup again: a request that was waiting behind the lock finds the one that
    just committed.
 4. Eligibility now (L70), from the payoff plan itself, and the payoffs must name
@@ -37,12 +41,13 @@ from sqlalchemy.orm import Session
 from app.affordability.months import Month
 from app.affordability.service import require_profile
 from app.assistant import service as assistant
-from app.assistant.plan import Reason, amortised_payment
+from app.assistant.plan import Reason, amortised_payment, remaining_for_payoff
 from app.audit import service as audit
 from app.config import Settings
 from app.consolidation.schemas import ConsolidationRequestIn
 from app.debts.service import OWED_STATUSES, still_owed
 from app.ledger import reconcile
+from app.ledger.service import lock_contract
 from app.models import (
     CONSOLIDATION_VENDOR,
     Actor,
@@ -114,6 +119,7 @@ def submit(
     if earlier is not None:
         return _resubmitted(session, user_id=user_id, body=body, earlier=earlier)
     _lock_user(session, user_id)
+    _lock_contracts(session, user_id)
     counted = _lock_counted(session, user_id)
     earlier = _find(session, user_id, body.client_request_id)
     if earlier is not None:
@@ -122,7 +128,11 @@ def submit(
     require_profile(session, user_id)
     plan = assistant.plan(session, user_id, today=today, settings=settings)
     reason = plan.consolidation.reason.value if not plan.consolidation.eligible else None
-    if reason is None and {p.installment_id for p in body.payoffs} != {r.id for r in counted}:
+    # Open question 5: exactly the counted installments with something left to pay
+    # off. A row that has ended but is still in the L43 set is not named (review F4).
+    now = Month.of(today)
+    required = {r.id for r in counted if remaining_for_payoff(assistant.debt_of(r), now) > 0}
+    if reason is None and {p.installment_id for p in body.payoffs} != required:
         reason = PAYOFFS_DO_NOT_MATCH_PLAN
     rate = settings.consolidation_example_annual_rate
     term = settings.consolidation_example_term_months
@@ -266,6 +276,19 @@ def create_loan(
 def _lock_user(session: Session, user_id: str) -> None:
     key = func.hashtextextended(f"consolidation:{user_id}", 0)
     session.execute(select(func.pg_advisory_xact_lock(key)))
+
+
+def _lock_contracts(session: Session, user_id: str) -> None:
+    """Each counted contract's lock, in a fixed order. A row counted only after this
+    read is not locked by contract, but it is not in the payoffs the user could have
+    named, so the request is refused as not matching."""
+    contracts = session.execute(
+        select(Installment.vendor, Installment.contract_id)
+        .where(Installment.user_id == user_id, Installment.status.in_(OWED_STATUSES))
+        .order_by(Installment.vendor, Installment.contract_id)
+    ).all()
+    for vendor, contract_id in contracts:
+        lock_contract(session, vendor=vendor, contract_id=contract_id)
 
 
 def _lock_counted(session: Session, user_id: str) -> list[Installment]:

@@ -63,6 +63,6 @@ def test_CO_13_a_payout_must_be_a_positive_decimal(amount: Any) -> None:
     assert bank.payouts == []
 
 
-def test_app_uses_one_shared_consolidation_mock() -> None:
+def test_CO_11_app_uses_one_shared_consolidation_mock() -> None:
     assert isinstance(get_consolidation_bank(), MockConsolidationBank)
     assert get_consolidation_bank() is get_consolidation_bank()

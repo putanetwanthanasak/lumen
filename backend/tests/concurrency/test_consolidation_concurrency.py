@@ -21,6 +21,7 @@ from app.ledger.reconcile import check_user_invariants
 from app.main import app
 from app.models import ConsolidationPayout, ConsolidationRequest, Installment
 from app.providers import get_consolidation_bank
+from app.providers.base import Application, Decision
 from app.providers.mock_consolidation import MockConsolidationBank
 from tests.concurrency.conftest import Race
 from tests.consolidation.conftest import TODAY
@@ -110,3 +111,35 @@ def test_CO_09_two_different_requests_concurrently_make_one_loan(race: Race) -> 
     }
     assert stored(race) == (1, 1, 2)
     assert len(bank.payouts) == 2
+
+
+class ContractProbingBank(MockConsolidationBank):
+    """While deciding, tries each paid-off contract's lock from another connection and
+    records whether it was held: a platform event for that contract must wait for the
+    approval to commit instead of writing over `consolidated` (review F3)."""
+
+    def __init__(self, race: Race) -> None:
+        super().__init__()
+        self.race = race
+        self.held: list[bool] = []
+
+    def decide(self, application: Application) -> Decision:
+        for payoff in application.payoffs:
+            key = func.hashtextextended(f"{payoff.vendor}:{payoff.contract_id}", 0)
+            with self.race.session() as other, other.begin():
+                got = other.execute(select(func.pg_try_advisory_xact_lock(key))).scalar_one()
+                self.held.append(not got)
+        return super().decide(application)
+
+
+def test_CO_09_every_paid_off_contract_is_locked_before_the_bank_decides(race: Race) -> None:
+    """Deterministic: the webhook processor and "Not me" take the same contract lock
+    (ledger.lock_contract), so they wait for the approval."""
+    _, payoffs = setup(race)
+    bank = ContractProbingBank(race)
+    app.dependency_overrides[get_consolidation_bank] = lambda: bank
+
+    response = request(race, "req-1", payoffs)()
+
+    assert response.status_code == 201
+    assert bank.held == [True, True]

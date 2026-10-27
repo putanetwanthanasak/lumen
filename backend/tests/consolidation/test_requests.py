@@ -17,6 +17,9 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.affordability.months import Month
+from app.assistant import service as assistant_service
+from app.assistant.plan import remaining_for_payoff
 from app.config import get_settings
 from app.consolidation import service
 from app.consolidation.schemas import MOCK_NOTE, ConsolidationRequestIn
@@ -609,6 +612,10 @@ def test_CO_13_a_payout_failing_after_commit_is_completed_by_the_retry_once(co: 
     assert sorted(p.amount for p in bank.payouts) == [Decimal("12000.00"), Decimal("18000.00")]
     stored = co.api.session.execute(select(ConsolidationPayout.idempotency_key)).scalars()
     assert set(stored) == {service.payout_key(USER, "req-1", i) for i in (a, b)}
+    # The loan's alert still goes out once (review F1): delivery comes before the payouts.
+    alert = co.api.session.execute(select(Notification)).scalar_one()
+    assert alert.delivery_status == "pushed"
+    assert [p.title for p in co.api.push.attempts] == [CONSOLIDATION_TITLE]
 
 
 # --- CO-14: reconcile ------------------------------------------------------------------
@@ -782,3 +789,47 @@ def test_CO_08_storing_the_same_request_twice_raises(co: Co) -> None:
     store()
     with pytest.raises(RuntimeError, match="decided concurrently"):
         store()
+
+
+# --- Review round 1 (PR C) --------------------------------------------------------------
+
+
+def test_CO_02_the_loan_is_valued_like_a_manual_row_in_later_plans(co: Co) -> None:
+    """The loan gets no payments (no platform reports them), so its earlier months are
+    taken as paid, as for a manual row (open question 2), never its whole total cost
+    for ever (review F2). It runs 2026-12 to 2028-11 at 1,497.73."""
+    a, b = eligible(co)
+    loan_id = uuid.UUID(submit(co, body((a, b))).json()["loan"]["installment_id"])
+    loan = co.api.session.get_one(Installment, loan_id)
+    debt = assistant_service.debt_of(loan)
+
+    assert remaining_for_payoff(debt, Month.of(date(2026, 11, 10))) == Decimal("35945.52")
+    assert remaining_for_payoff(debt, Month.of(date(2028, 10, 10))) == Decimal("2995.46")
+    assert remaining_for_payoff(debt, Month.of(date(2028, 12, 10))) == Decimal("0.00")
+
+
+def test_CO_07_an_ended_row_with_nothing_left_is_not_named(co: Co) -> None:
+    """Open question 5: the payoffs name the counted installments with something left.
+    A manual row that ended in October is still in the L43 set (no payments recorded)
+    but has nothing left to pay off: it is not named and not paid (review F4)."""
+    a, b = eligible(co)
+    ended = manual_installment(
+        user_id=USER,
+        client_request_id="req-ended",
+        principal=Decimal("300.00"),
+        monthly_amount=Decimal("100.00"),
+        months=3,
+        first_due_date=date(2026, 8, 1),
+    )
+    co.api.session.add(ended)
+    co.api.session.flush()
+
+    named = submit(
+        co, body((a, b, ended.id), ("18000.00", "12000.00", "0.01"), client_request_id="req-0")
+    )
+    response = submit(co, body((a, b)))
+
+    assert named.json() == not_eligible("PAYOFFS_DO_NOT_MATCH_PLAN")
+    assert response.status_code == 201
+    assert statuses(co)[ended.id] == "active"
+    assert len(co.bank.payouts) == 2

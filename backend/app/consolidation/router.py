@@ -81,10 +81,12 @@ def submit_request(
         raise REUSED
     if isinstance(result, service.NotEligible):
         raise not_eligible(result.reason)
+    # The alert first: deliver never raises, and a payout that fails must not drop the
+    # alert for a new debt (review F1).
+    if result.notification_id is not None:
+        notifications.deliver(session, result.notification_id, push)
     # After the commit, and on a repeat too: see the service module.
     service.pay_out(bank, result.payouts)
-    if result.notification_id is not None:
-        notifications.deliver(session, result.notification_id, push)  # never raises
     request, loan = result.request, result.loan
     out = ConsolidationOut(
         request_id=request.id,
