@@ -238,7 +238,8 @@ type ChoiceProps<T extends string> = {
   legend: string;
   name: string;
   value: T | "";
-  options: { value: T; label: string }[];
+  /** `sub` is a second, smaller line (the first due month's "ต.ค. 2569"). */
+  options: { value: T; label: string; sub?: string }[];
   onChange: (value: T) => void;
   help?: string;
   error?: string | null;
@@ -253,7 +254,7 @@ function Choice<T extends string>({ legend, name, value, options, onChange, help
         {options.map((option) => (
           <label
             key={option.value}
-            className={`flex min-h-12 cursor-pointer items-center justify-center rounded-field border-2 px-1 text-center text-body font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-leaf-600 ${
+            className={`relative flex min-h-12 cursor-pointer flex-col items-center justify-center rounded-field border-2 px-1 py-1 text-center text-body leading-tight font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-leaf-600 ${
               value === option.value
                 ? "border-leaf-700 bg-leaf-50 text-leaf-800"
                 : `${error ? "border-risk-line" : "border-line"} bg-card text-ink-muted`
@@ -266,7 +267,10 @@ function Choice<T extends string>({ legend, name, value, options, onChange, help
               onChange={() => onChange(option.value)}
               className="sr-only"
             />
-            {option.label}
+            <span className="whitespace-nowrap">{option.label}</span>
+            {option.sub !== undefined && (
+              <span className="text-caption font-normal whitespace-nowrap">{option.sub}</span>
+            )}
           </label>
         ))}
       </div>
@@ -288,8 +292,8 @@ function FirstDue({ value, onChange, error }: { value: string; onChange: (v: str
       name="firstDue"
       value={value}
       options={[
-        { value: thisMonth, label: THINK.firstDueThis(thaiMonth(thisMonth)) },
-        { value: nextMonth, label: THINK.firstDueNext(thaiMonth(nextMonth)) },
+        { value: thisMonth, label: THINK.firstDueThis, sub: thaiMonth(thisMonth) },
+        { value: nextMonth, label: THINK.firstDueNext, sub: thaiMonth(nextMonth) },
       ]}
       onChange={onChange}
       help={THINK.firstDueHelp}

@@ -44,9 +44,10 @@ export const ADVISORY_NOTE = "นี่เป็นคำแนะนำเท�
 
 export const NAV = {
   home: "หน้าหลัก",
-  think: "ตรวจสอบก่อนผ่อน",
+  // Short labels: a quarter of 390px, one line each. Full names stay on titles and buttons.
+  think: "ตรวจสอบ",
   buffer: "กันชน",
-  payoff: "ผู้ช่วยปลดหนี้",
+  payoff: "ปลดหนี้",
   alerts: "แจ้งเตือน",
   alertsUnread: (count: number) => `แจ้งเตือน ยังไม่ได้อ่าน ${count} รายการ`,
   settings: "ตั้งค่า",
@@ -159,8 +160,8 @@ export const THINK = {
   platformTooLong: "ชื่อแอปยาวได้ไม่เกิน 60 ตัวอักษร",
   firstDue: "เริ่มจ่ายงวดแรก",
   firstDueHelp: "ดูได้ในหน้าสรุปก่อนกดผ่อนของแอปผ่อน",
-  firstDueThis: (month: string) => `เดือนนี้ (${month})`,
-  firstDueNext: (month: string) => `เดือนหน้า (${month})`,
+  firstDueThis: "เดือนนี้",
+  firstDueNext: "เดือนหน้า",
   firstDueError: "เลือกเดือนที่เริ่มจ่ายงวดแรก",
   check: "ประเมินภาระผ่อน",
   checking: "กำลังประเมิน...",

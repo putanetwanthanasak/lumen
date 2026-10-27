@@ -163,7 +163,7 @@ function Request({ lines }: { lines: InstallmentLine[] }) {
             {TERMS.map((term) => (
               <label
                 key={term}
-                className={`flex min-h-12 cursor-pointer items-center justify-center rounded-field border-2 text-body font-semibold ${
+                className={`relative flex min-h-12 cursor-pointer items-center justify-center rounded-field border-2 text-body font-semibold ${
                   months === term ? "border-leaf-700 bg-leaf-50 text-leaf-800" : "border-line bg-card text-ink-muted"
                 }`}
               >

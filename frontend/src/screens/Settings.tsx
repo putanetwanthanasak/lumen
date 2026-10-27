@@ -129,7 +129,7 @@ function SettingsForm({ existing }: { existing: SettingsOut | null }) {
                   {(["percent", "fixed"] as const).map((mode) => (
                     <label
                       key={mode}
-                      className={`flex min-h-12 cursor-pointer items-center justify-center rounded-field border-2 px-3 text-center text-body font-semibold ${
+                      className={`relative flex min-h-12 cursor-pointer items-center justify-center rounded-field border-2 px-3 text-center text-body font-semibold ${
                         form.mode === mode ? "border-leaf-700 bg-leaf-50 text-leaf-800" : "border-line bg-card text-ink-muted"
                       }`}
                     >

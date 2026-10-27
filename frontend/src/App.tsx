@@ -55,7 +55,7 @@ export function App() {
   const Current = route === null ? null : SCREENS[route];
   return (
     <div className="flex min-h-dvh items-center justify-center sm:p-4">
-      <div className="relative h-dvh w-full overflow-hidden bg-surface sm:h-[844px] sm:max-h-[calc(100dvh-2rem)] sm:w-[390px] sm:rounded-[44px] sm:border-[10px] sm:border-ink sm:shadow-phone">
+      <div className="relative h-dvh w-full overflow-clip bg-surface sm:h-[844px] sm:max-h-[calc(100dvh-2rem)] sm:w-[390px] sm:rounded-[44px] sm:border-[10px] sm:border-ink sm:shadow-phone">
         {Current === null ? (
           <div className="p-4">
             <Loading lines={3} />

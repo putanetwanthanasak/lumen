@@ -222,9 +222,17 @@ Tones `ok`, `warn`, `risk`, `info`, each with its own icon. Connection errors us
   with a visible focus ring). Nothing outside the frame hides a scrollbar (UI-22).
 - **Action bar** (optional): fixed under the body, above the nav (the result
   screen's บันทึก / ยังไม่ซื้อ).
-- **Bottom nav:** หน้าหลัก, **ตรวจสอบก่อนผ่อน** (centre, a raised 56px round button,
-  the most prominent; its label breaks as "ตรวจสอบ / ก่อนผ่อน"), กันชน, ผู้ช่วยปลดหนี้ (a route icon, never one that could read
-  as loading; the last two join in PR B). Settings and notifications are not tabs.
+- **Bottom nav:** short labels, one line each at 390px: หน้าหลัก, **ตรวจสอบ**
+  (centre, a raised 56px round button), กันชน, ปลดหนี้ (a route icon, never one that
+  could read as loading; the last two join in PR B). The full names stay on screen
+  titles and Home's big button. Settings and notifications are not tabs.
+  - **Selected is the same for every tab:** a filled green icon background and a bold
+    green label (`navStyle.ts`, UI-25). The centre button is larger but, when not
+    selected, only a green outline on white, never filled.
+- **Pinned bars:** header, action bar and nav never shrink; only `<main>` scrolls.
+  The frame uses `overflow: clip`, which nothing can scroll, and every visually
+  hidden input sits in a `relative` label (UI-26). Without that, focusing a hidden
+  radio scrolled the frame itself and lifted the nav into the middle of the screen.
 
 ## 6. Layout and navigation
 
@@ -295,8 +303,9 @@ Every screen has the footer and handles **loading** (skeleton), **error**
    computes nothing). Help: "คิดแบบผ่อน 0% ถ้าแอปแจ้งยอดต่อเดือนไม่ตรงนี้
    แก้ให้ตรงกับแอปได้". Once the user types in it, a suggestion never replaces it
    (UI-18).
-3. **First due month:** no default. Two required choices, "เดือนนี้ (ต.ค. 2569)"
-   and "เดือนหน้า (พ.ย. 2569)". Help: "ดูได้ในหน้าสรุปก่อนกดผ่อนของแอปผ่อน".
+3. **First due month:** no default. Two required choices of equal size, the word on
+   one line and the month on a smaller second line: "เดือนนี้" / "ต.ค. 2569" and
+   "เดือนหน้า" / "พ.ย. 2569". Help: "ดูได้ในหน้าสรุปก่อนกดผ่อนของแอปผ่อน".
    "ประเมินภาระผ่อน" stays disabled until one is chosen.
 4. "ประเมินภาระผ่อน" calls the preview (writes nothing) and opens 7.3b. The form
    is kept, so "แก้ไข" there returns to it with every value.

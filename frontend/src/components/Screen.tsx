@@ -9,6 +9,7 @@ import { navigate, type Route } from "../router.ts";
 import { DemoButton } from "./DemoPanel.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { LogoBean } from "./Logo.tsx";
+import { navIconClass, navLabelClass } from "../navStyle.ts";
 import { useLoad } from "../useLoad.ts";
 
 type ScreenProps = {
@@ -24,7 +25,7 @@ type ScreenProps = {
 export function Screen({ title, back, route, children, showNav = true, actions }: ScreenProps) {
   return (
     <div className="flex h-full flex-col bg-surface">
-      <header className="flex min-h-16 items-center gap-2 border-b border-line bg-card px-4">
+      <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-line bg-card px-4">
         {back !== undefined ? (
           <button
             type="button"
@@ -48,11 +49,11 @@ export function Screen({ title, back, route, children, showNav = true, actions }
       </header>
       {/* The scrollbar is hidden inside the phone frame only (index.css); the body
           still scrolls by wheel, touchpad, touch and keyboard (it takes focus). */}
-      <main tabIndex={0} className="phone-scroll flex-1 overflow-y-auto px-4 pt-4 pb-6 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-leaf-600">
+      <main tabIndex={0} className="phone-scroll min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-leaf-600">
         <div className="flex flex-col gap-4">{children}</div>
         <Footer />
       </main>
-      {actions !== undefined && <div className="border-t border-line bg-card px-4 py-3 shadow-card">{actions}</div>}
+      {actions !== undefined && <div className="shrink-0 border-t border-line bg-card px-4 py-3 shadow-card">{actions}</div>}
       {showNav && <BottomNav current={route} />}
     </div>
   );
@@ -109,53 +110,27 @@ const NAV_ITEMS: NavItem[] = [
   { route: "payoff", label: NAV.payoff, icon: "route" },
 ];
 
-/** "ตรวจสอบก่อนผ่อน" is too wide for a quarter of the nav: it breaks after "ตรวจสอบ", never mid-word. */
-function NavLabel({ label }: { label: string }) {
-  const at = label.indexOf("ก่อน");
-  if (at <= 0) return <span className="whitespace-nowrap">{label}</span>;
-  return (
-    <span>
-      <span className="whitespace-nowrap">{label.slice(0, at)}</span>
-      <br />
-      <span className="whitespace-nowrap">{label.slice(at)}</span>
-    </span>
-  );
-}
-
 function BottomNav({ current }: { current: Route }) {
   return (
-    <nav aria-label={NAV.menu} className="border-t border-line bg-card">
+    <nav aria-label={NAV.menu} className="shrink-0 border-t border-line bg-card">
       <ul className="flex">
         {NAV_ITEMS.map((item) => {
           const active =
             item.route === current ||
             (item.route === "think" && current === "result") ||
             (item.route === "payoff" && current === "consolidate");
+          const primary = item.primary === true;
           return (
             <li key={item.route} className="min-w-0 flex-1">
               <a
                 href={`#/${item.route}`}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-16 flex-col items-center justify-center gap-0.5 px-0.5 text-center text-caption font-semibold leading-tight ${
-                  item.primary === true
-                    ? "text-leaf-800"
-                    : active
-                      ? "text-leaf-800"
-                      : "text-ink-muted hover:text-leaf-700"
-                }`}
+                className="group flex min-h-16 flex-col items-center justify-center gap-0.5 text-center text-caption leading-tight"
               >
-                {item.primary === true ? (
-                  <span
-                    className={`-mt-5 mb-0.5 inline-flex h-14 w-14 items-center justify-center rounded-pill bg-leaf-700 text-white shadow-card ring-4 ring-card ${
-                      active ? "bg-leaf-800" : "hover:bg-leaf-800"
-                    }`}
-                  >
-                    <Icon name={item.icon} size={28} />
-                  </span>
-                ) : (
-                  <Icon name={item.icon} size={24} />
-                )}
-                <NavLabel label={item.label} />
+                <span className={`${navIconClass(primary, active)} ${active ? "" : "group-hover:text-leaf-700"}`}>
+                  <Icon name={item.icon} size={primary ? 28 : 22} />
+                </span>
+                <span className={navLabelClass(active)}>{item.label}</span>
               </a>
             </li>
           );

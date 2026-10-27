@@ -108,3 +108,26 @@ test("UI_22_the_scrollbar_is_hidden_inside_the_phone_frame_only", () => {
   const screen = readFileSync(join(SRC, "components", "Screen.tsx"), "utf8");
   assert.match(screen, /<main tabIndex=\{0\} className="phone-scroll [^"]*overflow-y-auto/);
 });
+
+test("UI_26_the_phone_frame_never_scrolls_and_hidden_inputs_stay_in_the_scrolling_body", () => {
+  // The frame clips (overflow: clip cannot be scrolled, even by focus or code)...
+  const app = readFileSync(join(SRC, "App.tsx"), "utf8");
+  assert.match(app, /className="relative h-dvh w-full overflow-clip /);
+  assert.doesNotMatch(app, /overflow-hidden/);
+  // ...and every visually hidden input sits in a `relative` label, so focusing it
+  // scrolls <main>, not the frame (the bug: the frame scrolled 157px and lifted the nav).
+  const hits = files.flatMap((file) => {
+    const text = readFileSync(file, "utf8");
+    return [...text.matchAll(/<input\b[^>]*?className="sr-only"/gs)].flatMap((m) => {
+      const label = text.lastIndexOf("<label", m.index);
+      const tag = label === -1 ? "" : text.slice(label, m.index);
+      return /\brelative\b/.test(tag) ? [] : [`${relative(ROOT, file)} at ${m.index}`];
+    });
+  });
+  assert.deepEqual(hits, []);
+  // Only <main> scrolls: the bars around it never shrink.
+  const screen = readFileSync(join(SRC, "components", "Screen.tsx"), "utf8");
+  assert.match(screen, /<header className="[^"]*shrink-0/);
+  assert.match(screen, /<main tabIndex=\{0\} className="phone-scroll min-h-0 flex-1 overflow-y-auto/);
+  assert.match(screen, /<nav aria-label=\{NAV.menu\} className="shrink-0 /);
+});
