@@ -69,6 +69,26 @@ def manual_installment(**overrides: Any) -> Installment:
     return installment(**(fields | overrides))
 
 
+def consolidation_loan(**overrides: Any) -> Installment:
+    """An approved consolidation's loan (L72): its own vendor and kind, its payment
+    and rate known, the bank's late fee unknown (NULL)."""
+    fields: dict[str, Any] = {
+        "vendor": "consolidation",
+        "contract_id": str(uuid.uuid4()),
+        "kind": "consolidation_loan",
+        "item_name": "Consolidation loan",
+        "principal": Decimal("17100.00"),
+        "months": 24,
+        "monthly_amount": Decimal("853.71"),
+        "fee_total": Decimal("3389.04"),
+        "first_due_date": date(2026, 12, 1),
+        "min_payment": Decimal("853.71"),
+        "late_fee_per_period": None,
+        "monthly_rate": Decimal("0.015000"),
+    }
+    return installment(**(fields | overrides))
+
+
 def savings_tx(**overrides: Any) -> SavingsTransaction:
     fields: dict[str, Any] = {
         "user_id": USER,

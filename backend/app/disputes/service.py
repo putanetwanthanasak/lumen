@@ -11,7 +11,12 @@ report must not be lost). disputed_at is set once and never cleared, so a later
 cancel keeps the history. There is no undo in this prototype.
 
 L68: a manual entry (L62) has no platform to report to, so "Not me" on one is
-refused. Nothing changes and no signal is sent; the attempt is audited.
+refused. Nothing changes and no signal is sent; the attempt is audited. L72: the
+same for a consolidation loan, which the user asked the bank for.
+
+L72: a consolidated installment was paid off by the loan. Like a cancelled one, it
+records the report and keeps its status: as `disputed` it would be owed again and
+counted twice, once in itself and once in the loan.
 
 L60 (2) / S4: the platform signal has its own status. The report sets it to
 `pending` in the same transaction; send_signal then tries the platform and stores
@@ -37,6 +42,7 @@ from app.models import (
     Actor,
     DisputeSignalStatus,
     Installment,
+    InstallmentKind,
     InstallmentStatus,
     Notification,
     UserResponse,
@@ -46,6 +52,9 @@ from app.providers.base import PlatformProvider
 logger = logging.getLogger(__name__)
 
 MANUAL_REJECTED_ACTION = "not_me_rejected_manual_entry"
+LOAN_REJECTED_ACTION = "not_me_rejected_consolidation_loan"
+# A report on these keeps the status: the debt is not owed, the report is recorded.
+STATUS_KEPT_ON_REPORT = (InstallmentStatus.CANCELLED, InstallmentStatus.CONSOLIDATED)
 
 
 @dataclass(frozen=True)
@@ -67,37 +76,50 @@ class ManualEntryRejected:
     installment_id: uuid.UUID
 
 
+@dataclass(frozen=True)
+class ConsolidationLoanRejected:
+    """L72: the installment is the consolidation loan the user asked for."""
+
+    installment_id: uuid.UUID
+
+
 def dispute(
     session: Session, *, user_id: str, installment_id: uuid.UUID
-) -> Disputed | ManualEntryRejected | None:
+) -> Disputed | ManualEntryRejected | ConsolidationLoanRejected | None:
     """Record "Not me" for the user's own installment. None if there is no such
     installment for this user (the caller answers 404 either way). The caller commits,
-    also after a ManualEntryRejected, so its audit row is kept.
+    also after a rejection, so its audit row is kept.
 
     Idempotent: a repeat, sequential or concurrent, changes nothing and gets the same
     stored values back.
     """
     found = session.execute(
-        select(Installment.vendor, Installment.contract_id).where(
+        select(Installment.vendor, Installment.contract_id, Installment.kind).where(
             Installment.id == installment_id, Installment.user_id == user_id
         )
     ).one_or_none()
     if found is None:
         return None
-    vendor, contract_id = found
-    if vendor == MANUAL_VENDOR:
-        # L68: no status change, no disputed_at, no alert update and no signal; the
-        # user recorded this one and can see it is theirs. Each attempt is audited.
+    vendor, contract_id, kind = found
+    if vendor == MANUAL_VENDOR or kind == InstallmentKind.CONSOLIDATION_LOAN:
+        # L68, L72: no status change, no disputed_at, no alert update and no signal;
+        # the user recorded this one, or asked the bank for it, and can see it is
+        # theirs. Each attempt is audited.
+        loan = kind == InstallmentKind.CONSOLIDATION_LOAN
         audit.record(
             session,
             actor=Actor.USER,
-            action=MANUAL_REJECTED_ACTION,
+            action=LOAN_REJECTED_ACTION if loan else MANUAL_REJECTED_ACTION,
             user_id=user_id,
             ref_type="installment",
             ref_id=str(installment_id),
             detail={"vendor": vendor, "contract_id": contract_id},
         )
-        return ManualEntryRejected(installment_id)
+        return (
+            ConsolidationLoanRejected(installment_id)
+            if loan
+            else ManualEntryRejected(installment_id)
+        )
     # The webhook lock: a payment that read `active` must not later write paid_off
     # over a dispute that committed in between (_settle runs on a stale status).
     lock_contract(session, vendor=vendor, contract_id=contract_id)
@@ -113,7 +135,7 @@ def dispute(
                 disputed_at=func.now(),
                 dispute_signal_status=DisputeSignalStatus.PENDING,
                 status=case(
-                    (Installment.status == InstallmentStatus.CANCELLED, Installment.status),
+                    (Installment.status.in_(STATUS_KEPT_ON_REPORT), Installment.status),
                     else_=InstallmentStatus.DISPUTED,
                 ),
             )

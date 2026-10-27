@@ -61,6 +61,8 @@ class InstallmentKind(StrEnum):
     PURCHASE = "purchase"
     CASH_WITHDRAWAL = "cash_withdrawal"
     CASH_LOAN = "cash_loan"
+    # L72: created only by an approved consolidation, never by a webhook or the user.
+    CONSOLIDATION_LOAN = "consolidation_loan"
 
 
 class InstallmentStatus(StrEnum):
@@ -68,6 +70,8 @@ class InstallmentStatus(StrEnum):
     PAID_OFF = "paid_off"
     CANCELLED = "cancelled"
     DISPUTED = "disputed"
+    # L72: paid off by a consolidation loan. Kept, never deleted: the history stays.
+    CONSOLIDATED = "consolidated"
 
 
 class SavingsType(StrEnum):
@@ -115,6 +119,9 @@ DISPUTE_ACTION = "installment_disputed"
 # L62: installments the user records themselves carry this vendor. No webhook vendor
 # can have it: vendors come from configured secrets, and "manual" has none.
 MANUAL_VENDOR = "manual"
+# L72: the consolidation loan's vendor. As with "manual", no webhook vendor can have
+# it, because it has no configured secret.
+CONSOLIDATION_VENDOR = "consolidation"
 
 
 class Actor(StrEnum):
@@ -190,9 +197,21 @@ class Installment(Base):
         # L41 debt data comes from the platform. A manual row may leave it unknown
         # (NULL), never a made-up 0; a platform row must have all of it.
         CheckConstraint(
-            f"vendor = '{MANUAL_VENDOR}' OR (min_payment IS NOT NULL "
+            f"vendor IN ('{MANUAL_VENDOR}', '{CONSOLIDATION_VENDOR}') OR (min_payment IS NOT NULL "
             "AND late_fee_per_period IS NOT NULL AND monthly_rate IS NOT NULL)",
             name="platform_debt_data_complete",
+        ),
+        # L72: the loan kind, and only it, comes from a consolidation. It knows its
+        # payment and rate; the bank's late fee is unknown (NULL, never a made-up 0).
+        CheckConstraint(
+            f"(kind = '{InstallmentKind.CONSOLIDATION_LOAN.value}') "
+            f"= (vendor = '{CONSOLIDATION_VENDOR}')",
+            name="consolidation_loan_vendor",
+        ),
+        CheckConstraint(
+            f"kind <> '{InstallmentKind.CONSOLIDATION_LOAN.value}' "
+            "OR (min_payment IS NOT NULL AND monthly_rate IS NOT NULL)",
+            name="consolidation_loan_terms",
         ),
         # The idempotency key for manual entry (L62): a double submit, however
         # concurrent, creates one installment.
