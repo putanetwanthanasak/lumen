@@ -182,11 +182,13 @@ def test_CO_08_double_submit_approves_once_and_answers_the_same(co: Co) -> None:
 
 
 def test_CO_08_approval_saves_nothing(co: Co) -> None:
-    """L72: the loan never triggers saving, even with auto-save on at 100%."""
+    """L72: the loan never triggers saving, even with auto-save on. 1% of 30,000.00
+    is 300.00, well inside the 10,000.00 balance, so only the kind rule can stop it,
+    not the safety net (B89 blind spot: 100% was stopped by the safety net)."""
     a, b = eligible(co)
     settings = co.api.session.get_one(UserSettings, USER)
     settings.auto_save_enabled, settings.consent_at = True, datetime(2026, 10, 1, tzinfo=UTC)
-    settings.saving_percent = 100
+    settings.saving_percent = 1
     co.api.session.flush()
     bank_before = co.api.bank.get_balance(USER)
 
