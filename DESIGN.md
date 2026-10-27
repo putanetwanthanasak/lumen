@@ -230,6 +230,9 @@ Tones `ok`, `warn`, `risk`, `info`, each with its own icon. Connection errors us
     green label (`navStyle.ts`, UI-25). The centre button is larger but, when not
     selected, only a green outline on white, never filled.
 - **Pinned bars:** header, action bar and nav never shrink; only `<main>` scrolls.
+  While the nav shows, `<main>` has bottom padding of the centre button's raise
+  plus at least 24px (`pb-14`; `SCROLL_PAD_WITH_NAV` in `navStyle.ts`, UI-27), so
+  the last item is never hidden behind it; with the action bar instead, `pb-6`.
   The frame uses `overflow: clip`, which nothing can scroll, and every visually
   hidden input sits in a `relative` label (UI-26). Without that, focusing a hidden
   radio scrolled the frame itself and lifted the nav into the middle of the screen.
