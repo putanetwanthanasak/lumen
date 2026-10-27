@@ -142,6 +142,11 @@ SHORTFALL_TITLE = "เดือนนี้ค่างวดเกินงบ"
 SHORTFALL_BODY = (
     "เดือน {month} ค่างวดรวม {total} บาท เกินงบ {shortfall} บาท คุณมีกันชน {buffer} บาท ย้ายมาช่วยจ่ายได้"
 )
+# With an empty buffer there is nothing to move, so point to the payoff assistant
+# instead (the user's wording, Session 13 review round 2 F4).
+SHORTFALL_BODY_NO_BUFFER = (
+    "เดือน {month} ค่างวดรวม {total} บาท เกินงบ {shortfall} บาท ลองเปิดผู้ช่วยปลดหนี้เพื่อดูแผนได้"
+)
 LEFTOVER_TITLE = "ออมส่วนที่เหลือจากงบแล้ว"
 LEFTOVER_BODY = "เดือน {month} ค่างวดรวม {total} บาท ต่ำกว่างบ {leftover} บาท ย้ายเข้ากันชนแล้ว"
 
@@ -149,7 +154,8 @@ LEFTOVER_BODY = "เดือน {month} ค่างวดรวม {total} บ
 def payday_shortfall_alert(
     *, month: Month, total: Decimal, shortfall: Decimal, buffer: Decimal
 ) -> tuple[NotificationKind, str, str]:
-    body = SHORTFALL_BODY.format(
+    template = SHORTFALL_BODY if buffer > 0 else SHORTFALL_BODY_NO_BUFFER
+    body = template.format(
         month=thai_month(month),
         total=format_baht(total),
         shortfall=format_baht(shortfall),

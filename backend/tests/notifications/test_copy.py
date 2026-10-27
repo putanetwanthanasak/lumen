@@ -12,6 +12,7 @@ from app.notifications.copy import (
     MANUAL_BODY,
     MANUAL_TITLES,
     SHORTFALL_BODY,
+    SHORTFALL_BODY_NO_BUFFER,
     SHORTFALL_TITLE,
     TEMPLATES,
     THAI_MONTHS,
@@ -113,7 +114,8 @@ def test_rule_10_no_em_dash_and_rule_5_no_bank_brand_in_copy() -> None:
     banned = (em_dash, "kbank", "kbtg", "kasikorn", "k plus", "kplus", "shopee", "กสิกร")
     copy = [f"{t.title} {t.body}" for t in TEMPLATES.values()]
     copy += [*MANUAL_TITLES.values(), MANUAL_BODY]
-    copy += [SHORTFALL_TITLE, SHORTFALL_BODY, LEFTOVER_TITLE, LEFTOVER_BODY, *THAI_MONTHS]
+    copy += [SHORTFALL_TITLE, SHORTFALL_BODY, SHORTFALL_BODY_NO_BUFFER]
+    copy += [LEFTOVER_TITLE, LEFTOVER_BODY, *THAI_MONTHS]
     for text in copy:
         assert not [word for word in banned if word in text.lower()]
 
@@ -208,6 +210,30 @@ def test_PD_01_shortfall_copy_exact() -> None:
     assert body == (
         "เดือน พ.ย. 2569 ค่างวดรวม 10,500 บาท เกินงบ 1,500 บาท คุณมีกันชน 820.50 บาท ย้ายมาช่วยจ่ายได้"
     )
+
+
+@pytest.mark.parametrize(
+    ("buffer", "body"),
+    [
+        (
+            Decimal("0.00"),
+            "เดือน พ.ย. 2569 ค่างวดรวม 10,500 บาท เกินงบ 1,500 บาท ลองเปิดผู้ช่วยปลดหนี้เพื่อดูแผนได้",
+        ),
+        (
+            Decimal("0.01"),  # any buffer at all: the move-the-buffer wording
+            "เดือน พ.ย. 2569 ค่างวดรวม 10,500 บาท เกินงบ 1,500 บาท คุณมีกันชน 0.01 บาท ย้ายมาช่วยจ่ายได้",
+        ),
+    ],
+    ids=["empty_buffer", "one_satang"],
+)
+def test_PD_01_shortfall_copy_depends_on_the_buffer(buffer: Decimal, body: str) -> None:
+    kind, title, text = payday_shortfall_alert(
+        month=month(2026, 11),
+        total=Decimal("10500.00"),
+        shortfall=Decimal("1500.00"),
+        buffer=buffer,
+    )
+    assert (kind, title, text) == (NotificationKind.PAYDAY_SHORTFALL, "เดือนนี้ค่างวดเกินงบ", body)
 
 
 def test_LO_01_leftover_copy_exact() -> None:

@@ -140,6 +140,24 @@ def test_PD_01_over_budget_alerts_with_shortfall_and_buffer(demo: Api) -> None:
     assert demo.bank.get_balance(USER) == OPENING
 
 
+def test_PD_01_over_budget_with_an_empty_buffer_points_to_the_payoff_assistant(
+    demo: Api,
+) -> None:
+    configure(demo)
+    due(demo, "9500.00")  # never saved: no balance row, buffer 0.00
+
+    response = payday(demo)
+
+    assert (response.json()["outcome"], response.json()["buffer_balance"]) == (
+        "over_budget",
+        "0.00",
+    )
+    [alert] = alerts(demo)
+    assert alert.body == (
+        "เดือน พ.ย. 2569 ค่างวดรวม 9,500 บาท เกินงบ 500 บาท ลองเปิดผู้ช่วยปลดหนี้เพื่อดูแผนได้"
+    )
+
+
 def test_PD_01_over_budget_alert_ignores_the_leftover_switch(demo: Api) -> None:
     configure(demo, leftover=False)
     due(demo, "9000.01")
