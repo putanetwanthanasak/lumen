@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session
 from app.affordability.months import Month
 from app.affordability.service import require_profile
 from app.assistant import service as assistant
-from app.assistant.plan import amortised_payment
+from app.assistant.plan import Reason, amortised_payment
 from app.audit import service as audit
 from app.config import Settings
 from app.consolidation.schemas import ConsolidationRequestIn
@@ -126,9 +126,14 @@ def submit(
         reason = PAYOFFS_DO_NOT_MATCH_PLAN
     rate = settings.consolidation_example_annual_rate
     term = settings.consolidation_example_term_months
+    # L70 (b) again, on the amounts this request asks for: the plan checked its own
+    # estimate, and the loan is built from these.
     requested = sum((p.payoff_amount for p in body.payoffs), Decimal("0.00"))
-    if reason is None and amortised_payment(requested, rate, term) * term > MONEY_MAX:
-        reason = "ESTIMATE_TOO_LARGE"
+    requested_payment = amortised_payment(requested, rate, term)
+    if reason is None and requested_payment * term > MONEY_MAX:
+        reason = Reason.ESTIMATE_TOO_LARGE.value
+    if reason is None and requested_payment > plan.budget:
+        reason = Reason.PAYMENT_ABOVE_BUDGET.value
     if reason is not None:
         _audit(session, user_id, "consolidation_not_eligible", body, {"reason": reason})
         return NotEligible(reason)

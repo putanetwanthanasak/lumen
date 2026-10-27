@@ -294,3 +294,63 @@ def test_CO_05_consolidation_loan_kind_downgrade_refuses_while_rows_exist(
     finally:
         with migration_engine.begin() as conn:
             conn.execute(text("DELETE FROM installments WHERE user_id = 'mig-user'"))
+
+
+NOTIFICATIONS_BEFORE_CONSOLIDATION = {
+    "ck_notifications_kind_valid": (
+        "CHECK ((kind = ANY (ARRAY['new_debt'::text, 'cash_withdrawal'::text, 'cash_loan'::text, "
+        "'over_cap'::text, 'payday_shortfall'::text, 'leftover_saved'::text])))"
+    ),
+    "ck_notifications_new_debt_has_installment": (
+        "CHECK (((NOT (kind = ANY (ARRAY['new_debt'::text, 'cash_withdrawal'::text, "
+        "'cash_loan'::text]))) OR (installment_id IS NOT NULL)))"
+    ),
+}
+
+
+def test_CO_05_consolidation_requests_downgrade_one_step(migration_engine: Engine) -> None:
+    with migration_engine.begin() as conn:
+        command.downgrade(alembic_config(conn), "31616ed1dc70")
+    with migration_engine.connect() as conn:
+        tables = inspect(conn).get_table_names()
+        assert "consolidation_requests" not in tables
+        assert "consolidation_payouts" not in tables
+        checks = _check_texts(conn, list(NOTIFICATIONS_BEFORE_CONSOLIDATION))
+        assert checks == NOTIFICATIONS_BEFORE_CONSOLIDATION
+        assert "'consolidation_loan'" not in str(
+            conn.execute(
+                text(
+                    "SELECT indexdef FROM pg_indexes "
+                    "WHERE indexname = 'uq_notifications_new_debt_installment_id'"
+                )
+            ).scalar_one()
+        )
+    with migration_engine.begin() as conn:
+        command.upgrade(alembic_config(conn), "head")
+    with migration_engine.connect() as conn:
+        assert "consolidation_requests" in inspect(conn).get_table_names()
+
+
+def test_CO_05_consolidation_requests_downgrade_refuses_while_requests_exist(
+    migration_engine: Engine,
+) -> None:
+    # A decided request is the record of what the bank was asked: never dropped.
+    insert = text(
+        "INSERT INTO consolidation_requests (id, user_id, client_request_id, status, payoffs, "
+        "principal, annual_rate, term_months, monthly_payment, total_cost, "
+        "decision_reference) VALUES (gen_random_uuid(), 'mig-user', 'req-1', 'declined', "
+        "'[]', 1.00, 0, 1, 1.00, 1.00, 'MOCK-mig')"
+    )
+    with migration_engine.begin() as conn:
+        conn.execute(insert)
+    try:
+        with (
+            pytest.raises(DBAPIError, match="consolidation requests exist"),
+            migration_engine.begin() as conn,
+        ):
+            command.downgrade(alembic_config(conn), "31616ed1dc70")
+        with migration_engine.connect() as conn:
+            assert "consolidation_requests" in inspect(conn).get_table_names()  # rolled back
+    finally:
+        with migration_engine.begin() as conn:
+            conn.execute(text("DELETE FROM consolidation_requests WHERE user_id = 'mig-user'"))

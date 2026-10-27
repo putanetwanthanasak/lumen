@@ -27,6 +27,26 @@ EXPECTED_CONSTRAINTS: dict[str, dict[str, str]] = {
         "ck_audit_log_actor_valid": "CHECK ((actor = ANY (ARRAY['system'::text, 'user'::text])))",
         "pk_audit_log": "PRIMARY KEY (id)",
     },
+    "consolidation_payouts": {
+        "ck_consolidation_payouts_amount_positive": "CHECK ((amount > (0)::numeric))",
+        "fk_consolidation_payouts_installment_id_installments": "FOREIGN KEY (installment_id) REFERENCES installments(id)",
+        "fk_consolidation_payouts_request_id_consolidation_requests": "FOREIGN KEY (request_id) REFERENCES consolidation_requests(id)",
+        "pk_consolidation_payouts": "PRIMARY KEY (id)",
+        "uq_consolidation_payouts_idempotency_key": "UNIQUE (idempotency_key)",
+        "uq_consolidation_payouts_installment_id": "UNIQUE (installment_id)",
+    },
+    "consolidation_requests": {
+        "ck_consolidation_requests_annual_rate_nonneg": "CHECK ((annual_rate >= (0)::numeric))",
+        "ck_consolidation_requests_approved_has_loan": "CHECK (((status = 'approved'::text) = (loan_installment_id IS NOT NULL)))",
+        "ck_consolidation_requests_monthly_payment_positive": "CHECK ((monthly_payment > (0)::numeric))",
+        "ck_consolidation_requests_principal_positive": "CHECK ((principal > (0)::numeric))",
+        "ck_consolidation_requests_status_valid": "CHECK ((status = ANY (ARRAY['approved'::text, 'declined'::text])))",
+        "ck_consolidation_requests_term_months_range": "CHECK (((term_months >= 1) AND (term_months <= 600)))",
+        "ck_consolidation_requests_total_cost_rule": "CHECK ((total_cost = (monthly_payment * (term_months)::numeric)))",
+        "fk_consolidation_requests_loan_installment_id_installments": "FOREIGN KEY (loan_installment_id) REFERENCES installments(id)",
+        "pk_consolidation_requests": "PRIMARY KEY (id)",
+        "uq_consolidation_requests_user_id_client_request_id": "UNIQUE (user_id, client_request_id)",
+    },
     "installments": {
         "ck_installments_dispute_signal_status_valid": "CHECK ((dispute_signal_status = ANY (ARRAY['pending'::text, 'sent'::text, 'failed'::text])))",
         "ck_installments_dispute_signal_status_with_report": "CHECK (((disputed_at IS NULL) = (dispute_signal_status IS NULL)))",
@@ -53,8 +73,8 @@ EXPECTED_CONSTRAINTS: dict[str, dict[str, str]] = {
     },
     "notifications": {
         "ck_notifications_delivery_status_valid": "CHECK ((delivery_status = ANY (ARRAY['pending'::text, 'pushed'::text, 'inbox_only'::text])))",
-        "ck_notifications_new_debt_has_installment": "CHECK (((NOT (kind = ANY (ARRAY['new_debt'::text, 'cash_withdrawal'::text, 'cash_loan'::text]))) OR (installment_id IS NOT NULL)))",
-        "ck_notifications_kind_valid": "CHECK ((kind = ANY (ARRAY['new_debt'::text, 'cash_withdrawal'::text, 'cash_loan'::text, 'over_cap'::text, 'payday_shortfall'::text, 'leftover_saved'::text])))",
+        "ck_notifications_new_debt_has_installment": "CHECK (((NOT (kind = ANY (ARRAY['new_debt'::text, 'cash_withdrawal'::text, 'cash_loan'::text, 'consolidation_loan'::text]))) OR (installment_id IS NOT NULL)))",
+        "ck_notifications_kind_valid": "CHECK ((kind = ANY (ARRAY['new_debt'::text, 'cash_withdrawal'::text, 'cash_loan'::text, 'over_cap'::text, 'payday_shortfall'::text, 'leftover_saved'::text, 'consolidation_loan'::text])))",
         "ck_notifications_push_attempts_nonneg": "CHECK ((push_attempts >= 0))",
         "ck_notifications_user_response_valid": "CHECK ((user_response = ANY (ARRAY['none'::text, 'not_me'::text])))",
         "fk_notifications_installment_id_installments": "FOREIGN KEY (installment_id) REFERENCES installments(id)",
@@ -111,6 +131,17 @@ EXPECTED_INDEXES: dict[str, dict[str, str]] = {
         "pk_audit_log": "CREATE UNIQUE INDEX pk_audit_log ON public.audit_log USING btree (id)",
         "uq_audit_log_installment_disputed": "CREATE UNIQUE INDEX uq_audit_log_installment_disputed ON public.audit_log USING btree (ref_id) WHERE (action = 'installment_disputed'::text)",
     },
+    "consolidation_payouts": {
+        "ix_consolidation_payouts_user_id": "CREATE INDEX ix_consolidation_payouts_user_id ON public.consolidation_payouts USING btree (user_id)",
+        "pk_consolidation_payouts": "CREATE UNIQUE INDEX pk_consolidation_payouts ON public.consolidation_payouts USING btree (id)",
+        "uq_consolidation_payouts_idempotency_key": "CREATE UNIQUE INDEX uq_consolidation_payouts_idempotency_key ON public.consolidation_payouts USING btree (idempotency_key)",
+        "uq_consolidation_payouts_installment_id": "CREATE UNIQUE INDEX uq_consolidation_payouts_installment_id ON public.consolidation_payouts USING btree (installment_id)",
+    },
+    "consolidation_requests": {
+        "ix_consolidation_requests_user_id": "CREATE INDEX ix_consolidation_requests_user_id ON public.consolidation_requests USING btree (user_id)",
+        "pk_consolidation_requests": "CREATE UNIQUE INDEX pk_consolidation_requests ON public.consolidation_requests USING btree (id)",
+        "uq_consolidation_requests_user_id_client_request_id": "CREATE UNIQUE INDEX uq_consolidation_requests_user_id_client_request_id ON public.consolidation_requests USING btree (user_id, client_request_id)",
+    },
     "installments": {
         "ix_installments_user_id": "CREATE INDEX ix_installments_user_id ON public.installments USING btree (user_id)",
         "pk_installments": "CREATE UNIQUE INDEX pk_installments ON public.installments USING btree (id)",
@@ -120,7 +151,7 @@ EXPECTED_INDEXES: dict[str, dict[str, str]] = {
     "notifications": {
         "ix_notifications_user_id": "CREATE INDEX ix_notifications_user_id ON public.notifications USING btree (user_id)",
         "pk_notifications": "CREATE UNIQUE INDEX pk_notifications ON public.notifications USING btree (id)",
-        "uq_notifications_new_debt_installment_id": "CREATE UNIQUE INDEX uq_notifications_new_debt_installment_id ON public.notifications USING btree (installment_id) WHERE (kind = ANY (ARRAY['new_debt'::text, 'cash_withdrawal'::text, 'cash_loan'::text]))",
+        "uq_notifications_new_debt_installment_id": "CREATE UNIQUE INDEX uq_notifications_new_debt_installment_id ON public.notifications USING btree (installment_id) WHERE (kind = ANY (ARRAY['new_debt'::text, 'cash_withdrawal'::text, 'cash_loan'::text, 'consolidation_loan'::text]))",
     },
     "payday_runs": {
         "pk_payday_runs": "CREATE UNIQUE INDEX pk_payday_runs ON public.payday_runs USING btree (user_id, month)",
@@ -149,6 +180,13 @@ EXPECTED_DEFAULTS: dict[str, dict[str, str]] = {
     "audit_log": {
         "created_at": "now()",
         "detail": "'{}'::jsonb",
+    },
+    "consolidation_payouts": {
+        "created_at": "now()",
+        "id": "gen_random_uuid()",
+    },
+    "consolidation_requests": {
+        "created_at": "now()",
     },
     "installments": {
         "created_at": "now()",
@@ -189,6 +227,8 @@ EXPECTED_DEFAULTS: dict[str, dict[str, str]] = {
 
 EXPECTED_APP_GRANTS: dict[str, str] = {
     "audit_log": "INSERT, SELECT",
+    "consolidation_payouts": "INSERT, SELECT",
+    "consolidation_requests": "INSERT, SELECT",
     "installments": "INSERT, SELECT, UPDATE",
     "notifications": "INSERT, SELECT, UPDATE",
     "payday_runs": "INSERT, SELECT",

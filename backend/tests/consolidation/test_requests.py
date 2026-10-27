@@ -664,3 +664,114 @@ def test_CO_14_reconcile_catches_payouts_that_do_not_add_up_to_the_loan(
     session.flush()
 
     assert reconcile.check_user_invariants(session, USER) == ["L72"]
+
+
+# --- CO-06 and CO-07: the amounts in the request --------------------------------------
+
+
+def test_CO_06_payoffs_that_sum_beyond_numeric_12_2_are_422(co: Co) -> None:
+    a, b = eligible(co)
+
+    response = submit(co, body((a, b), ("5000000000.00", "5000000000.00")))
+
+    assert response.status_code == 422
+    assert count(co.api.session, ConsolidationRequest) == 0
+
+
+@pytest.mark.parametrize(
+    ("amounts", "reason"),
+    [
+        # 300,000.00 over 24 months at 18% is 14,977.24 a month, above the 9,000.00
+        # budget: the plan's own estimate (30,000.00) was within it.
+        (("180000.00", "120000.00"), "PAYMENT_ABOVE_BUDGET"),
+        # Within Numeric(12,2), but the total cost of the loan is not.
+        (("5000000000.00", "4999999999.99"), "ESTIMATE_TOO_LARGE"),
+    ],
+)
+def test_CO_07_l70_b_is_checked_again_on_the_amounts_requested(
+    co: Co, amounts: tuple[str, str], reason: str
+) -> None:
+    a, b = eligible(co)
+
+    response = submit(co, body((a, b), amounts))
+
+    assert response.json() == not_eligible(reason)
+    assert statuses(co) == {a: "active", b: "active"}
+    assert count(co.api.session, ConsolidationRequest) == 0
+    assert co.bank.payouts == []
+
+
+def test_CO_07_requested_amounts_within_budget_are_approved_as_given(co: Co) -> None:
+    """The mock bank takes the user's figures (open question 6): 90,000.00 is
+    4,493.17 a month (4,493.1692 rounded up), within budget, though above the plan's
+    own estimate."""
+    a, b = eligible(co)
+
+    loan = submit(co, body((a, b), ("54000.00", "36000.00"))).json()["loan"]
+
+    assert (loan["principal"], loan["monthly_payment"]) == ("90000.00", "4493.17")
+
+
+# --- CO-12 and CO-14: an approval that fails reconcile is rolled back ---------------
+
+
+def test_CO_14_an_approval_that_breaks_l72_is_rolled_back_not_committed(
+    co: Co, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a, b = eligible(co)
+    co.api.session.commit()  # keep the setup when the service rolls back
+    before = row_counts(co)
+    create_loan = service.create_loan
+
+    def loan_off_by_a_satang(*args: Any, **kwargs: Any) -> Installment:
+        loan = create_loan(*args, **kwargs)
+        loan.principal += Decimal("0.01")
+        return loan
+
+    monkeypatch.setattr(service, "create_loan", loan_off_by_a_satang)
+
+    with pytest.raises(reconcile.InvariantViolationError, match="L72"):
+        submit(co, body((a, b)))
+
+    assert statuses(co) == {a: "active", b: "active"}
+    assert row_counts(co) == before
+    assert co.bank.payouts == []
+
+
+# --- Guards that the locks make unreachable --------------------------------------------
+
+
+def test_CO_12_marking_an_installment_no_longer_owed_raises(co: Co) -> None:
+    a, _ = eligible(co)
+    paid = manual(co, "100.00", 1)
+    co.api.session.get_one(Installment, paid).status = "cancelled"
+    co.api.session.flush()
+
+    with pytest.raises(RuntimeError, match="changed under the consolidation lock"):
+        service._mark_consolidated(co.api.session, USER, [a, paid])
+
+
+def test_CO_08_storing_the_same_request_twice_raises(co: Co) -> None:
+    configure(co)
+    request_body = ConsolidationRequestIn.model_validate_json(
+        _json(body((uuid.uuid4(),), ("1.00",)))
+    )
+
+    def store() -> ConsolidationRequest:
+        return service._store_request(
+            co.api.session,
+            request_id=uuid.uuid4(),
+            user_id=USER,
+            body=request_body,
+            approved=False,
+            principal=Decimal("1.00"),
+            rate=Decimal("0"),
+            term=1,
+            payment=Decimal("1.00"),
+            decision_reference="MOCK-test",
+            loan_id=None,
+        )
+
+    store()
+    with pytest.raises(RuntimeError, match="decided concurrently"):
+        store()
