@@ -2,8 +2,8 @@
 
 The loan never saves, counts in every month total, and "Not me" is refused on it.
 A consolidated installment is not owed, keeps its history, and keeps its status
-whatever the platform sends later. Only an approved consolidation creates the kind;
-that request is not built yet, so here the rows are written directly.
+whatever the platform sends later. Only an approved consolidation creates the kind
+(test_requests.py); here the rows are written directly.
 """
 
 from datetime import UTC, datetime
@@ -11,7 +11,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,13 @@ from app.models import AuditLog, Installment, SavingsTransaction, UserBalance, U
 from app.providers.mock_bank import MockBankAccountProvider
 from app.rules.engine import FixedRule, PercentRule, compute_saving
 from app.savings import service as savings
-from tests.db.factories import consolidation_loan, installment, profile, savings_tx
+from tests.db.factories import (
+    approved_consolidation,
+    consolidation_loan,
+    installment,
+    profile,
+    savings_tx,
+)
 from tests.processing.conftest import opt_in
 from tests.user_settings.conftest import USER, Api
 from tests.webhooks.conftest import Webhook
@@ -145,6 +151,12 @@ def test_CO_02_loan_counts_in_the_preview_month_totals(api: Api) -> None:
     ]
 
 
+def consolidate(session: Session) -> None:
+    """The one webhook installment, paid off by an approved consolidation."""
+    row = session.execute(select(Installment).where(Installment.vendor == "shopdemo")).scalar_one()
+    approved_consolidation(session, row, Decimal("20000.00"))
+
+
 def _settings() -> UserSettings:
     return UserSettings(user_id=USER, auto_save_enabled=False, **profile())
 
@@ -176,8 +188,10 @@ def test_CO_03_not_me_on_a_consolidated_debt_records_the_report_status_stays(
     """Like a cancelled debt (L59 3): as `disputed` it would be owed again, and
     counted twice, in itself and in the loan."""
     assert webhook.post(payload()).status_code == 200
-    webhook.session.execute(update(Installment).values(status="consolidated"))
-    installment_id = webhook.session.execute(select(Installment.id)).scalar_one()
+    consolidate(webhook.session)
+    installment_id = webhook.session.execute(
+        select(Installment.id).where(Installment.vendor == "shopdemo")
+    ).scalar_one()
 
     body = webhook.not_me(installment_id).json()
 
@@ -190,7 +204,8 @@ def test_CO_03_not_me_on_a_consolidated_debt_records_the_report_status_stays(
         True,
     )
     assert len(webhook.platform.signals) == 1
-    assert webhook.get("/debts/summary").json()["monthly_total"] == "0.00"
+    # Owed once, in the loan only.
+    assert webhook.get("/debts/summary").json()["monthly_total"] == "20000.00"
 
 
 # --- CO-04: platform events on a consolidated installment --------------------------
@@ -216,12 +231,14 @@ def test_CO_04_platform_events_on_a_consolidated_debt_are_recorded_status_stays(
     webhook: Webhook, event: dict[str, Any], field: str, value: object
 ) -> None:
     assert webhook.post(payload()).status_code == 200
-    webhook.session.execute(update(Installment).values(status="consolidated"))
+    consolidate(webhook.session)
 
     assert webhook.post(event).json() == {"status": "processed"}
 
     webhook.session.expire_all()
-    row = webhook.session.execute(select(Installment)).scalar_one()
+    row = webhook.session.execute(
+        select(Installment).where(Installment.vendor == "shopdemo")
+    ).scalar_one()
     assert row.status == "consolidated"
     assert getattr(row, field) == value
 

@@ -303,6 +303,18 @@ def test_AS_05_payment_exactly_the_budget_is_eligible() -> None:
     assert plan(debts, budget="853.70").consolidation.reason is Reason.PAYMENT_ABOVE_BUDGET
 
 
+def test_AS_05_a_payment_that_makes_a_month_red_is_not_eligible() -> None:
+    """Open question 14: 853.71 a month is within the 1,000.00 budget, but RED when
+    three times it is above income. Exactly one third is not RED."""
+    debts = [debt("300.00", 3), debt("5400.00", 3)]
+
+    def reason(income: str) -> Reason:
+        return plan(debts, budget="1000.00", income=Decimal(income)).consolidation.reason
+
+    assert reason("2561.13") is Reason.ELIGIBLE  # 853.71 x 3 = 2,561.13
+    assert reason("2561.12") is Reason.PAYMENT_ABOVE_ONE_THIRD_OF_INCOME
+
+
 @pytest.mark.parametrize(
     "monthly",
     [
@@ -553,6 +565,7 @@ def test_AS_10_back_in_budget_shortfall_and_run_match_every_month_uncapped(
     if estimate is not None:
         assert estimate.total_cost == estimate.monthly_payment * TERM
         assert estimate.monthly_payment <= budget
+        assert estimate.monthly_payment * 3 <= INCOME  # never RED (open question 14)
         assert estimate.total_cost <= MONEY_MAX
 
 

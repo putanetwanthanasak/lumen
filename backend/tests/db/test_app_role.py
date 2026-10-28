@@ -16,7 +16,13 @@ from app import models
 pytestmark = pytest.mark.db
 
 INSUFFICIENT_PRIVILEGE = "42501"
-APPEND_ONLY = ("audit_log", "payday_runs", "savings_transactions")
+APPEND_ONLY = (
+    "audit_log",
+    "consolidation_payouts",
+    "consolidation_requests",
+    "payday_runs",
+    "savings_transactions",
+)
 # From app.models, not app.db: Base.metadata is empty until the models are imported.
 TABLES = sorted(models.Base.metadata.tables)
 
@@ -40,7 +46,7 @@ def test_S2_app_role_is_not_superuser_and_owns_nothing(engine: Engine) -> None:
 
 
 def test_S2_every_table_is_checked() -> None:
-    assert len(TABLES) == 8  # a silent empty list once skipped the test below
+    assert len(TABLES) == 10  # a silent empty list once skipped the test below
 
 
 @pytest.mark.parametrize("table", TABLES)
@@ -73,6 +79,11 @@ ATTACKS = {
     # L67: the payday run is the once-per-month key; erasing it would allow a rerun.
     "delete_payday_run": "DELETE FROM payday_runs",
     "update_payday_run": "UPDATE payday_runs SET amount = amount",
+    # L72: a decided request and its payouts are the record of what the bank paid.
+    "delete_consolidation_request": "DELETE FROM consolidation_requests",
+    "update_consolidation_request": "UPDATE consolidation_requests SET status = 'declined'",
+    "delete_consolidation_payout": "DELETE FROM consolidation_payouts",
+    "update_consolidation_payout": "UPDATE consolidation_payouts SET amount = amount",
     "delete_installments": "DELETE FROM installments",
     "drop_dispute_check": (
         "ALTER TABLE installments DROP CONSTRAINT ck_installments_disputed_has_disputed_at"

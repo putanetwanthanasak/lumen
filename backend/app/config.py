@@ -36,6 +36,9 @@ class Settings(BaseSettings):
         Decimal("0.18")
     )
     consolidation_example_term_months: Annotated[int, Field(ge=1, le=600)] = 24
+    # The mock bank's decision on every consolidation request (L71), for demos:
+    # CONSOLIDATION_MOCK_DECISION=approve or decline.
+    consolidation_mock_decision: Literal["approve", "decline"] = "approve"
 
     llm_provider: str | None = None
     llm_model_planner: str | None = None

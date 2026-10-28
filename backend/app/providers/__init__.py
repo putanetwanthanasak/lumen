@@ -2,8 +2,15 @@
 
 from functools import lru_cache
 
-from app.providers.base import BankAccountProvider, PlatformProvider, PushProvider
+from app.config import get_settings
+from app.providers.base import (
+    BankAccountProvider,
+    ConsolidationBankProvider,
+    PlatformProvider,
+    PushProvider,
+)
 from app.providers.mock_bank import MockBankAccountProvider
+from app.providers.mock_consolidation import MockConsolidationBank
 from app.providers.mock_platform import MockPlatformProvider
 from app.providers.mock_push import MockPushProvider
 
@@ -25,3 +32,9 @@ def get_push_provider() -> PushProvider:
 def get_platform_provider() -> PlatformProvider:
     """As get_push_provider."""
     return MockPlatformProvider()
+
+
+@lru_cache
+def get_consolidation_bank() -> ConsolidationBankProvider:
+    """As get_push_provider. The mock's answer comes from CONSOLIDATION_MOCK_DECISION."""
+    return MockConsolidationBank(get_settings().consolidation_mock_decision)

@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     AuditLog,
+    ConsolidationPayout,
+    ConsolidationRequest,
     Installment,
     Notification,
     SavingsTransaction,
@@ -87,6 +89,55 @@ def consolidation_loan(**overrides: Any) -> Installment:
         "monthly_rate": Decimal("0.015000"),
     }
     return installment(**(fields | overrides))
+
+
+def approved_consolidation(session: Session, paid_off: Installment, amount: Decimal) -> Installment:
+    """What an approval leaves for one paid-off installment (L72): the installment
+    consolidated, a loan of `amount`, the approved request and its one payout. It
+    passes reconcile; returns the loan."""
+    request_id = uuid.uuid4()
+    loan = consolidation_loan(
+        user_id=paid_off.user_id,
+        contract_id=str(request_id),
+        principal=amount,
+        months=1,
+        monthly_amount=amount,
+        fee_total=Decimal("0.00"),
+        min_payment=amount,
+    )
+    session.add(loan)
+    session.flush()
+    session.add(
+        ConsolidationRequest(
+            id=request_id,
+            user_id=paid_off.user_id,
+            client_request_id=f"req-{request_id}",
+            status="approved",
+            payoffs=[{"installment_id": str(paid_off.id), "payoff_amount": str(amount)}],
+            principal=amount,
+            annual_rate=Decimal("0"),
+            term_months=1,
+            monthly_payment=amount,
+            total_cost=amount,
+            decision_reference="MOCK-test",
+            loan_installment_id=loan.id,
+        )
+    )
+    session.flush()
+    session.add(
+        ConsolidationPayout(
+            request_id=request_id,
+            user_id=paid_off.user_id,
+            installment_id=paid_off.id,
+            vendor=paid_off.vendor,
+            contract_id=paid_off.contract_id,
+            amount=amount,
+            idempotency_key=f"key-{request_id}",
+        )
+    )
+    paid_off.status = "consolidated"
+    session.flush()
+    return loan
 
 
 def savings_tx(**overrides: Any) -> SavingsTransaction:

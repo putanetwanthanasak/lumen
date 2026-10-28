@@ -13,7 +13,7 @@ from tests.db.factories import installment, profile, user_settings
 
 pytestmark = pytest.mark.db
 
-RATE_COLUMNS = {("installments", "monthly_rate")}
+RATE_COLUMNS = {("installments", "monthly_rate"), ("consolidation_requests", "annual_rate")}
 
 
 def _numeric_columns() -> list[tuple[str, str, Numeric[Decimal]]]:
@@ -26,10 +26,10 @@ def _numeric_columns() -> list[tuple[str, str, Numeric[Decimal]]]:
     return cols
 
 
-def test_money_columns_are_numeric_12_2_and_rates_7_6() -> None:
+def test_rule_1_money_columns_are_numeric_12_2_and_rates_7_6() -> None:
     cols = _numeric_columns()
-    assert len(cols) == 17  # installments 8, user_settings 3, savings 1, balances 1,
-    # payday_runs 4
+    assert len(cols) == 22  # installments 8, user_settings 3, savings 1, balances 1,
+    # payday_runs 4, consolidation_requests 4, consolidation_payouts 1
     for table, name, typ in cols:
         expected = (7, 6) if (table, name) in RATE_COLUMNS else (12, 2)
         assert (typ.precision, typ.scale) == expected, f"{table}.{name}"

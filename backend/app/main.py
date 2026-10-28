@@ -9,6 +9,7 @@ from app.affordability.router import router as affordability_router
 from app.assistant.router import router as assistant_router
 from app.buffer.router import router as buffer_router
 from app.config import Settings, get_settings
+from app.consolidation.router import router as consolidation_router
 from app.db import describe_db_error
 from app.debts.router import router as debts_router
 from app.disputes.router import router as disputes_router
@@ -52,6 +53,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(affordability_router)
     app.include_router(buffer_router)
     app.include_router(assistant_router)
+    app.include_router(consolidation_router)
     if settings.demo_endpoints_enabled:
         app.include_router(payday_router)  # demo only; absent (404) by default
 

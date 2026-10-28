@@ -1,8 +1,9 @@
 """Invariant checks run inside the transaction before commit (04 step 7, 05 section 3).
 
 A violation means a bug, not bad input: the caller rolls back the whole transaction
-and logs it (RS-02). INV-1, 2, 3, 5 and 6 are checked, and L67 (one leftover saving
-per month); INV-4 is enforced by the rule
+and logs it (RS-02). INV-1, 2, 3, 5 and 6 are checked, L67 (one leftover saving
+per month) and L72 (each consolidated installment paid out once by an approved
+request whose loan is the sum of its payouts); INV-4 is enforced by the rule
 engine and INV-7 needs a before-and-after, so tests check both. INV-5 and "auto-save
 user = event user" live here, not in the DB (L51).
 """
@@ -14,8 +15,13 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     CREDIT_TYPES,
+    ConsolidationPayout,
+    ConsolidationRequest,
+    ConsolidationStatus,
     EventType,
     Installment,
+    InstallmentKind,
+    InstallmentStatus,
     SavingsTransaction,
     SavingsType,
     UserBalance,
@@ -162,7 +168,66 @@ def check_user_invariants(session: Session, user_id: str) -> list[str]:
     if overpaid is not None:
         violations.append("INV-6")
 
+    if _consolidation_broken(session, user_id):
+        violations.append("L72")
+
     return violations
+
+
+def _consolidation_broken(session: Session, user_id: str) -> bool:
+    """L72: a consolidated installment has exactly one payout (UNIQUE installment_id),
+    made by an approved request of the same user; every payout's installment is
+    consolidated; and each approved request's loan is this user's consolidation
+    loan, with the request's principal, which is the sum of its payouts."""
+    inst, payout, req = Installment, ConsolidationPayout, ConsolidationRequest
+    unpaid = session.execute(
+        select(inst.id)
+        .outerjoin(payout, payout.installment_id == inst.id)
+        .outerjoin(req, req.id == payout.request_id)
+        .where(
+            inst.user_id == user_id,
+            inst.status == InstallmentStatus.CONSOLIDATED,
+            or_(
+                payout.id.is_(None),
+                req.status != ConsolidationStatus.APPROVED,
+                req.user_id != user_id,
+                payout.user_id != user_id,
+            ),
+        )
+        .limit(1)
+    ).first()
+    open_payout = session.execute(
+        select(payout.id)
+        .join(inst, inst.id == payout.installment_id)
+        .where(
+            or_(payout.user_id == user_id, inst.user_id == user_id),
+            or_(inst.status != InstallmentStatus.CONSOLIDATED, inst.user_id != payout.user_id),
+        )
+        .limit(1)
+    ).first()
+    paid = (
+        select(func.coalesce(func.sum(payout.amount), literal(Decimal("0.00"))))
+        .where(payout.request_id == req.id)
+        .scalar_subquery()
+    )
+    loan = Installment
+    wrong_loan = session.execute(
+        select(req.id)
+        .outerjoin(loan, loan.id == req.loan_installment_id)
+        .where(
+            req.user_id == user_id,
+            req.status == ConsolidationStatus.APPROVED,
+            or_(
+                loan.id.is_(None),
+                loan.user_id != user_id,
+                loan.kind != InstallmentKind.CONSOLIDATION_LOAN,
+                loan.principal != req.principal,
+                req.principal != paid,
+            ),
+        )
+        .limit(1)
+    ).first()
+    return unpaid is not None or open_payout is not None or wrong_loan is not None
 
 
 def assert_user_invariants(session: Session, user_id: str) -> None:

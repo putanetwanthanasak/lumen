@@ -91,6 +91,7 @@ class NotificationKind(StrEnum):
     OVER_CAP = "over_cap"
     PAYDAY_SHORTFALL = "payday_shortfall"  # L67 (a): the month is over budget
     LEFTOVER_SAVED = "leftover_saved"  # L67 (b): the leftover moved to the buffer
+    CONSOLIDATION_LOAN = "consolidation_loan"  # L72: the approved loan, a new debt (L58)
 
 
 class DeliveryStatus(StrEnum):
@@ -437,11 +438,88 @@ class PaydayRun(Base):
     created_at: Mapped[datetime] = created_at_column()
 
 
+class ConsolidationStatus(StrEnum):
+    """The bank's decision on a consolidation request (L71)."""
+
+    APPROVED = "approved"
+    DECLINED = "declined"
+
+
+class ConsolidationRequest(Base):
+    """One consolidation request (L70, L71), approved or declined. (user_id,
+    client_request_id) is the idempotency key: a double submit, however concurrent,
+    is decided once. Append-only for the app role, like audit_log."""
+
+    __tablename__ = "consolidation_requests"
+    __table_args__ = (
+        UniqueConstraint("user_id", "client_request_id"),
+        one_of("status", ConsolidationStatus),
+        # An approved request, and only one, has its loan in the Ledger (L72).
+        CheckConstraint(
+            f"(status = '{ConsolidationStatus.APPROVED.value}') = "
+            "(loan_installment_id IS NOT NULL)",
+            name="approved_has_loan",
+        ),
+        CheckConstraint("principal > 0", name="principal_positive"),
+        CheckConstraint("annual_rate >= 0", name="annual_rate_nonneg"),
+        CheckConstraint("term_months BETWEEN 1 AND 600", name="term_months_range"),
+        CheckConstraint("monthly_payment > 0", name="monthly_payment_positive"),
+        # Session 14, open question 3: total cost is the payment times the term.
+        CheckConstraint("total_cost = monthly_payment * term_months", name="total_cost_rule"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    user_id: Mapped[str] = mapped_column(Text, index=True)
+    client_request_id: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    # What the user sent, to tell a repeat from a reuse of the id (as L55).
+    payoffs: Mapped[list[dict[str, str]]] = mapped_column(JSONB)
+    principal: Mapped[Decimal] = mapped_column(Money)
+    annual_rate: Mapped[Decimal] = mapped_column(Rate)  # the example rate (config)
+    term_months: Mapped[int]
+    monthly_payment: Mapped[Decimal] = mapped_column(Money)
+    total_cost: Mapped[Decimal] = mapped_column(Money)
+    decision_reference: Mapped[str] = mapped_column(Text)  # the bank's, for the audit
+    loan_installment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("installments.id")
+    )
+    created_at: Mapped[datetime] = created_at_column()
+
+
+class ConsolidationPayout(Base):
+    """The mock bank paying one platform for one consolidated installment (L72).
+    An installment is paid off once; the key makes the bank call at most once."""
+
+    __tablename__ = "consolidation_payouts"
+    __table_args__ = (
+        UniqueConstraint("installment_id"),
+        UniqueConstraint("idempotency_key"),
+        CheckConstraint("amount > 0", name="amount_positive"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("consolidation_requests.id")
+    )
+    user_id: Mapped[str] = mapped_column(Text, index=True)
+    installment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("installments.id")
+    )
+    vendor: Mapped[str] = mapped_column(Text)
+    contract_id: Mapped[str] = mapped_column(Text)
+    amount: Mapped[Decimal] = mapped_column(Money)
+    idempotency_key: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at_column()
+
+
 # The new-debt alert kinds (5e): one per installment, whatever the installment kind.
 NEW_DEBT_KINDS = (
     NotificationKind.NEW_DEBT,
     NotificationKind.CASH_WITHDRAWAL,
     NotificationKind.CASH_LOAN,
+    NotificationKind.CONSOLIDATION_LOAN,
 )
 NEW_DEBT_KIND_SQL = f"kind IN ({', '.join(f"'{k.value}'" for k in NEW_DEBT_KINDS)})"
 
