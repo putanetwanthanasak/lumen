@@ -140,7 +140,7 @@ def test_PD_01_over_budget_alerts_with_shortfall_and_buffer(demo: Api) -> None:
     assert demo.bank.get_balance(USER) == OPENING
 
 
-def test_PD_01_over_budget_with_an_empty_buffer_points_to_the_payoff_assistant(
+def test_PD_01_over_budget_with_an_empty_buffer_points_to_the_monthly_view(
     demo: Api,
 ) -> None:
     configure(demo)
