@@ -1,7 +1,7 @@
 /** Hash routing without a package: "#/home", "#/think", ... (DESIGN.md section 6). */
 import { useSyncExternalStore } from "react";
 
-export const ROUTES = ["settings", "home", "think", "result", "months"] as const;
+export const ROUTES = ["settings", "home", "think", "result", "months", "buffer", "alerts", "payoff", "consolidate"] as const;
 export type Route = (typeof ROUTES)[number];
 
 function current(): Route | null {

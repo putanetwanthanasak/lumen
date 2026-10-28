@@ -5,8 +5,8 @@ source of truth for `frontend/`. Copy lives in `frontend/src/copy.ts`, tokens in
 `frontend/src/index.css`, and API types in `frontend/src/api-types.ts`; this file
 explains them and must stay in step with them.
 
-Status (2026-10-27): screens 1 to 3 are built (PR A). Screens 4 to 7 and the Demo
-panel follow in PR B. All data is mocked in `src/mock/` until the next backend
+Status (2026-10-27): screens 1 to 3, the result screen and the monthly view are
+built (PR A). Screens 4 to 7, the header bell and the Demo panel are PR B. All data is mocked in `src/mock/` until the next backend
 session sets `USE_MOCK = false` in `src/api.ts`.
 
 ---
@@ -212,8 +212,10 @@ Tones `ok`, `warn`, `risk`, `info`, each with its own icon. Connection errors us
 `SettingsMissing` (info alert + "ไปตั้งค่า").
 
 ### 5.8 Shell (`Screen.tsx`)
-- **Header:** logo, or back button + title; on the right, settings as a gear icon
-  (PR B adds the notifications bell with an unread-count badge next to it).
+- **Header:** logo, or back button + title. On the right, in this order: the
+  dashed "Demo" button (PR B, opens the Demo panel), the notifications bell (PR B)
+  with a red badge of the API's `unread_count` ("9+" above nine; its label reads
+  "แจ้งเตือน ยังไม่ได้อ่าน N รายการ"), and settings as a gear icon.
 - **Body:** scrolls; inside the phone frame its scrollbar is hidden
   (`.phone-scroll`: `scrollbar-width: none` and `::-webkit-scrollbar`), while
   wheel, touchpad, touch and keyboard scrolling still work (the body takes focus,
@@ -221,8 +223,8 @@ Tones `ok`, `warn`, `risk`, `info`, each with its own icon. Connection errors us
 - **Action bar** (optional): fixed under the body, above the nav (the result
   screen's บันทึก / ยังไม่ซื้อ).
 - **Bottom nav:** หน้าหลัก, **ตรวจสอบก่อนผ่อน** (centre, a raised 56px round button,
-  the most prominent), กันชน, ผู้ช่วยปลดหนี้ (the last two join in PR B). Settings
-  and notifications are not tabs.
+  the most prominent; its label breaks as "ตรวจสอบ / ก่อนผ่อน"), กันชน, ผู้ช่วยปลดหนี้ (a route icon, never one that could read
+  as loading; the last two join in PR B). Settings and notifications are not tabs.
 
 ## 6. Layout and navigation
 
@@ -262,10 +264,12 @@ Every screen has the footer and handles **loading** (skeleton), **error**
    "เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้" with an icon (from the API's `over_budget`).
 3. **ตรวจสอบก่อนผ่อน**, the 56px primary button, with a one-line hint.
 4. **Upcoming over-budget months** (the next 5), or "5 เดือนข้างหน้ายังไม่มีเดือนไหนเกินงบ".
-5. **Buffer card:** balance and "พอจ่ายค่างวดได้ประมาณ N เดือน".
-6. **Installments**, grouped by the app the user named (apps in the order they
-   first appear, then "ไม่ระบุแอป"): name, months, amount per month, remaining. Lines the API marks as not owed (paid off, cancelled) are listed
-   under "ไม่นับในยอดต่อเดือน", so the rows above always add up to the total. A
+5. **ผู้ช่วยปลดหนี้** card (PR B): a route icon (not a sparkle, which read as a
+   loading spinner), "ดูแผนว่าเมื่อไหร่จะกลับมาอยู่ในงบ".
+6. **Buffer card:** balance and "พอจ่ายค่างวดได้ประมาณ N เดือน".
+7. **Installments**, grouped by the app the user named (apps in the order they
+   first appear, then "ไม่ระบุแอป"): name, months, amount per month, remaining.
+   Lines the API marks as not owed (paid off, cancelled) are listed under "ไม่นับในยอดต่อเดือน", so the rows above always add up to the total. A
    status chip says "ผ่อนครบแล้ว", "ยกเลิกแล้ว", "คุณแจ้งว่าไม่ใช่รายการของคุณ" or
    "ยกเลิกแล้ว หลังจากคุณแจ้งว่าไม่ใช่รายการของคุณ" (L59(3): the report is never lost).
    Empty: "ยังไม่มีรายการผ่อน ก่อนผ่อนชิ้นต่อไป กด ตรวจสอบก่อนผ่อน ได้เลย".
@@ -311,7 +315,7 @@ Every screen has the footer and handles **loading** (skeleton), **error**
 4. "ถ้าบันทึก จะกันเงินเข้ากันชน" and the amount (`saving_if_recorded`), or why
    nothing is saved this time.
 5. Action bar: **บันทึก** (primary, wider) and **ยังไม่ซื้อ** (secondary), always
-   enabled (advice only). On RED, PR B adds a link "ดูผู้ช่วยปลดหนี้".
+   enabled (advice only). On RED, a link "ดูผู้ช่วยปลดหนี้" under them (PR B).
 6. **บันทึก** sends the previewed body with the same `client_request_id`, so a
    retry records once. Recorded: a check, "บันทึกรายการผ่อนแล้ว", the new monthly
    total, the amount saved (or "ครั้งนี้ไม่ได้กันเงินเข้ากันชน"), and the verdict
@@ -319,18 +323,62 @@ Every screen has the footer and handles **loading** (skeleton), **error**
 7. **ยังไม่ซื้อ**: "โอเค ยังไม่ซื้อ ไว้ค่อยคิดใหม่ได้เสมอ", nothing is written.
 - Opened without a preview (a reload): "ยังไม่มีรายการที่ประเมิน กรอกข้อมูลก่อนนะ" and "ไปกรอกข้อมูล".
 
-### 7.4 to 7.7 and the Demo panel (PR B)
-- **4. Buffer** (`#/buffer`): balance, months covered, "ย้ายกลับบัญชีหลัก" with an
-  amount; 422 `AMOUNT_ABOVE_BALANCE` shown as a field error, never a block.
-- **5. Notifications** (`#/alerts`): new debt, over-budget payday, leftover saved,
-  in the backend's wording (`backend/app/notifications/copy.py`).
-- **6. Payoff assistant** (mock): back-in-budget month, pause advice, headroom
-  "ผ่อนเพิ่มได้ไม่เกินเดือนละ X ตั้งแต่ Y", buffer plan, an example AI explanation
-  and a question box; "ขอรวมหนี้" only when eligible.
-- **7. Consolidation request** (mock): steps to get payoff amounts per app,
-  inputs, consent, and a result with BOTH the new monthly payment AND the total
-  cost, labelled as an example estimate.
-- **Demo panel:** clearly marked "Demo"; simulate payday for a month.
+### 7.4 Screen 4: Buffer (`#/buffer`, `screens/Buffer.tsx`)
+- Balance, "พอจ่ายค่างวดได้ประมาณ N เดือน" (or nothing owed), monthly total.
+- "ย้ายกลับบัญชีหลัก": an amount and one button, always enabled (L66: the user's
+  own action, never automatic, never blocked). One `client_request_id` per typed
+  amount, reused on a retry, so a double tap moves the money once (UI-13).
+- 422 `AMOUNT_ABOVE_BALANCE` is a field error that names the balance. Any other
+  failure is an unknown outcome: the screen never says where the money is, reads
+  the balance again, and asks to press again with the same amount (same id, so it
+  never moves twice). Done: the new balance.
+
+### 7.5 Screen 5: Notifications (`#/alerts`, `screens/Notifications.tsx`)
+- Opened from the header bell (with a back button to Home). Opening it marks every
+  notification read (`POST /notifications/read`), so the badge clears; the ones
+  that were unread keep a "ใหม่" tag while the screen is open (UI-24).
+- Newest first; icon per kind; the text is the backend's (`notifications/copy.py`,
+  copied verbatim into `mock/alerts.ts`). A payday shortfall links to the buffer
+  while it holds money, else to the payoff assistant (UI-17). Empty:
+  "ยังไม่มีแจ้งเตือน".
+- A recorded cash entry (`cash_withdrawal`, `cash_loan`) gets its own title and the
+  strong (risk-coloured) alert, as the backend sends it (L50).
+- The persona's installments are recorded by hand, so every alert uses the manual
+  entry copy (L62). The webhook's "Not me" sentence never appears: manual entries
+  have no "Not me" (L68), and no frontend source contains it (UI-24).
+
+### 7.6 Screen 6: Payoff assistant (`#/payoff`, `screens/Payoff.tsx`, MOCK)
+- Four rows from `PayoffPlanOut`: back-in-budget month, pause advice, headroom
+  "ผ่อนเพิ่มได้ไม่เกินเดือนละ X ตั้งแต่ Y", and the buffer plan (each short month,
+  the total, whether the buffer covers it).
+- An explanation box with a dashed "ตัวอย่าง" tag: the text is built from the plan's
+  numbers in the mock, labelled as a prototype example, never as real AI output. A
+  question box (`POST /payoff/ask`) answers with an example too.
+- When some month is over budget through the whole 12-month horizon,
+  `pause_beyond_horizon` is true and the pause row says so (never "no need to pause").
+- "ขอรวมหนี้" only when `consolidation_eligible` (some month is over budget).
+
+### 7.7 Screen 7: Consolidation request (`#/consolidate`, `screens/Consolidation.tsx`, MOCK)
+- Banner on top, always: "ตัวอย่างการประมาณเท่านั้น ไม่ใช่ข้อเสนอสินเชื่อ".
+- Steps to get the payoff amount, per app the user named (UI-23): "เปิดแอป
+  ShopDemo", "ไปที่รายการผ่อน หูฟังไร้สาย แล้วเลือก ขอยอดปิดบัญชี", "จดยอดที่แอปแจ้ง
+  แล้วกรอกด้านล่าง"; installments without an app come last under "ไม่ระบุแอป" ("เปิดแอป
+  ที่คุณผ่อน ตู้เย็น"). Then one checkbox and one amount per owed installment; term
+  12, 24 or 36 months; consent.
+- Result: BOTH the new monthly payment AND the total cost, side by side, then the
+  interest, the assumed example rate (12% a year, flat), and the comparison with
+  now. A warning says a lower monthly payment can cost more in total.
+- The mock rounds the monthly payment up to the satang; the total is what the
+  payments add up to, and the interest is total minus principal, so the three
+  numbers always agree (UI-15).
+
+### 7.8 Demo panel (`components/DemoPanel.tsx`)
+- A dashed "Demo" button in the header opens a sheet over the phone frame, marked
+  "สำหรับนำเสนอเท่านั้น ไม่ใช่ส่วนหนึ่งของแอป".
+- Payday: pick a month, run `POST /demo/payday`, see the outcome in words; a
+  second run for the same month says it already ran (L67, once a month).
+- Scenes (mock only): first launch, มิ้นท์ with settings, มิ้นท์ with an
+  over-budget month (records the YELLOW laptop). The screen on show reloads.
 
 ## 8. Thai copy
 
@@ -380,8 +428,12 @@ prefix; to be confirmed when wiring).
 | 3b | `POST /installments` | `ManualEntryIn` (same `client_request_id`; **TODO**: new optional `platform_name`, at most 60 characters, no control characters; the backend forbids extra fields today, so it 422s until added) | `RecordedOut` (`saved_amount`, `monthly_total`, `warnings: VerdictOut`); 201 new, 200 repeat | 409 reused id with other fields, 409 `SETTINGS_REQUIRED` |
 | 4 | `POST /buffer/move-to-main` | `MoveIn` | `MovedOut`; 201, 200 repeat | 409, 422 `AMOUNT_ABOVE_BALANCE` |
 | Demo | `POST /demo/payday` | `{ month: "YYYY-MM" }` | `PaydayOut` | 404 when demo endpoints are off |
-| 5 | `GET /notifications` **TODO** | | shape in PR B | |
-| 6, 7 | payoff, consolidation **TODO** | | shapes in PR B | |
+| 5 | `GET /notifications` **TODO, mock only** | | `NotificationsOut` (`notifications: NotificationOut[]`, newest first: `kind`, `title`, `body`, `created_at`, `read`; and `unread_count`) | |
+| 5 | `POST /notifications/read` **TODO, mock only** | | `NotificationsOut`, every item read, `unread_count: 0` | |
+| 6 | `GET /payoff/plan` **TODO, mock only** | | `PayoffPlanOut` (`back_in_budget_month`, `pause_until`, `headroom {amount, from_month}`, `buffer_plan {shortfalls, total_shortfall, buffer_balance, covered}`, `explanation`, `consolidation_eligible`) | 409 `SETTINGS_REQUIRED` |
+| 6 | `POST /payoff/ask` **TODO, mock only** | `PayoffAskIn {question}` | `PayoffAskOut {answer, is_example}` | 422 |
+| 7 | `POST /consolidation/estimate` **TODO, mock only** | `ConsolidationIn {payoffs: [{installment_id, payoff_amount}], months, consent}` | `ConsolidationOut` (`is_example`, `new_monthly_payment`, `total_cost`, `total_interest`, `annual_rate_example`, `monthly_now`, `remaining_now`) | 422 no consent or bad amount |
+| Demo | `POST /demo/scene` **mock only** | `{ scene }` | 204 | |
 
 Error bodies: `{"detail": {"code", "message"}}` for coded errors, a plain string
 `detail` for older ones, and FastAPI's list for 422. `ApiError` exposes `status`
@@ -423,8 +475,9 @@ Now: 3,500.00 a month.
 6. **GREEN**: tap "อยู่ในงบ", ประเมินภาระผ่อน, then **บันทึก**: 1,200.00 saved to
    the buffer, new total 4,700.00.
 7. **Home** again: the installments now total 4,700.00 a month (from next month), buffer 6,000.00.
-8. (PR B) Buffer, payday over budget, notifications, payoff assistant,
-   consolidation.
+8. (PR B) The bell shows 1 (the ตู้เย็น manual-entry alert); open it, the badge
+   clears. Buffer, payday over budget, payoff assistant (also from the RED result's
+   "ดูผู้ช่วยปลดหนี้"), consolidation with steps per app.
 
 Shortcuts for slides: `http://127.0.0.1:5173/?persona#/home` starts with the
 settings saved; `?persona&scene=YELLOW#/think` fills that example and opens its
@@ -438,7 +491,7 @@ Node 22.12 or later (Vite 8). From `frontend/`:
 ```bash
 npm ci              # exact versions from package-lock.json
 npm run dev         # http://127.0.0.1:5173 (loopback only, never 0.0.0.0)
-npm test            # UI-01 to UI-12, UI-16 (compiled with tsc, run with node --test)
+npm test            # UI-01 to UI-17 (compiled with tsc, run with node --test)
 npm run typecheck   # tsc --noEmit, strict
 npm run build       # typecheck + production build to dist/
 npm audit

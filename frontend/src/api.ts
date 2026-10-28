@@ -8,8 +8,16 @@
 import type {
   BufferOut,
   CodedDetail,
+  ConsolidationIn,
+  ConsolidationOut,
   DebtSummary,
   ManualEntryIn,
+  MoveIn,
+  MovedOut,
+  NotificationsOut,
+  PaydayOut,
+  PayoffAskOut,
+  PayoffPlanOut,
   MonthsOut,
   PreviewOut,
   RecordedOut,
@@ -135,4 +143,56 @@ export async function suggestMonthly(itemPrice: Money, months: number): Promise<
 /** 201 new or 200 repeat (same client_request_id): the body says which. */
 export async function recordInstallment(entry: ManualEntryIn): Promise<RecordedOut> {
   return (await call<RecordedOut>("POST", "/installments", entry)).body;
+}
+
+// ---- กันชน (screen 4) --------------------------------------------------------
+
+/** 201 moved or 200 repeat (same client_request_id); 422 AMOUNT_ABOVE_BALANCE. */
+export async function moveToMain(request: MoveIn): Promise<MovedOut> {
+  return (await call<MovedOut>("POST", "/buffer/move-to-main", request)).body;
+}
+
+// ---- แจ้งเตือน (screen 5) ------------------------------------------------------
+
+/** TODO(backend): GET /notifications is not built yet; answered by the mock only. */
+export async function getNotifications(): Promise<NotificationsOut> {
+  return (await call<NotificationsOut>("GET", "/notifications")).body;
+}
+
+/** TODO(backend): POST /notifications/read marks every notification read (opening the list). */
+export async function markNotificationsRead(): Promise<NotificationsOut> {
+  return (await call<NotificationsOut>("POST", "/notifications/read")).body;
+}
+
+// ---- ผู้ช่วยปลดหนี้ and รวมหนี้ (screens 6 and 7, mock only) -----------------------
+
+/** TODO(backend): GET /payoff/plan. */
+export async function getPayoffPlan(): Promise<PayoffPlanOut> {
+  return (await call<PayoffPlanOut>("GET", "/payoff/plan")).body;
+}
+
+/** TODO(backend): POST /payoff/ask. The mock returns a canned example answer. */
+export async function askPayoff(question: string): Promise<PayoffAskOut> {
+  return (await call<PayoffAskOut>("POST", "/payoff/ask", { question })).body;
+}
+
+/** TODO(backend): POST /consolidation/estimate. An example estimate only. */
+export async function estimateConsolidation(request: ConsolidationIn): Promise<ConsolidationOut> {
+  return (await call<ConsolidationOut>("POST", "/consolidation/estimate", request)).body;
+}
+
+// ---- Demo panel -----------------------------------------------------------------
+
+/** POST /demo/payday: mounted only with DEMO_ENDPOINTS_ENABLED=true (404 otherwise). */
+export async function runPayday(month: string): Promise<{ created: boolean; out: PaydayOut }> {
+  const answer = await call<PaydayOut>("POST", "/demo/payday", { month });
+  return { created: answer.status === 201, out: answer.body };
+}
+
+export type DemoScene = "first_launch" | "persona" | "over_budget";
+
+/** Mock only: there is no backend endpoint for scenes. */
+export async function setDemoScene(scene: DemoScene): Promise<void> {
+  if (!USE_MOCK) throw new Error("demo scenes exist only in the mock");
+  await call<unknown>("POST", "/demo/scene", { scene });
 }

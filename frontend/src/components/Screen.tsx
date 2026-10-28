@@ -3,10 +3,13 @@
  * footer (every screen), and the bottom navigation.
  */
 import type { ReactNode } from "react";
+import { getNotifications } from "../api.ts";
 import { APP_NAME, APP_NAME_TH, FOOTER, NAV } from "../copy.ts";
 import { navigate, type Route } from "../router.ts";
+import { DemoButton } from "./DemoPanel.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { LogoBean } from "./Logo.tsx";
+import { useLoad } from "../useLoad.ts";
 
 type ScreenProps = {
   title?: string;
@@ -58,10 +61,12 @@ export function Screen({ title, back, route, children, showNav = true, actions }
 const HEADER_BUTTON =
   "relative inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-pill text-leaf-800 hover:bg-leaf-50";
 
-/** Top right: settings as a gear (PR B adds the notifications bell next to it). */
+/** Top right: the notifications bell with its unread count, and settings as a gear. */
 function HeaderActions({ route }: { route: Route }) {
   return (
-    <div className="-mr-2 flex items-center">
+    <div className="-mr-2 flex items-center gap-1">
+      <DemoButton />
+      {route !== "alerts" && <Bell />}
       {route !== "settings" && (
         <a href="#/settings" className={HEADER_BUTTON}>
           <Icon name="gear" label={NAV.settings} />
@@ -71,30 +76,67 @@ function HeaderActions({ route }: { route: Route }) {
   );
 }
 
+/** The unread count is the API's (`unread_count`); opening the list marks it read. */
+function Bell() {
+  const [load] = useLoad(getNotifications);
+  const unread = load.state === "ready" ? load.data.unread_count : 0;
+  return (
+    <a href="#/alerts" className={HEADER_BUTTON} aria-label={unread > 0 ? NAV.alertsUnread(unread) : NAV.alerts}>
+      <Icon name="bell" />
+      {unread > 0 && (
+        <span
+          aria-hidden="true"
+          className="absolute top-1 right-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-pill bg-risk-ink px-1 text-[0.75rem] leading-none font-bold text-white ring-2 ring-card"
+        >
+          {unread > 9 ? "9+" : unread}
+        </span>
+      )}
+    </a>
+  );
+}
+
 export function Footer() {
   return <p className="mt-8 text-center text-caption text-ink-muted">{FOOTER}</p>;
 }
 
 type NavItem = { route: Route; label: string; icon: IconName; primary?: boolean };
 
-// กันชน and ผู้ช่วยปลดหนี้ join in PR B. ตรวจสอบก่อนผ่อน is the most prominent item.
+// Settings and notifications live in the header. ตรวจสอบก่อนผ่อน is the most prominent item.
 const NAV_ITEMS: NavItem[] = [
   { route: "home", label: NAV.home, icon: "home" },
   { route: "think", label: NAV.think, icon: "think", primary: true },
+  { route: "buffer", label: NAV.buffer, icon: "shield" },
+  { route: "payoff", label: NAV.payoff, icon: "route" },
 ];
+
+/** "ตรวจสอบก่อนผ่อน" is too wide for a quarter of the nav: it breaks after "ตรวจสอบ", never mid-word. */
+function NavLabel({ label }: { label: string }) {
+  const at = label.indexOf("ก่อน");
+  if (at <= 0) return <span className="whitespace-nowrap">{label}</span>;
+  return (
+    <span>
+      <span className="whitespace-nowrap">{label.slice(0, at)}</span>
+      <br />
+      <span className="whitespace-nowrap">{label.slice(at)}</span>
+    </span>
+  );
+}
 
 function BottomNav({ current }: { current: Route }) {
   return (
     <nav aria-label={NAV.menu} className="border-t border-line bg-card">
       <ul className="flex">
         {NAV_ITEMS.map((item) => {
-          const active = item.route === current || (item.route === "think" && current === "result");
+          const active =
+            item.route === current ||
+            (item.route === "think" && current === "result") ||
+            (item.route === "payoff" && current === "consolidate");
           return (
-            <li key={item.route} className={item.primary === true ? "flex-[1.3]" : "flex-1"}>
+            <li key={item.route} className="min-w-0 flex-1">
               <a
                 href={`#/${item.route}`}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-16 flex-col items-center justify-center gap-0.5 text-center text-caption font-semibold leading-tight ${
+                className={`flex min-h-16 flex-col items-center justify-center gap-0.5 px-0.5 text-center text-caption font-semibold leading-tight ${
                   item.primary === true
                     ? "text-leaf-800"
                     : active
@@ -113,7 +155,7 @@ function BottomNav({ current }: { current: Route }) {
                 ) : (
                   <Icon name={item.icon} size={24} />
                 )}
-                {item.label}
+                <NavLabel label={item.label} />
               </a>
             </li>
           );

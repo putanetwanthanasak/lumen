@@ -49,13 +49,25 @@ export function ResultScreen() {
   const entry = stage === undefined ? null : entryToRecord(stage);
   const showActions = view.name === "result" && entry !== null && stage?.name === "verdict" && load.state === "ready";
   const actions = showActions ? (
-    <div className="grid grid-cols-[2fr_1fr] gap-3">
-      <Button size="lg" onClick={() => void record(entry)} busy={busy} icon="check">
-        {busy ? THINK.recording : THINK.record}
-      </Button>
-      <Button size="lg" variant="secondary" onClick={() => finish({ name: "notBuying" })} disabled={busy}>
-        {THINK.notBuying}
-      </Button>
+    <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-[2fr_1fr] gap-3">
+        <Button size="lg" onClick={() => void record(entry)} busy={busy} icon="check">
+          {busy ? THINK.recording : THINK.record}
+        </Button>
+        <Button size="lg" variant="secondary" onClick={() => finish({ name: "notBuying" })} disabled={busy}>
+          {THINK.notBuying}
+        </Button>
+      </div>
+      {stage.name === "verdict" && stage.verdict.verdict === "RED" && (
+        <button
+          type="button"
+          onClick={() => navigate("payoff")}
+          className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 self-center rounded-pill px-3 text-body font-semibold text-leaf-800 underline underline-offset-4 hover:bg-leaf-50"
+        >
+          <Icon name="route" size={20} />
+          {THINK.seePayoff}
+        </button>
+      )}
     </div>
   ) : undefined;
 

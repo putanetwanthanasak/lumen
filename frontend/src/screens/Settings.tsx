@@ -70,7 +70,7 @@ function SettingsForm({ existing }: { existing: SettingsOut | null }) {
   return (
     <Screen
       route="settings"
-      {...(firstTime ? {} : { title: SETTINGS.editTitle })}
+      {...(firstTime ? {} : { title: SETTINGS.editTitle, back: "home" as const })}
       showNav={!firstTime}
     >
       {firstTime && (

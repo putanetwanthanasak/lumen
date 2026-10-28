@@ -2,11 +2,16 @@
  * The phone frame (390x844 on a desktop, full screen on a phone) and the routes.
  * With no route in the address bar, a user without settings starts on screen 1.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { getSettings } from "./api.ts";
+import { DemoPanel } from "./components/DemoPanel.tsx";
 import { Loading } from "./components/ui.tsx";
 import { navigate, useRoute, type Route } from "./router.ts";
+import { BufferScreen } from "./screens/Buffer.tsx";
+import { ConsolidationScreen } from "./screens/Consolidation.tsx";
 import { HomeScreen } from "./screens/Home.tsx";
+import { NotificationsScreen } from "./screens/Notifications.tsx";
+import { PayoffScreen } from "./screens/Payoff.tsx";
 import { MonthsScreen } from "./screens/Months.tsx";
 import { ResultScreen } from "./screens/Result.tsx";
 import { SettingsScreen } from "./screens/Settings.tsx";
@@ -16,12 +21,28 @@ const SCREENS: Record<Route, () => React.JSX.Element> = {
   settings: SettingsScreen,
   home: HomeScreen,
   think: ThinkFirstScreen,
+  buffer: BufferScreen,
+  alerts: NotificationsScreen,
+  payoff: PayoffScreen,
+  consolidate: ConsolidationScreen,
   result: ResultScreen,
   months: MonthsScreen,
 };
 
+/** Bumped by the Demo panel after a scene change, so the screen on show reloads. */
+function useDemoVersion(): number {
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const bump = () => setVersion((v) => v + 1);
+    window.addEventListener("kidnee-demo-scene", bump);
+    return () => window.removeEventListener("kidnee-demo-scene", bump);
+  }, []);
+  return version;
+}
+
 export function App() {
   const route = useRoute();
+  const version = useDemoVersion();
 
   useEffect(() => {
     if (route !== null) return;
@@ -40,8 +61,9 @@ export function App() {
             <Loading lines={3} />
           </div>
         ) : (
-          <Current key={route} />
+          <Current key={`${route}-${version}`} />
         )}
+        <DemoPanel />
       </div>
     </div>
   );

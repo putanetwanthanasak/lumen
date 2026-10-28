@@ -6,7 +6,7 @@
  */
 import { getBuffer, getDebtSummary, getMonths, getSettings, USE_MOCK } from "../api.ts";
 import type { BufferOut, DebtSummary, InstallmentLine, MonthsOut, SettingsOut } from "../api-types.ts";
-import { HOME } from "../copy.ts";
+import { HOME, PAYOFF } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Button, Card, ErrorState, Loading, SettingsMissing } from "../components/ui.tsx";
@@ -122,6 +122,20 @@ function HomeBody({
           </ul>
         )}
       </Card>
+
+      <button
+        type="button"
+        onClick={() => navigate("payoff")}
+        className="flex min-h-16 cursor-pointer items-center gap-4 rounded-card bg-card p-5 text-left shadow-card hover:bg-leaf-50"
+      >
+        <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-pill bg-leaf-50 text-leaf-700">
+          <Icon name="route" size={28} />
+        </span>
+        <span className="flex flex-col">
+          <span className="text-lead font-bold text-ink">{PAYOFF.entry}</span>
+          <span className="text-body text-ink-muted">{PAYOFF.entryHelp}</span>
+        </span>
+      </button>
 
       <Card className="flex items-center gap-4">
         <span className="inline-flex h-12 w-12 items-center justify-center rounded-pill bg-leaf-50 text-leaf-700">

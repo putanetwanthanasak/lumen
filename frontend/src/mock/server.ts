@@ -7,6 +7,7 @@
  * false nothing here runs.
  */
 import type {
+  ConsolidationIn,
   DebtSummary,
   ErrorBody,
   InstallmentLine,
@@ -14,6 +15,10 @@ import type {
   MonthDetail,
   MonthRow,
   MonthsOut,
+  MovedOut,
+  NotificationOut,
+  NotificationsOut,
+  PaydayOut,
   PreviewOut,
   RecordedOut,
   SettingsIn,
@@ -33,15 +38,20 @@ import {
   personaInstallments,
   type MockInstallment,
 } from "./persona.ts";
+import { leftoverAlert, manualEntryAlert, shortfallAlert } from "./alerts.ts";
+import { consolidationEstimate, exampleAnswer, payoffPlan } from "./payoff.ts";
+import { SCENARIOS } from "./persona.ts";
 import { fromSatang, sum, toSatang } from "./satang.ts";
 
 export type MockResponse = { status: number; body: unknown };
 
 const SAFETY_NET = toSatang("500.00");
+const PLAN_MONTHS = 12;
 const PLATFORM_MAX = 60;
 const CONTROL = /[\u0000-\u001f]/; // L55: no control characters in text fields
 
 type Recorded = { fingerprint: string; installmentId: string; savedAmount: Money };
+type Moved = { amount: Money; out: MovedOut };
 
 type Store = {
   settings: SettingsOut | null;
@@ -49,6 +59,9 @@ type Store = {
   mainBalance: Money;
   bufferBalance: Money;
   recorded: Map<string, Recorded>;
+  moves: Map<string, Moved>;
+  paydays: Map<string, PaydayOut>;
+  notifications: NotificationOut[];
   today: Date;
 };
 
@@ -59,11 +72,35 @@ function freshStore(today: Date): Store {
     mainBalance: PERSONA_MAIN_BALANCE,
     bufferBalance: PERSONA_BUFFER_BALANCE,
     recorded: new Map(),
+    moves: new Map(),
+    paydays: new Map(),
+    notifications: [],
     today,
   };
 }
 
+function notify(alert: { kind: NotificationOut["kind"]; title: string; body: string }): void {
+  store.notifications.unshift({ ...alert, id: crypto.randomUUID(), created_at: new Date().toISOString(), read: false });
+}
+
+function notificationsOut(): NotificationsOut {
+  return { notifications: store.notifications, unread_count: store.notifications.filter((n) => !n.read).length };
+}
+
+/**
+ * The persona recorded its latest installment by hand, so its alert is the manual
+ * entry one (L62), never the webhook's, which offers "Not me" (no "Not me" for
+ * manual entries, L68; UI-24). It is unread, so the bell shows 1.
+ */
+function seedNotifications(): void {
+  const latest = store.installments.filter(owed).sort((a, b) => b.first_due_month.localeCompare(a.first_due_month))[0];
+  if (latest !== undefined) {
+    notify(manualEntryAlert(latest.kind, latest.item_name, latest.principal, latest.months, latest.monthly_amount, monthlyTotal()));
+  }
+}
+
 let store = freshStore(new Date());
+seedNotifications();
 
 // Demo shortcut: "?persona" starts with มิ้นท์'s settings already saved, so a demo or a
 // screenshot can open straight on Home (e.g. http://127.0.0.1:5173/?persona#/home).
@@ -74,6 +111,7 @@ if (typeof window !== "undefined" && new URLSearchParams(window.location.search)
 /** Start the demo again. `today` is injectable for tests. */
 export function resetMock(today: Date = new Date(), withSettings: SettingsIn | null = null): void {
   store = freshStore(today);
+  seedNotifications();
   if (withSettings !== null) store.settings = toSettingsOut(withSettings);
 }
 
@@ -282,6 +320,7 @@ function previewOrRecord(body: unknown, record: boolean): MockResponse {
     store.bufferBalance = fromSatang(toSatang(store.bufferBalance) + toSatang(saved));
     recorded = { fingerprint, installmentId: id, savedAmount: saved };
     store.recorded.set(key, recorded);
+    notify(manualEntryAlert(entry.kind, entry.item_name, entry.item_price, entry.months, entry.monthly_amount, monthlyTotal()));
   }
   const out: RecordedOut = {
     installment_id: recorded.installmentId,
@@ -380,6 +419,144 @@ function suggestedMonthly(path: string): MockResponse {
   return ok(out);
 }
 
+/** The months ahead from this month, no candidate (as GET /debts/months). */
+function monthsAhead(settings: SettingsOut, count: number): MonthRow[] {
+  return assess(
+    settings,
+    store.installments,
+    { first_due_month: monthOf(store.today), months: count, monthly_amount: "0.00" },
+    false,
+  ).months;
+}
+
+/** POST /buffer/move-to-main (L66): idempotent on client_request_id, never blocked. */
+function moveToMain(body: unknown): MockResponse {
+  const b = body as { client_request_id?: unknown; amount?: unknown };
+  if (typeof b.client_request_id !== "string" || b.client_request_id === "") return invalid("client_request_id");
+  if (!isMoney(b.amount) || toSatang(b.amount) === 0n) return invalid("amount");
+  const previous = store.moves.get(b.client_request_id);
+  if (previous !== undefined) {
+    if (toSatang(previous.amount) !== toSatang(b.amount)) {
+      return fail(409, "client_request_id reused with another amount");
+    }
+    return ok({ ...previous.out, status: "duplicate", balance: store.bufferBalance }, 200);
+  }
+  if (toSatang(b.amount) > toSatang(store.bufferBalance)) {
+    return coded(422, "AMOUNT_ABOVE_BALANCE", "the buffer holds less than this amount");
+  }
+  store.bufferBalance = fromSatang(toSatang(store.bufferBalance) - toSatang(b.amount));
+  store.mainBalance = fromSatang(toSatang(store.mainBalance) + toSatang(b.amount));
+  const out: MovedOut = {
+    transaction_id: crypto.randomUUID(),
+    status: "created",
+    amount: b.amount,
+    balance: store.bufferBalance,
+  };
+  store.moves.set(b.client_request_id, { amount: b.amount, out });
+  return ok(out, 201);
+}
+
+/** POST /demo/payday (L67), in the backend's decision order; once per month. */
+function payday(body: unknown): MockResponse {
+  const settings = store.settings;
+  if (settings === null) return SETTINGS_REQUIRED;
+  const month = (body as { month?: unknown }).month;
+  if (typeof month !== "string" || !/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month)) return invalid("month");
+  const stored = store.paydays.get(month);
+  if (stored !== undefined) return ok({ ...stored, status: "duplicate" }, 200);
+
+  const row = assess(settings, store.installments, { first_due_month: month, months: 1, monthly_amount: "0.00" }, false)
+    .months[0];
+  const total = toSatang(row?.total ?? "0.00");
+  const budget = toSatang(settings.monthly_installment_budget);
+  let outcome: PaydayOut["outcome"] = "leftover_off";
+  let amount = 0n;
+  if (total > budget) {
+    outcome = "over_budget";
+    amount = total - budget;
+  } else if (total === budget) {
+    outcome = "no_leftover";
+  } else if (settings.leftover_saving_enabled && settings.auto_save_enabled && settings.consent_at !== null) {
+    const leftover = budget - total;
+    if (toSatang(store.mainBalance) - leftover < SAFETY_NET) {
+      outcome = "safety_net";
+    } else {
+      outcome = "leftover_saved";
+      amount = leftover;
+      store.mainBalance = fromSatang(toSatang(store.mainBalance) - leftover);
+      store.bufferBalance = fromSatang(toSatang(store.bufferBalance) + leftover);
+    }
+  }
+  const out: PaydayOut = {
+    month,
+    status: "created",
+    outcome,
+    month_total: fromSatang(total),
+    budget: settings.monthly_installment_budget,
+    amount: fromSatang(amount),
+    buffer_balance: store.bufferBalance,
+  };
+  if (outcome === "over_budget") {
+    notify(shortfallAlert(month, out.month_total, out.amount, store.bufferBalance, toSatang(store.bufferBalance) === 0n));
+  } else if (outcome === "leftover_saved") {
+    notify(leftoverAlert(month, out.month_total, out.amount));
+  }
+  store.paydays.set(month, out);
+  return ok(out, 201);
+}
+
+/** TODO(backend): POST /consolidation/estimate. */
+function consolidation(body: unknown): MockResponse {
+  const b = body as Partial<ConsolidationIn>;
+  if (b.consent !== true) return invalid("consent");
+  if (!isInt(b.months, 1, 120)) return invalid("months");
+  if (!Array.isArray(b.payoffs) || b.payoffs.length === 0) return invalid("payoffs");
+  const chosen: MockInstallment[] = [];
+  for (const p of b.payoffs) {
+    const found = store.installments.find((i) => i.id === p.installment_id && owed(i));
+    if (found === undefined || !isMoney(p.payoff_amount) || toSatang(p.payoff_amount) === 0n) {
+      return invalid("payoffs");
+    }
+    chosen.push(found);
+  }
+  return ok(
+    consolidationEstimate(
+      sum(b.payoffs.map((p) => p.payoff_amount)),
+      b.months,
+      sum(chosen.map((i) => i.monthly_amount)),
+      sum(chosen.map((i) => i.remaining)),
+    ),
+  );
+}
+
+/** Mock only: put the demo in a known state (the Demo panel). */
+function demoScene(body: unknown): MockResponse {
+  const scene = (body as { scene?: unknown }).scene;
+  if (scene === "first_launch") {
+    resetMock(store.today);
+  } else if (scene === "persona") {
+    resetMock(store.today, PERSONA_SETTINGS);
+  } else if (scene === "over_budget") {
+    resetMock(store.today, PERSONA_SETTINGS);
+    const s = SCENARIOS.YELLOW;
+    previewOrRecord(
+      {
+        client_request_id: "demo-scene-over-budget",
+        kind: "purchase",
+        item_name: s.item_name,
+        item_price: s.item_price,
+        months: s.months,
+        monthly_amount: s.monthly_amount,
+        first_due_month: addMonths(monthOf(store.today), 1),
+      },
+      true,
+    );
+  } else {
+    return invalid("scene");
+  }
+  return ok({ scene }, 200);
+}
+
 /** Route one request, as FastAPI would. The demo user is the only user. */
 export function handle(
   method: string,
@@ -416,6 +593,31 @@ export function handle(
       return months(path);
     case "GET /installments/suggested-monthly":
       return suggestedMonthly(path);
+    case "POST /buffer/move-to-main":
+      return moveToMain(body);
+    case "POST /demo/payday":
+      return payday(body);
+    case "GET /notifications":
+      return ok(notificationsOut());
+    case "POST /notifications/read":
+      store.notifications = store.notifications.map((n) => ({ ...n, read: true }));
+      return ok(notificationsOut());
+    case "GET /payoff/plan": {
+      if (store.settings === null) return SETTINGS_REQUIRED;
+      const rows = monthsAhead(store.settings, PLAN_MONTHS);
+      return ok(
+        payoffPlan(rows, store.settings.monthly_installment_budget, store.bufferBalance, store.installments.filter(owed).length),
+      );
+    }
+    case "POST /payoff/ask": {
+      const question = (body as { question?: unknown }).question;
+      if (typeof question !== "string" || question.trim() === "") return invalid("question");
+      return ok({ answer: exampleAnswer(question), is_example: true });
+    }
+    case "POST /consolidation/estimate":
+      return consolidation(body);
+    case "POST /demo/scene":
+      return demoScene(body);
     case "GET /buffer": {
       const total = monthlyTotal();
       const t = toSatang(total);

@@ -208,3 +208,86 @@ export type PaydayOut = {
   amount: Money; // the shortfall or the leftover saved
   buffer_balance: Money;
 };
+
+// ---- Notifications (screen 5) -------------------------------------------------
+
+export type NotificationKind =
+  | "new_debt"
+  | "cash_withdrawal"
+  | "cash_loan"
+  | "over_cap"
+  | "payday_shortfall"
+  | "leftover_saved";
+
+/**
+ * TODO(backend): GET /notifications is not built yet (Session 13 carry-over).
+ * Expected shape, from the `notifications` table: newest first; title and body are
+ * the Thai text already written by backend/app/notifications/copy.py.
+ */
+export type NotificationOut = {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  created_at: string; // ISO datetime
+  read: boolean; // TODO(backend): new; false until POST /notifications/read
+};
+/**
+ * TODO(backend): `unread_count` is new; the header bell shows it as a badge.
+ * POST /notifications/read marks every notification read and answers the same shape.
+ */
+export type NotificationsOut = { notifications: NotificationOut[]; unread_count: number };
+
+// ---- Payoff assistant (screen 6) ----------------------------------------------
+
+/**
+ * TODO(backend, payoff assistant session): GET /payoff/plan. Not built yet; the
+ * expected shape below is what screen 6 needs. Every amount and month is decided by
+ * the server (it reuses app/affordability/months.month_totals).
+ */
+export type PayoffPlanOut = {
+  over_budget_now: boolean;
+  /** The first month from which every month fits the budget; null if none in the horizon. */
+  back_in_budget_month: string | null;
+  /** Advice to pause new installments until this month (exclusive); null when not needed. */
+  pause_until: string | null;
+  /** True when some month is over budget through the whole horizon: pause, with no end month yet. */
+  pause_beyond_horizon: boolean;
+  /** "ผ่อนเพิ่มได้ไม่เกินเดือนละ X ตั้งแต่ Y": the smallest headroom from `from_month` on. */
+  headroom: { amount: Money; from_month: string } | null;
+  /** Over-budget months ahead and whether the buffer covers their shortfall. */
+  buffer_plan: {
+    buffer_balance: Money;
+    shortfalls: { month: string; amount: Money }[];
+    total_shortfall: Money;
+    covered: boolean;
+  };
+  /** Mock: an example of the explanation an assistant would give. Not generated. */
+  explanation: string;
+  consolidation_eligible: boolean;
+};
+
+/** TODO(backend): POST /payoff/ask. Mock answers are canned examples. */
+export type PayoffAskIn = { question: string };
+export type PayoffAskOut = { answer: string; is_example: true };
+
+// ---- Consolidation request (screen 7) -----------------------------------------
+
+/** TODO(backend): POST /consolidation/estimate. An example estimate only. */
+export type ConsolidationIn = {
+  payoffs: { installment_id: string; payoff_amount: Money }[];
+  months: number; // 12 | 24 | 36
+  consent: boolean;
+};
+
+export type ConsolidationOut = {
+  is_example: true;
+  principal: Money; // the payoffs added up
+  months: number;
+  annual_rate_example: string; // "12.00": an assumed rate, not an offer
+  new_monthly_payment: Money;
+  total_cost: Money; // every payment of the new plan
+  total_interest: Money;
+  monthly_now: Money; // what the replaced installments cost per month today
+  remaining_now: Money; // what is left to pay on them today
+};
