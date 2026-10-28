@@ -88,6 +88,26 @@ never prints the secret. Scenes:
 A larger terminal font is fine: the output stays within 64 columns. `NO_COLOR=1`
 turns colors off. CI runs all six scenes unattended (`tests/demo/test_demo_smoke.py`).
 
+## KidNee screens demo (one server)
+
+The screens (`frontend/`) and the API on one loopback server, against their own
+database `lumen_kidnee` (your `lumen` is not touched). From the repo root, with Postgres
+up and `.env` holding `DATABASE_URL` and `MIGRATION_DATABASE_URL`:
+
+```bash
+(cd frontend && npm ci && npm run build)        # writes frontend/dist
+cd backend
+uv run python -m demo.kidnee reset --yes        # drop, migrate and seed lumen_kidnee
+uv run python -m demo.kidnee serve              # http://127.0.0.1:8000
+```
+
+`seed` instead of `reset` migrates and adds the personas without dropping anything; it is
+safe to run again. The personas (`X-Demo-User`) are `demo-mint` (in budget),
+`demo-over` (over budget this month and next) and `demo-consolidate` (eligible for the
+consolidation card). The browser calls `/api/...`; the server mounts the API at `/api`
+and the build at `/`, and binds `127.0.0.1` only. The API and its exact JSON are in
+`docs/api/kidnee-endpoints.md`.
+
 ## Quality checks
 
 From `backend/`:

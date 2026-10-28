@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Protocol, TextIO
 
 import httpx
 import uvicorn
@@ -355,9 +355,22 @@ SCENE_LIST: list[Callable[[Demo], None]] = [
 # --- set-up ------------------------------------------------------------------------------
 
 
-def reset_database(config: DemoConfig) -> None:
-    """Drop and recreate the demo database as the superuser, then migrate it."""
-    if DEMO_DB_NAME.fullmatch(config.db_name) is None:
+class DemoDatabase(Protocol):
+    """What a reset needs: DemoConfig here, KidneeConfig in demo.kidnee."""
+
+    @property
+    def db_name(self) -> str: ...
+
+    @property
+    def migration_url(self) -> str: ...
+
+    def url(self, raw: str) -> str: ...
+
+
+def reset_database(config: DemoDatabase, allowed: re.Pattern[str] = DEMO_DB_NAME) -> None:
+    """Drop and recreate the demo database as the superuser, then migrate it. Only a
+    name that `allowed` matches in full is ever dropped."""
+    if allowed.fullmatch(config.db_name) is None:
         raise SystemExit(f"Refusing to reset {config.db_name!r}: not a demo database")
     admin = make_engine(config.migration_url).execution_options(isolation_level="AUTOCOMMIT")
     try:
@@ -368,6 +381,11 @@ def reset_database(config: DemoConfig) -> None:
             conn.execute(text(f"CREATE DATABASE {name}"))
     finally:
         admin.dispose()
+    migrate(config)
+
+
+def migrate(config: DemoDatabase) -> None:
+    """Alembic upgrade head on the demo database, as the schema owner."""
     owner = make_engine(config.url(config.migration_url))
     try:
         with owner.begin() as conn:
