@@ -6,14 +6,17 @@ month (Session 17) is read from the database and shown per month."""
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
+from sqlalchemy import update
 
 from app.affordability.months import Month
+from app.assistant import service as assistant_service
 from app.buffer.service import prepared_by_month
 from app.clock import today
 from app.main import app
-from app.models import UserSettings
+from app.models import UserBalance, UserSettings
 from tests.db.factories import manual_installment, profile, savings_tx, user_balance
 from tests.user_settings.conftest import USER, Api
 
@@ -273,3 +276,31 @@ def test_BS_06_prepared_by_month_reads_this_month_on_only(plan_api: Api) -> None
         Month.of(date(2026, 11, 1)): Decimal("500.00"),
         Month.of(date(2027, 1, 1)): Decimal("400.00"),
     }
+
+
+@pytest.mark.parametrize("endpoint", ["/buffer/shortfalls", "/assistant/plan"])
+def test_BS_07_a_move_between_the_reads_is_never_counted_twice(
+    plan_api: Api, monkeypatch: pytest.MonkeyPatch, endpoint: str
+) -> None:
+    # Review R2-F1: prepared and balance are two statements. A move that lands between
+    # them must understate the coverage for that response, never overstate it.
+    api = plan_api
+    configure(api, buffer="5700.00")
+    manual(api, "6500.00", 2, date(2026, 11, 1))  # 1,500.00 over in Nov and Dec
+    real = assistant_service.prepared_by_month
+
+    def then_a_move_lands(*args: Any, **kwargs: Any) -> Any:
+        found = real(*args, **kwargs)
+        moved(api, "1500.00", date(2026, 11, 1))
+        api.session.execute(
+            update(UserBalance)
+            .where(UserBalance.user_id == USER)
+            .values(savings_balance=UserBalance.savings_balance - Decimal("1500.00"))
+        )
+        return found
+
+    monkeypatch.setattr(assistant_service, "prepared_by_month", then_a_move_lands)
+    body = api.call("GET", endpoint).json()
+    buffer = body if endpoint == "/buffer/shortfalls" else body["buffer_plan"]
+    # The lower balance, and Nov not yet prepared: 4,200.00 against 3,000.00 open.
+    assert (buffer["balance"], buffer["remaining_gap"]) == ("4200.00", "3000.00")

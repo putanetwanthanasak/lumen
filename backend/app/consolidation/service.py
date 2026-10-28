@@ -69,6 +69,9 @@ PAYOFFS_DO_NOT_MATCH_PLAN = "PAYOFFS_DO_NOT_MATCH_PLAN"
 # Who a manual entry's payout goes to when the user did not name its app (Session 14,
 # open question 16; L72): "manual" is not a platform anyone could be paid at.
 UNNAMED_PLATFORM = "unnamed_platform"
+# A name the user typed that is one of the app's own vendors, or blank, names no app
+# (review R2-F2): a payout never goes to "manual" (L72).
+NOT_A_PLATFORM = frozenset({MANUAL_VENDOR, CONSOLIDATION_VENDOR, UNNAMED_PLATFORM, ""})
 LOAN_NAME = "สินเชื่อรวมหนี้"
 MONTHLY_RATE = Decimal("0.000001")  # Numeric(7,6): the loan row's rate, for display
 
@@ -96,7 +99,8 @@ def recipient(row: Installment) -> str:
     """The platform a payout for this installment goes to: for a manual entry, the
     app the user named (platform_name, Session 17), else an unnamed one (L72)."""
     if row.vendor == MANUAL_VENDOR:
-        return row.platform_name or UNNAMED_PLATFORM
+        name = (row.platform_name or "").strip()
+        return UNNAMED_PLATFORM if name.lower() in NOT_A_PLATFORM else name
     return row.vendor
 
 

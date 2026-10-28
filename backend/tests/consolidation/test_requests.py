@@ -937,6 +937,15 @@ def test_CO_13_a_payout_goes_to_the_platform_or_to_an_unnamed_one_for_a_manual_e
     assert service.recipient(manual_installment()) == "unnamed_platform"
     # L72: once the user names the app (Session 17), the payout goes there.
     assert service.recipient(manual_installment(platform_name="ShopDemo")) == "ShopDemo"
+    assert service.recipient(manual_installment(platform_name=" ShopDemo ")) == "ShopDemo"
+
+
+@pytest.mark.parametrize(
+    "name", ["manual", "MANUAL", "consolidation", "unnamed_platform", " ", "   "]
+)
+def test_CO_13_a_reserved_or_blank_name_is_an_unnamed_platform(name: str) -> None:
+    # Review R2-F2: the app's own vendor names, or a blank name, name no app.
+    assert service.recipient(manual_installment(platform_name=name)) == "unnamed_platform"
 
 
 def test_CO_13_a_named_manual_entry_is_paid_at_the_app_the_user_named(co: Co) -> None:
