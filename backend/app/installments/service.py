@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import select, text
+from sqlalchemy import Select, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -139,12 +139,7 @@ def _same(row: Installment, entry: ManualEntryIn) -> bool:
 def _resubmitted(session: Session, *, user_id: str, entry: ManualEntryIn) -> Recorded:
     """The user already sent this client_request_id. The same fields get the first
     answer again and nothing is written; different fields are a conflict (as L55)."""
-    row = session.execute(
-        select(Installment).where(
-            Installment.user_id == user_id,
-            Installment.client_request_id == entry.client_request_id,
-        )
-    ).scalar_one()
+    row = session.execute(_earlier(user_id, entry.client_request_id)).scalar_one()
     if not _same(row, entry):
         audit.record(
             session,
@@ -156,15 +151,37 @@ def _resubmitted(session: Session, *, user_id: str, entry: ManualEntryIn) -> Rec
             detail={"client_request_id": entry.client_request_id},
         )
         return Recorded(Outcome.CONFLICT, row.id)
-    saved = session.execute(
-        select(SavingsTransaction.amount).where(
-            SavingsTransaction.installment_id == row.id,
-            SavingsTransaction.type == SavingsType.AUTO_SAVE,
-        )
-    ).scalar_one_or_none()
     return Recorded(
         Outcome.DUPLICATE,
         row.id,
-        saved if saved is not None else ZERO,
+        _first_saving(session, row.id),
         summary(session, user_id).monthly_total,
     )
+
+
+def _earlier(user_id: str, client_request_id: str) -> Select[Installment]:
+    return select(Installment).where(
+        Installment.user_id == user_id,
+        Installment.client_request_id == client_request_id,
+    )
+
+
+def _first_saving(session: Session, installment_id: uuid.UUID) -> Decimal:
+    saved = session.execute(
+        select(SavingsTransaction.amount).where(
+            SavingsTransaction.installment_id == installment_id,
+            SavingsTransaction.type == SavingsType.AUTO_SAVE,
+        )
+    ).scalar_one_or_none()
+    return saved if saved is not None else ZERO
+
+
+def reported_saving(session: Session, *, user_id: str, entry: ManualEntryIn) -> Decimal | None:
+    """For a client_request_id already recorded, the saving POST /installments would
+    report for this body: the first saving for the same fields, 0.00 for different
+    ones (POST answers 409 and saves nothing). None if it was never recorded.
+    Read-only, for the preview's saving_if_recorded."""
+    row = session.execute(_earlier(user_id, entry.client_request_id)).scalar_one_or_none()
+    if row is None:
+        return None
+    return _first_saving(session, row.id) if _same(row, entry) else ZERO

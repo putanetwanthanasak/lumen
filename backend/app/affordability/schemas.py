@@ -45,3 +45,12 @@ class VerdictOut(BaseModel):
             over_budget_months=[r.month for r in rows if r.over_budget],
             monthly_total=assessment.monthly_total,
         )
+
+
+class PreviewOut(VerdictOut):
+    """POST /installments/preview: the verdict plus what recording would save."""
+
+    saving_if_recorded: Decimal = Field(
+        description="What POST /installments would save for this body now (L63 rule, "
+        'the 500.00 safety net and the kind included); "0.00" when nothing.'
+    )

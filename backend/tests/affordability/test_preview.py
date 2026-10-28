@@ -84,6 +84,7 @@ def test_AF_07_preview_returns_the_month_by_month_verdict(api: Api) -> None:
         ],
         "over_budget_months": ["2026-11", "2026-12"],
         "monthly_total": "7500.00",  # owed now; the previewed entry is not recorded
+        "saving_if_recorded": "600.00",  # 10% of 6,000.00 (PV-01)
     }
 
 

@@ -6,15 +6,20 @@ The move is 201 when made, 200 with the same body for a repeat of the same reque
 otherwise: no safety net, no limit, no waiting period.
 """
 
+from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from app.affordability.router import SETTINGS_REQUIRED_ERROR
+from app.affordability.service import SettingsRequiredError
 from app.api_body import json_body
+from app.assistant.service import buffer_shortfalls
 from app.buffer import service
-from app.buffer.schemas import BufferOut, MovedOut, MoveIn
+from app.buffer.schemas import BufferOut, MovedOut, MoveIn, ShortfallsOut
+from app.clock import today
 from app.db import get_session
 from app.errors import coded
 from app.providers import get_bank_provider
@@ -40,6 +45,24 @@ def read_buffer(
         monthly_total=buffer.monthly_total,
         months_covered=buffer.months_covered,
     )
+
+
+@router.get(
+    "/buffer/shortfalls",
+    responses=UNAUTHORIZED
+    | {409: {"description": "SETTINGS_REQUIRED: no income and budget to compare against"}},
+)
+def read_shortfalls(
+    user_id: Annotated[str, Depends(demo_user)],
+    session: Annotated[Session, Depends(get_session)],
+    day: Annotated[date, Depends(today)],
+) -> ShortfallsOut:
+    """The current and upcoming months over budget, with how much of each the buffer
+    covers, months in date order. Advice only: nothing moves (L66). Writes nothing."""
+    try:
+        return ShortfallsOut.of(buffer_shortfalls(session, user_id, today=day))
+    except SettingsRequiredError:
+        raise SETTINGS_REQUIRED_ERROR from None
 
 
 @router.post(
