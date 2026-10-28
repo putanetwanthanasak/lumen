@@ -33,8 +33,8 @@ import {
 } from "../src/api.ts";
 import type { AssistantPlanOut, BufferOut, MonthsOut, MoveIn, MovedOut, ShortfallsOut } from "../src/api-types.ts";
 import { bufferPlanLines, exampleSummary } from "../src/assistantText.ts";
-import { latestOnly, moveBody, mover, moveRequest, type MoveLock } from "../src/bufferMove.ts";
-import { shortfallsByMonth } from "../src/bufferState.ts";
+import { latestOnly, moveBody, mover, moverRegistry, moveRequest, type MoveLock } from "../src/bufferMove.ts";
+import { cardMove, shortfallView, shortfallsByMonth } from "../src/bufferState.ts";
 import { DemoButton } from "../src/components/DemoPanel.tsx";
 import { BUFFER, BUFFER_STATE, MONTHS_VIEW, REJECTED } from "../src/copy.ts";
 import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
@@ -416,7 +416,7 @@ test("UI_47_the_months_button_moves_for_its_month_and_the_free_move_for_none", (
   // or the month never turns prepared. Each form has its own mover, on the screen's lock.
   const screen = readFileSync("src/screens/Buffer.tsx", "utf8");
   const card = screen.slice(screen.indexOf("function PrepareCard("));
-  assert.match(card, /const forMonth = useMover\(moves\.lock\);/);
+  assert.match(card, /const forMonth = MOVES\.get\(view\.month\);/);
   assert.match(card, /forMonth\.press\(p\.amount, p\.month\)/);
   const free = screen.slice(screen.indexOf("async function submit("), screen.indexOf("function PrepareCard("));
   assert.match(free, /free\.press\(parsed\.value\);/);
@@ -426,7 +426,7 @@ test("UI_47_the_months_button_moves_for_its_month_and_the_free_move_for_none", (
 // ---- Review F1: one move at a time on the whole screen -------------------------------------
 
 test("UI_47_a_move_for_another_month_waits_while_one_is_out", async () => {
-  const lock: MoveLock = { held: false };
+  const lock: MoveLock = { held: false, out: null };
   const sent: MoveIn[] = [];
   let answer: (out: MovedOut) => void = () => undefined;
   const send = (body: MoveIn) => {
@@ -463,10 +463,10 @@ test("UI_47_an_older_balance_never_replaces_a_newer_one", () => {
   // Nov's GET /buffer answers last: it is not shown.
   assert.deepEqual([afterNov(), afterDec()], [false, true]);
   const screen = readFileSync("src/screens/Buffer.tsx", "utf8");
-  // One lock for the screen, given to every mover; "before" is the balance when the move starts.
-  assert.equal(screen.split("useState<MoveLock>").length - 1, 1);
-  assert.match(screen, /const free = useMover\(lock\);/);
-  assert.doesNotMatch(screen, /useMover\(\)/);
+  // One registry for the page, every mover from it; "before" is the balance when the move starts.
+  assert.equal(screen.split("moverRegistry(").length - 1, 1);
+  assert.match(screen, /const free = MOVES\.get\("free"\);/);
+  assert.equal(screen.split("mover(").length - 1, 1, "no mover outside the registry");
   assert.match(screen, /const before = moves\.balanceNow\(\);/);
   assert.match(screen, /disabled=\{moves\.moving\}/);
   assert.match(screen, /disabled=\{moving\}/);
@@ -500,10 +500,99 @@ test("UI_49_the_mock_always_starts_as_mon_whatever_the_api_choice_kept", () => {
 test("UI_49_a_probe_without_an_answer_is_asked_again", async () => {
   let seen = fakeFetch(() => null); // the API is not up yet
   assert.equal(await demoEndpointsOnce(), false);
+  // What the Vite proxy answers while the backend is down: asked again too (round 2 F3).
+  seen = fakeFetch(() => ({ status: 502, body: null }));
+  assert.equal(await demoEndpointsOnce(), false);
+  assert.equal(seen.length, 1);
   seen = fakeFetch(() => ({ status: 422, body: { detail: [] } }));
   assert.equal(await demoEndpointsOnce(), true);
   assert.equal(seen.length, 1, "asked again");
   seen = fakeFetch(() => ({ status: 404, body: null }));
   assert.equal(await demoEndpointsOnce(), true, "kept once the API answered");
   assert.equal(seen.length, 0);
+});
+
+// ---- Review round 2: an unknown outcome keeps its retry, and a reopened screen its lock -----
+
+function registry(answer: (body: MoveIn) => Promise<MovedOut>) {
+  const sent: MoveIn[] = [];
+  let n = 0;
+  const moves = moverRegistry((lock) =>
+    mover(
+      (body) => {
+        sent.push(body);
+        return answer(body);
+      },
+      () => `id-${(n += 1)}`,
+      (e) => (e instanceof ApiError ? e.code : null),
+      lock,
+    ),
+  );
+  return { moves, sent };
+}
+
+test("UI_47_a_move_with_an_unknown_outcome_keeps_its_button_and_its_id", async () => {
+  // The ledger commits, then the bank call fails (500): the API now says Nov is
+  // prepared, but only a retry under the same id finishes the move.
+  let fail = true;
+  const { moves, sent } = registry(async (body) => {
+    if (fail) throw new ApiError(500, null);
+    return movedOut(body);
+  });
+  await assert.rejects(moves.get("2026-11").press("1500.00", "2026-11") ?? Promise.resolve(), (e: unknown) => e instanceof ApiError);
+  const prepared = shortfallView(
+    { month: "2026-11", total: "6500.00", budget: "5000.00", shortfall: "1500.00", prepared: "1500.00", remaining_gap: "0.00", state: "prepared", covered_by_buffer: "0.00", still_short: "0.00" },
+    "4200.00",
+  );
+  assert.equal(prepared.prepare, null, "the API's answer alone would leave no button");
+  const retry = cardMove(prepared, moves.get("2026-11").kept());
+  assert.deepEqual(retry, { month: "2026-11", amount: "1500.00", total: "6500.00" });
+  fail = false;
+  await moves.get("2026-11").press(retry?.amount ?? "", retry?.month);
+  assert.deepEqual(
+    sent.map((b) => [b.client_request_id, b.for_month]),
+    [
+      ["id-1", "2026-11"],
+      ["id-1", "2026-11"],
+    ],
+  );
+  // Answered: nothing kept, and the card goes back to the API's answer.
+  assert.equal(moves.get("2026-11").kept(), null);
+  assert.equal(cardMove(prepared, null), null);
+  // The card offers that move (Buffer.tsx), and says the outcome is unknown.
+  const screen = readFileSync("src/screens/Buffer.tsx", "utf8");
+  assert.match(screen, /const prepare: Prepare \| null = done === null \? cardMove\(view, kept\) : null;/);
+  assert.match(screen, /kept !== null && !busy \? BUFFER\.failed/);
+  // A 422 moved nothing: nothing kept either.
+  const above = registry(async () => {
+    throw new ApiError(422, { code: "AMOUNT_ABOVE_BALANCE", message: "m" });
+  });
+  await assert.rejects(above.moves.get("2026-12").press("1500.00", "2026-12") ?? Promise.resolve(), () => true);
+  assert.equal(above.moves.get("2026-12").kept(), null);
+});
+
+test("UI_47_a_screen_reopened_while_a_move_is_out_cannot_send_a_second_one", async () => {
+  let answer: (out: MovedOut) => void = () => undefined;
+  const { moves, sent } = registry(
+    (body) =>
+      new Promise<MovedOut>((resolve) => {
+        answer = () => resolve(movedOut(body));
+      }),
+  );
+  const first = moves.get("2026-11").press("1500.00", "2026-11");
+  assert.ok(first !== null);
+  // Leave and come back: the screen gets its movers from the same registry.
+  assert.equal(moves.lock.held, true);
+  assert.equal(moves.get("2026-11").press("1500.00", "2026-11"), null);
+  assert.equal(moves.get("free").press("100.00"), null);
+  assert.ok(moves.lock.out instanceof Promise, "the reopened screen can wait for it");
+  answer(movedOut(sent[0] as MoveIn));
+  await first;
+  await moves.lock.out;
+  assert.equal(moves.lock.held, false);
+  assert.equal(sent.length, 1);
+  // The screen waits for it and reads again (Buffer.tsx).
+  const screen = readFileSync("src/screens/Buffer.tsx", "utf8");
+  assert.match(screen, /const out = MOVES\.lock\.out;[\s\S]*?setMoving\(false\);\n\s+refresh\(\);/);
+  assert.match(screen, /useState\(MOVES\.lock\.held\)/);
 });

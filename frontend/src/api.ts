@@ -222,13 +222,17 @@ export async function demoEndpointsEnabled(): Promise<boolean> {
   return (await demoEndpointsAnswer()) === true;
 }
 
-/** true on, false off (404), null when the API did not answer (a network error). */
+/**
+ * true on, false off (404), null when the API did not answer: a network error, or a
+ * 5xx, which is what the Vite proxy sends while the backend is down (review round 2 F3).
+ */
 async function demoEndpointsAnswer(): Promise<boolean | null> {
   try {
     await call<unknown>("POST", "/demo/payday", {});
     return true;
   } catch (error) {
-    return error instanceof ApiError ? error.status !== 404 : null;
+    if (!(error instanceof ApiError) || error.status >= 500) return null;
+    return error.status !== 404;
   }
 }
 

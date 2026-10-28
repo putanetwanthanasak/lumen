@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { InstallmentLine, MonthDetail } from "../src/api-types.ts";
+import { HOME } from "../src/copy.ts";
 import { lineStatus, scheduleText } from "../src/installmentStatus.ts";
 
 const ACTIVE: InstallmentLine = {
@@ -99,4 +100,12 @@ test("UI_43_one_that_starts_later_says_when_and_one_not_in_the_rows_gets_null", 
   assert.equal(scheduleText("later", rows.slice(0, 2)), "เริ่ม พ.ย. 2569");
   assert.equal(scheduleText("gone", rows), null); // Home then keeps "ผ่อน {months} เดือน"
   assert.equal(scheduleText("a", []), null);
+});
+
+test("UI_12_a_line_paid_off_by_a_consolidation_loan_says_so_and_is_not_counted", () => {
+  // L72: never "ผ่อนครบแล้ว" for a debt the bank's loan paid off (review round 2 F4).
+  const line = lineStatus({ ...ACTIVE, status: "consolidated", owed: false, remaining: "0.00" });
+  assert.deepEqual(line, { label: HOME.statusConsolidated, counted: false });
+  assert.equal(HOME.statusConsolidated, "ปิดด้วยสินเชื่อรวมหนี้แล้ว");
+  assert.ok(line.label !== HOME.statusPaidOff);
 });

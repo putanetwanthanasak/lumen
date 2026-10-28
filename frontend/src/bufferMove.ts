@@ -27,12 +27,21 @@ export function afterMoveError(request: MoveRequest, code: string | null): MoveR
   return code === "AMOUNT_ABOVE_BALANCE" ? null : request;
 }
 
-/** Shared by every move on one screen: while one move is out, every other press is ignored. */
-export type MoveLock = { held: boolean };
+/**
+ * Shared by every move: while one is out (`held`), every other press is ignored, and
+ * `out` settles when it is answered, so a screen opened meanwhile can wait for it.
+ */
+export type MoveLock = { held: boolean; out?: Promise<void> | null };
 
 export type Mover = {
   /** Null when a move is already on its way: that press is ignored, so the money moves once. */
   press(amount: Money, forMonth?: string): Promise<MovedOut> | null;
+  /**
+   * The request kept after an unknown outcome (a lost answer, a 500), until it is
+   * answered: pressing again with its amount and month resends its id, so the
+   * backend repeats the bank call once and never moves the money twice.
+   */
+  kept(): MoveRequest | null;
 };
 
 /**
@@ -55,18 +64,49 @@ export function mover(
       lock.held = true;
       const next = moveRequest(request, amount, newId(), forMonth);
       request = next;
-      return send(moveBody(next)).then(
+      const answered = send(moveBody(next)).then(
         (out) => {
           request = null;
           lock.held = false;
+          lock.out = null;
           return out;
         },
         (error: unknown) => {
           request = afterMoveError(next, codeOf(error));
           lock.held = false;
+          lock.out = null;
           throw error;
         },
       );
+      lock.out = answered.then(
+        () => undefined,
+        () => undefined,
+      );
+      return answered;
+    },
+    kept() {
+      return lock.held ? null : request;
+    },
+  };
+}
+
+/**
+ * The movers of the buffer screen, kept for the page, not for one screen: one lock,
+ * and one mover per key (a month, or "free"). Leaving the screen and coming back while
+ * a move is out finds the same lock and the same kept request, so it can never send
+ * a second id for the same move (review round 2 F2).
+ */
+export function moverRegistry(make: (lock: MoveLock) => Mover): { lock: MoveLock; get(key: string): Mover } {
+  const lock: MoveLock = { held: false, out: null };
+  const movers = new Map<string, Mover>();
+  return {
+    lock,
+    get(key) {
+      const known = movers.get(key);
+      if (known !== undefined) return known;
+      const made = make(lock);
+      movers.set(key, made);
+      return made;
     },
   };
 }

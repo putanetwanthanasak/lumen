@@ -15,7 +15,7 @@ import type { Money } from "../money.ts";
 import { navigate } from "../router.ts";
 import { useLoad } from "../useLoad.ts";
 
-const KIND_STYLE: Record<NotificationKind, { icon: IconName; badge: string }> = {
+export const KIND_STYLE: Record<NotificationKind, { icon: IconName; badge: string }> = {
   new_debt: { icon: "bell", badge: "bg-info-bg text-info-ink" },
   cash_withdrawal: { icon: "alert", badge: "bg-risk-bg text-risk-ink" },
   cash_loan: { icon: "alert", badge: "bg-risk-bg text-risk-ink" },

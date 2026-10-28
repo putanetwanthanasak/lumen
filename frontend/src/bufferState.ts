@@ -9,6 +9,7 @@
  * the smaller of two API amounts, the gap and what the buffer holds.
  */
 import type { PreparedState, ShortfallMonth, ShortfallsOut } from "./api-types.ts";
+import type { MoveRequest } from "./bufferMove.ts";
 import type { Marked } from "./accent.ts";
 import { BUFFER_STATE } from "./copy.ts";
 import { formatBaht, toSatang, type Money } from "./money.ts";
@@ -20,6 +21,17 @@ export type Prepare = { month: string; amount: Money; total: Money };
 export type ShortfallView = { month: string; state: PreparedState; total: Money; line: Marked; prepare: Prepare | null };
 
 const smaller = (a: Money, b: Money): Money => (toSatang(a) <= toSatang(b) ? a : b);
+
+/**
+ * The move a month's card offers. A move for this month whose outcome is unknown wins
+ * over the API's answer, even when the API already counts it as prepared: the ledger
+ * commits before the bank call, so only a retry under the same id finishes it (review
+ * round 2 F1). Otherwise, what `shortfallView` gave.
+ */
+export function cardMove(view: ShortfallView, kept: MoveRequest | null): Prepare | null {
+  if (kept !== null && kept.forMonth === view.month) return { month: view.month, amount: kept.amount, total: view.total };
+  return view.prepare;
+}
 
 export function shortfallView(row: ShortfallMonth, bufferBalance: Money): ShortfallView {
   const month = thaiMonth(row.month);

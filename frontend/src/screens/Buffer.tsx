@@ -14,8 +14,8 @@ import { ASSIST, BUFFER, BUFFER_STATE, MONEY_ERRORS } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Alert, Button, Card, ErrorState, Field, Loading, MarkedText } from "../components/ui.tsx";
-import { latestOnly, mover, type MoveLock, type Mover } from "../bufferMove.ts";
-import { shortfallView, takeBufferMonth, type Prepare, type ShortfallView } from "../bufferState.ts";
+import { latestOnly, mover, moverRegistry } from "../bufferMove.ts";
+import { cardMove, shortfallView, takeBufferMonth, type Prepare, type ShortfallView } from "../bufferState.ts";
 import { walletFor, WALLET_SEGMENTS } from "../homeLayout.ts";
 import { formatAmount, formatBaht, parseMoneyInput, type Money } from "../money.ts";
 import { thaiMonth } from "../thaiMonth.ts";
@@ -29,14 +29,14 @@ async function loadBuffer(): Promise<BufferData> {
   return { buffer, shortfalls };
 }
 
-/** One mover per form, all on the screen's one lock: a press while any move is out is ignored (UI-47). */
-function useMover(lock: MoveLock): Mover {
-  const [m] = useState(() => mover(moveToMain, () => crypto.randomUUID(), (e) => (e instanceof ApiError ? e.code : null), lock));
-  return m;
-}
+/**
+ * Every move of the page, on one lock: a press while any move is out is ignored, also
+ * after leaving the screen and coming back (UI-47). One mover per month, and "free".
+ */
+const MOVES = moverRegistry((lock) => mover(moveToMain, () => crypto.randomUUID(), (e) => (e instanceof ApiError ? e.code : null), lock));
 
-/** What every move on the screen shares: the lock, whether one is out, and the balance before it. */
-type Moves = { lock: MoveLock; moving: boolean; setMoving: (on: boolean) => void; balanceNow: () => Money };
+/** What every move on the screen shares: whether one is out, and the balance before it. */
+type Moves = { moving: boolean; setMoving: (on: boolean) => void; balanceNow: () => Money };
 
 export function BufferScreen() {
   const [load, reload] = useLoad(loadBuffer);
@@ -55,10 +55,9 @@ export function BufferBody({ buffer, shortfalls, onMoved }: { buffer: BufferOut;
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [moved, setMoved] = useState<MovedOut | null>(null);
-  // One lock for every move on the screen (review F1); one id per amount and month.
-  const [lock] = useState<MoveLock>(() => ({ held: false }));
-  const [moving, setMoving] = useState(false);
-  const free = useMover(lock);
+  // One lock for every move on the page (review F1, round 2 F2); one id per amount and month.
+  const [moving, setMoving] = useState(MOVES.lock.held);
+  const free = MOVES.get("free");
   const [balance, setBalance] = useState(buffer.balance);
   // The balance as the API last said, read when a move starts (its "before").
   const latestBalance = useRef(buffer.balance);
@@ -81,12 +80,27 @@ export function BufferBody({ buffer, shortfalls, onMoved }: { buffer: BufferOut;
     }, () => undefined);
     getShortfalls().then((s) => isLatest() && setMonths(s), () => undefined);
   };
-  const moves: Moves = { lock, moving, setMoving, balanceNow: () => latestBalance.current };
+  const moves: Moves = { moving, setMoving, balanceNow: () => latestBalance.current };
 
   // Opened from Home or ภาระผ่อนรายเดือน at a month: show that month's card.
   useEffect(() => {
     const month = takeBufferMonth();
     if (month !== null) document.getElementById(prepareId(month))?.scrollIntoView({ block: "center" });
+  }, []);
+
+  // Opened while a move from an earlier visit is still out: wait for it, then read again.
+  useEffect(() => {
+    const out = MOVES.lock.out;
+    if (out === null || out === undefined) return;
+    let live = true;
+    void out.then(() => {
+      if (!live) return;
+      setMoving(false);
+      refresh();
+    });
+    return () => {
+      live = false;
+    };
   }, []);
 
   async function submit(event: FormEvent) {
@@ -179,6 +193,7 @@ export function BufferBody({ buffer, shortfalls, onMoved }: { buffer: BufferOut;
             </Alert>
             <Button
               variant="secondary"
+              disabled={moving}
               onClick={() => {
                 setMoved(null);
                 onMoved();
@@ -268,9 +283,12 @@ function PrepareCard({
 }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const forMonth = useMover(moves.lock);
+  const forMonth = MOVES.get(view.month);
   const [done, setDone] = useState<Done | null>(null);
-  const prepare: Prepare | null = done === null ? view.prepare : null;
+  // A move whose outcome is unknown keeps its button and its id (review round 2 F1).
+  const kept = forMonth.kept();
+  const prepare: Prepare | null = done === null ? cardMove(view, kept) : null;
+  const unsure = problem ?? (kept !== null && !busy ? BUFFER.failed : null);
   const month = thaiMonth(view.month);
 
   async function move(p: Prepare) {
@@ -320,7 +338,7 @@ function PrepareCard({
       {prepare !== null && (
         <>
           <p className="text-body text-ink-muted">{BUFFER_STATE.helper}</p>
-          {problem !== null && <Alert tone="info" title={problem} />}
+          {unsure !== null && <Alert tone="info" title={unsure} />}
           <Button variant="buffer" icon={ACCENT.buffer.icon} busy={busy} disabled={moves.moving} onClick={() => void move(prepare)}>
             {busy ? BUFFER_STATE.moving : BUFFER_STATE.use}
           </Button>

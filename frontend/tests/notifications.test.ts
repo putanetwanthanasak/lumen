@@ -11,6 +11,7 @@ import { beforeEach, test } from "node:test";
 import type { NotificationsOut } from "../src/api-types.ts";
 import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
 import { handle, resetMock } from "../src/mock/server.ts";
+import { KIND_STYLE } from "../src/screens/Notifications.tsx";
 
 const TODAY = new Date(2026, 9, 27);
 const call = (method: string, path: string, body?: unknown) => handle(method, path, body, "demo-mon");
@@ -94,4 +95,10 @@ test("UI_24_count_is_every_alert_and_nothing_marks_them_read", () => {
   for (const file of ["src/components/Screen.tsx", "src/screens/Notifications.tsx", "src/api.ts"]) {
     assert.doesNotMatch(readFileSync(file, "utf8"), /unread|\.read\b|notifications\/read/, file);
   }
+});
+
+test("UI_24_a_consolidation_loan_alert_has_the_bank_icon", () => {
+  // Review round 2 F4: the bank's loan is told apart from a purchase.
+  assert.deepEqual(KIND_STYLE.consolidation_loan, { icon: "bank", badge: "bg-info-bg text-info-ink" });
+  assert.ok(KIND_STYLE.consolidation_loan.icon !== KIND_STYLE.new_debt.icon);
 });
