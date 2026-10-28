@@ -142,7 +142,6 @@ Components use tokens only, never raw hex.
 | `desk` | `#e3ebe6` | page behind the phone frame |
 | `ok-bg` / `ok-line` / `ok-ink` | `#e8f7ee` / `#9fdcb8` / `#0b5735` | GREEN, success |
 | `warn-bg` / `warn-line` / `warn-ink` | `#fff6db` / `#f5c451` / `#6e4500` | YELLOW, budget warning |
-| `warn-edge` | `#b07400` | the over-budget strip's edge, where it meets the page |
 | `risk-bg` / `risk-line` / `risk-ink` | `#fdecec` / `#f3a3a3` / `#9b1c1c` | RED, field errors |
 | `info-bg` / `info-line` / `info-ink` | `#eaf3fb` / `#a9cbe9` / `#1d4e7a` | neutral notices, Demo tags |
 | `bar-ok` / `bar-over` / `bar-risk` | `#138a52` / `#c27c00` / `#9b1c1c` | month bars |
@@ -156,17 +155,21 @@ Contrast (WCAG 2.2, measured): white on `leaf-700` 6.31; `ink` on card 16.44;
 `ink-muted` on card 7.22 and on surface 6.73; `ok-ink`/`ok-bg` 7.81;
 `warn-ink`/`warn-bg` 7.74; `risk-ink`/`risk-bg` 7.14; `info-ink`/`info-bg` 7.72.
 Bars against the white card: `bar-ok` 4.39, `bar-over` 3.40, `bar-risk` 8.15
-(non-text minimum 3:1).
-Accents: `teal-800` on `teal-50` 7.96, on card 8.76, on `warn-bg` 8.11; white on
-`teal-700` 6.32; `bank-800` on `bank-50` 9.33; `ai-ink` on `ai-from` 8.13 and on
-`ai-to` 8.22; `quiet-ink` on `quiet-bg` 7.23; `warn-ink` on card 8.35. Non-text:
-`teal-700` on `teal-50` 5.75, on `teal-200` 3.98 (the meter's filled and empty
-segments), on `warn-bg` 5.86; `bank-700` on `bank-50` 6.93; the hero bar on its
-`leaf-50` track, `bar-ok` 4.12 and `bar-over` 3.19. The offer's title, white on
-`bank-700`, 7.71; its tag, `bank-800` on white, 10.39.
-Card edges against the page (surface / card), at least 3:1 (1.4.11): `warn-edge`
-3.67 / 3.93, `bank-700` 7.19 / 7.71, `ai-edge` 3.47 / 3.72, `quiet-edge` 3.29 /
-3.53, `teal-edge` 3.73 / 3.99. The light lines they replace blend in: `bank-200`
+(non-text minimum 3:1); the ⚠ above a bar, `risk-ink` on card, 8.15; this item's
+pale share against the rest of its bar: `leaf-100` on `bar-ok` 3.77, `warn-bg` on
+`bar-over` 3.15, `risk-bg` on `bar-risk` 7.14.
+Accents: `teal-800` on `teal-50` 7.96, on card 8.76; white on `teal-700` 6.32;
+`bank-800` on `bank-50` 9.33; `ai-ink` on `ai-from` 8.13 and on `ai-to` 8.22;
+`quiet-ink` on `quiet-bg` 7.23; `warn-ink` on card 8.35. The hero while hovered
+(`leaf-50`): `ink` 15.44, `ink-muted` 6.78, `leaf-800` 8.12, `warn-ink` 7.85,
+`teal-800` 8.23. Non-text: `teal-700` on `teal-50` 5.75, on `teal-200` 3.98 (the
+meter's filled and empty segments); `bank-700` on `bank-50` 6.93; the hero bar on
+its `leaf-50` track, `bar-ok` 4.12 and `bar-over` 3.19, and its budget mark, `ink`,
+15.44 on the track, 3.75 on `bar-ok` and 4.84 on `bar-over`. The offer's title,
+white on `bank-700`, 7.71; its tag, `bank-800` on white, 10.39.
+Card edges against the page (surface / card), at least 3:1 (1.4.11): `bank-700`
+7.19 / 7.71, `ai-edge` 3.47 / 3.72, `quiet-edge` 3.29 / 3.53, `teal-edge` 3.73 /
+3.99. The light lines they replace blend in: `bank-200`
 1.56, `ai-line` 1.42, `quiet-line` 1.29, `warn-line` 1.52, `teal-100` 1.19 on surface. Test UI-35 recomputes these pairs
 from `index.css`, the edges from `EDGE` in `accent.ts`.
 
@@ -174,10 +177,9 @@ from `index.css`, the edges from `EDGE` in `accent.ts`.
 
 One colour per feature, and never colour only: each accent comes with its icon
 and its text. The teal, bank, ai and quiet classes appear in `accent.ts` only
-(UI-34 scans `src/`), and the coloured lines and chips on Home are `Marked` values
-(accent, icon, text). A tinted card that meets the page takes its `EDGE`, so its
-light tint never blends into the page: the strip (`warn-edge`, 2px), the bank's
-offer (`bank-700`, 2px), the assistant's panel (`ai-edge`), the consolidation
+(UI-34 scans `src/`), and the coloured lines on Home are `Marked` values (accent,
+icon, text). A tinted card that meets the page takes its `EDGE`, so its light tint
+never blends into the page: the bank's offer (`bank-700`, 2px), the assistant's panel (`ai-edge`), the consolidation
 banner (`quiet-edge`), and the buffer's wallet on Home and the buffer screen's
 balance card (`teal-edge`, 2px). UI-35 measures each edge, and checks Home's markup
 in four scenes and the buffer screen's card for a tinted card without its edge.
@@ -187,8 +189,8 @@ words, not cards.
 | Accent | Tokens | Icon | Text | Used for |
 |---|---|---|---|---|
 | `debt` green | `leaf-*` | home, check | ภาพรวมหนี้ | debt overview, main actions, in-budget lines |
-| `buffer` teal | `teal-*` | shield | กันชน | the wallet, the buffer screen's header and balance card, its nav tab, "ใช้กันชนช่วยจ่าย" |
-| `warn` amber | `warn-*` | triangle | เกินงบ | a month over budget: the strip, its chips, a buffer still short |
+| `buffer` teal | `teal-*` | shield | กันชน | the wallet, the buffer screen's header and balance card, its nav tab, the hero's buffer line and "ใช้กันชน ›" |
+| `warn` amber | `warn-*` | triangle | เกินงบ | a month over budget: the hero's warning line and the part of its bar above the budget |
 | `bank` blue | `bank-*` | bank columns | ทางเลือกจากธนาคาร | the consolidation offer only |
 | `ai` soft tint | `ai-*` | chat bubble with a sparkle | ผู้ช่วย KidNee | the assistant only, never a solid colour |
 | `quiet` grey-blue | `quiet-*` | info | ข้อมูลเพิ่มเติม | the consolidation banner |
@@ -206,9 +208,12 @@ Font stack: `"Sukhumvit Set", "Noto Sans Thai", "Leelawadee UI", Tahoma, sans-se
 | `text-title` | 22px / 1.35 | screen headings, verdict label |
 | `text-display` | 32px / 1.2 | the one big number on a card |
 
-Month labels under the bars are 12px because 10 to 12 of them share 358px. They
-are `aria-hidden`; every month, total and status is also in a screen-reader table
-and the over-budget months are listed in a 16px sentence.
+Month labels under the bars are `text-caption` (14px). Up to 7 months each has one;
+beyond that every k-th month (k = months / 7, rounded up), so label centres are at
+least 42px apart in the 298px plot of the 370px frame, and the widest label is 29px
+in Noto Sans Thai (34px allowed for other system fonts; UI-40). They are
+`aria-hidden`: every month, total and status is also in a screen-reader table, and a
+16px sentence says how many months are over budget and from when to when.
 
 ### Spacing, radius, shadow
 
@@ -225,8 +230,9 @@ and the over-budget months are listed in a 16px sentence.
 - `primary`: `leaf-700` with white text. One per screen.
 - `secondary`: white with a 2px `leaf-700` border ("ยังไม่ซื้อ", retry).
 - `ghost`: text only.
-- `buffer` / `bank`: the secondary outline in the feature's colour ("ใช้กันชนช่วยจ่าย ›"
-  teal, "สนใจรวมหนี้" blue), from `OUTLINE` in `accent.ts`.
+- `bank`: the secondary outline in the bank's blue ("สนใจรวมหนี้"), from `OUTLINE`
+  in `accent.ts`. The teal outline went with the over-budget strip: the hero's
+  "ใช้กันชน ›" is a text link.
 - `busy` disables the button and shows the "กำลัง..." label, so a double tap sends
   one request.
 - Full width, pill shape, optional leading icon.
@@ -241,15 +247,27 @@ word), the sentence, and "นี่เป็นคำแนะนำเท่า
 `role="status"`, `aria-live="polite"`.
 
 ### 5.4 Month bars (`MonthBars`)
-- One bar per month of the plan, drawn with divs (no chart library).
-- Scale: the largest of the budget and the month totals. The budget is a dashed
-  line.
-- Colours: `bar-ok` in budget; `bar-over` and **striped** over budget;
-  `bar-risk` and striped above one third of income. The flags come from the API
-  (`over_budget`, `over_one_third`); the client never compares money to decide.
-- Under the bars: the Thai month names, the budget-line note, a sentence listing
-  the over-budget months ("เดือนที่เกินงบ: พ.ย. 2569, ธ.ค. 2569"), the legend,
-  and a screen-reader table.
+- One bar per month of the plan, drawn with divs (no chart library), on one CSS
+  grid of equal columns (`repeat(n, minmax(0, 1fr))`): the bars, the month labels
+  and the dashed budget line share it, so each label sits under its own bar at any
+  number of months and nothing overflows the card (UI-40).
+- Scale: the largest of the budget and the month totals.
+- Colours, solid (no hatch): `bar-ok` in budget, `bar-over` over budget, `bar-risk`
+  above one third of income, with a small ⚠ above that bar (`risk-ink`, at most
+  16px and never wider than its bar, so a run of such months never overlaps). The
+  flags come from the API (`over_budget`, `over_one_third`); the client never
+  compares money to decide.
+- This item's share is the top of each bar: a pale tint of the bar's colour with a
+  2px edge in that colour, its height the item's monthly amount as a share of that
+  month's total (`barPermille`, a drawing size). Legend: "ส่วนของชิ้นนี้".
+- Labels: `text-caption`, plain (never bold or amber), on one line, centred under
+  their own bar; every month up to 7, beyond that every k-th (Typography).
+- Under the bars: the budget-line note, one plain sentence (`text-body`, ink, no
+  icon) "เกินงบ {n} เดือน: {first} ถึง {last}", counted from the API's rows
+  (`overRange`; "ในช่วง" when they are not one run, "เกินงบ 1 เดือน: {month}" for
+  one; a month is never split from its year at a line break), the legend, and a
+  screen-reader table. The verdict card above holds the warning; nothing else
+  repeats it (UI-41).
 
 ### 5.5 Inputs (`Field`, `Toggle`, `Checkbox`, saving mode radio)
 - Visible label above, help text below (16px), error below with an icon and
@@ -323,7 +341,8 @@ covers), each with its own icon. Connection errors use
   plain one, so the assistant's bubble (`relative` for its tail), the uncounted
   installments (`opacity-80`), the offer's two boxes, the month bars and the saving
   mode choice covered the raised button as they scrolled under it. Checked in Chrome
-  on every screen and scene, at 390px and in the 370px desktop frame.
+  on every screen and scene, at 390px and in the 370px desktop frame, by
+  `scripts/nav-layer-check.mjs` (run by hand, section 11).
 
 ### 5.9 Card types (Home, `homeLayout.ts`)
 Each job has its own shape, and size follows importance. A card with nothing to
@@ -332,8 +351,7 @@ data (UI-33); they format, never add up.
 
 | Card | Shape | Shrinks or goes when |
 |---|---|---|
-| Hero, this month | the only white card with a `text-display` number; the bar; one status line | nothing over budget in the months shown: no strip, one line |
-| Over-budget strip | an amber band joined to the hero's bottom edge, framed in `warn-edge` (2px): title, month chips in two columns ("⚠ พ.ย. 2569" over "+1,500.00 บาท"; the month only when the answer has no `over_by`), "และอีก {k} เดือนหลังจากนั้น", the total over all months, the buffer line, an outline link | shown only while a month is over |
+| Hero, this month | one white card, the only one with a `text-display` number, and no box inside it: a chevron › at the top right (the whole card opens 7.2b), the bar with the budget marked, one status or warning line, one buffer line with its text link | nothing over budget: one status line, no warning, no buffer line |
 | เช็กก่อนผ่อน | the 56px green pill and its hint | never |
 | Wallet | one wide teal button framed in `teal-edge` (2px): shield badge, "กันชนของคุณ ›", the balance at `text-title`; on the right 6 segments and "พอ {n} เดือน" | never; the meter is empty at 0 months |
 | Assistant bubble | a soft gradient panel with an `ai-edge` border; the mascot speaks from the left into a white bubble with a tail | loading: "กำลังสรุป..." at a fixed height, no spinner; error: one line and "ลองอีกครั้ง"; no plan: left out |
@@ -375,21 +393,22 @@ Every screen has the footer and handles **loading** (skeleton), **error**
 ### 7.2 Screen 2: Home (`#/home`)
 The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state.
 1. Greeting "สวัสดี ม่อน".
-2. **Hero, this month** (`GET /debts/months?count=6`, this month first):
-   "ค่างวดรวมเดือน ต.ค. 2569" with "ดูทุกเดือน ›" (opens 7.2b), the total, "จากงบ ...",
-   the bar, then:
-   - every month shown in budget: one line "✓ เดือนนี้และอีก {n} เดือนอยู่ในงบ", {n}
-     being the rows after this month ("เดือนนี้ยังอยู่ในงบ" when there are none);
-   - this month over: an amber bar and "⚠ เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้";
-   - any month over: the amber strip "เดือนที่ค่างวดรวมเกินงบ", one chip per month
-     with its `over_by` (read aloud as "เกินงบ 1,500.00 บาท"; an answer without it
-     gives the month only, read as "เกินงบ", never a guessed amount, UI-39); then, from the plan,
-     "และอีก {k} เดือนหลังจากนั้น" when months after the six shown are over too, the
-     total "ค่างวดส่วนที่เกินงบรวมทุกเดือน ..." and the buffer line about that total
-     ("กันชน ... พอจ่ายส่วนที่เกินได้ทั้งหมด" or "... ยังขาดอีก ..."), so the amounts on
-     the card agree; and a link:
-     "ใช้กันชนช่วยจ่าย ›" (teal) while the buffer holds money, else
-     "ดูภาระผ่อนรายเดือน ›" (green), as on the payday alert (UI-17).
+2. **Hero, this month** (`GET /debts/months`, every month from this one to the last
+   one due), one card (UI-42): "ค่างวดรวมเดือน ต.ค. 2569" with a chevron › at the top
+   right (read aloud "ดูทุกเดือน"; the whole card opens 7.2b), the total, "จากงบ ...",
+   and the bar on the larger of the budget and the total: green up to the budget,
+   amber only above it, never all amber, with an ink mark where the budget is. Then:
+   - every month in budget: "✓ เดือนนี้และอีก {n} เดือนอยู่ในงบ", {n} being the rows
+     after this month ("เดือนนี้ยังอยู่ในงบ" when there are none);
+   - a later month over: "✓ เดือนนี้ยังอยู่ในงบ", then the warning;
+   - this month over: the warning alone, which covers this month too.
+   The warning is one line, "⚠ เกินงบ {n} เดือน ({first} ถึง {last})", counted from
+   the rows (UI-41; "ในช่วง" when they are not one run, "เกินงบ 1 เดือน ({month})" for
+   one). Then one buffer line, from the plan's `buffer_plan.covered`, while the
+   buffer holds money: "✓ กันชนพอจ่ายส่วนที่เกิน", or "กันชนช่วยได้บางส่วน" with the
+   shield, and the text link "ใช้กันชน ›" in the buffer's teal (to the buffer
+   screen). An empty buffer, or no plan, gives no buffer line. No month chips, no
+   amount over budget and no total over all months: 7.2b has them month by month.
    There is no separate upcoming-months card.
 3. **เช็กก่อนผ่อน**, the 56px primary button, with a one-line hint.
 4. **Wallet** (`GET /buffer`, framed in `teal-edge`): the balance, and segments filled up to the API's
@@ -419,19 +438,26 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
      "ธนาคารจะติดต่อกลับเพื่อพิจารณา" with "ตัวเลขนี้ยังไม่ใช่ข้อเสนอ": no form and no
      request (UI-31, L71).
 7. **Installments**, grouped by the app the user named (apps in the order they
-   first appear, then "ไม่ระบุแอป"): name, months, amount per month, remaining.
-   Lines the API marks as not owed (paid off, cancelled) are listed under "ไม่นับในยอดต่อเดือน", so the rows above always add up to the total. A
-   status chip says "ผ่อนครบแล้ว", "ยกเลิกแล้ว", "คุณแจ้งว่าไม่ใช่รายการของคุณ" or
-   "ยกเลิกแล้ว หลังจากคุณแจ้งว่าไม่ใช่รายการของคุณ" (L59(3): the report is never lost).
+   first appear, then "ไม่ระบุแอป"): name, "งวดที่ {x} จาก {y} · หมด {last month}",
+   amount per month, remaining (UI-43). The line comes from `GET /debts/months`
+   (on main since #39; the app reads the mock until wiring): the number in this
+   month's row and the month marked `is_last`; "เริ่ม {first} · หมด {last}" for one that starts later, never
+   "งวดที่ 1" as if due now; "ผ่อน {months} เดือน" when no row lists it. Each part
+   stays whole, so a line breaks only at the dot. Paid-off lines fold into one line,
+   "ผ่อนครบแล้ว {n} รายการ ›", that opens to their names, each with a check. Other
+   lines the API marks as not owed (cancelled) stay under "ไม่นับในยอดต่อเดือน" with
+   their chip, "ยกเลิกแล้ว" or "ยกเลิกแล้ว หลังจากคุณแจ้งว่าไม่ใช่รายการของคุณ" (L59(3):
+   the report is never lost), never as paid off. So the rows above always add up
+   to the total. A disputed line still owed keeps "คุณแจ้งว่าไม่ใช่รายการของคุณ".
    Empty: "ยังไม่มีรายการผ่อน ก่อนผ่อนชิ้นต่อไป กด เช็กก่อนผ่อน ได้เลย".
 - States: loading, error, settings missing, empty list. If the plan fails to load,
-  Home still shows; cards 5 and 6 are left out and the strip has no buffer line.
+  Home still shows; cards 5 and 6 are left out and the hero has no buffer line.
 - At 390x844 the last card ends at least 90px, and the footer at least 40px, above
   the raised centre button.
 
 ### 7.2b ภาระผ่อนรายเดือน (`#/months`)
 - Every month from this month to the last month with an installment, from
-  `GET /debts/months` (mock now, see section 9).
+  `GET /debts/months` (on main since #39; the mock until wiring, section 9).
 - Per month: "3,500.00 บาท จากงบ 5,000.00 บาท", a bar on one scale for all months
   with a budget mark, and a status chip with icon + text: "อยู่ในงบ" (check),
   "เกินงบ" (triangle) or "เกินเกณฑ์ที่ ธปท. แนะนำ" (octagon; wins over เกินงบ).
@@ -474,7 +500,8 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
    "เดือนหน้า" / "พ.ย. 2569". Help: "ดูได้ในหน้าสรุปก่อนกดผ่อนของแอปผ่อน".
 4. **"ประเมินภาระผ่อน"** sits in the action bar above the nav (5.8), always in view.
    It stays disabled until the four fields are valid (`canPreview`, UI-37); while it
-   is, "กรอกข้อมูล 4 ข้อด้านบนให้ครบก่อน" sits above it (its `aria-describedby`). It
+   is, "กรอกราคา จำนวนเดือน ค่างวด และเดือนเริ่มจ่ายให้ครบก่อน" sits above it (its
+   `aria-describedby`), naming the four so it never reads as the first four fields. It
    calls the preview (writes nothing) and opens 7.3b. The form is kept, so "แก้ไข"
    there returns to it with every value.
 5. Changing a field while the preview is in flight drops its answer.
@@ -490,8 +517,10 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
 1. Top: a one-line summary ("โน้ตบุ๊ก 30,000.00 บาท · 10 เดือน · เดือนละ 3,000.00
    บาท · เริ่ม พ.ย. 2569 · ShopDemo") and "แก้ไข" (back to the form, values kept).
 2. A large verdict card: 64px icon, the label, the sentence, the advice note.
-3. Month bars against the dashed budget line; over-budget months are striped,
-   their column is tinted and their label bold.
+3. Month bars against the dashed budget line (5.4): solid colours, a ⚠ above a
+   month over a third of income, this item's share as the pale top of each bar, and
+   one plain line "เกินงบ {n} เดือน: {first} ถึง {last}". The verdict card holds the
+   warning, and each fact is said once (UI-41).
 4. "ถ้าบันทึก จะกันเงินเข้ากันชน" and the amount (`saving_if_recorded`), or why
    nothing is saved this time.
 5. Action bar: **บันทึก** (primary, wider) and **ยังไม่ซื้อ** (secondary), always
@@ -553,7 +582,7 @@ else imported them, so deleting was safe. Their parts now live in 7.2 (cards 4 a
   consolidation); "เกินงบตั้งแต่เดือนนี้" (records the RED motorbike from this
   month: 9 months over, the pause line, the buffer still short, consolidation
   eligible); "มีเดือนเกินงบ กันชนว่าง" (the laptop, then the whole buffer moved back to
-  the main account, so the strip links to ภาระผ่อนรายเดือน); "ผู้ช่วยกำลังสรุป (ตอบช้า)" (the summary takes 15
+  the main account, so the hero has no buffer line); "ผู้ช่วยกำลังสรุป (ตอบช้า)" (the summary takes 15
   seconds) and "ผู้ช่วยสรุปไม่สำเร็จ" (it fails with 503). The screen on show reloads.
 
 ## 8. Thai copy
@@ -580,12 +609,14 @@ Source of truth: `frontend/src/copy.ts`. The key strings:
 | Connection error | เชื่อมต่อไม่สำเร็จ ข้อมูลของคุณยังอยู่ครบ ลองอีกครั้งได้เลย |
 | Settings missing | บอกรายได้และงบผ่อนต่อเดือนก่อน KidNee ถึงจะช่วยคิดให้ได้ |
 | Money errors | กรอกจำนวนเงินด้วยนะ · ทศนิยมได้ไม่เกิน 2 ตำแหน่ง · จำนวนเงินต้องมากกว่า 0 |
-| Hero | เดือนนี้และอีก {n} เดือนอยู่ในงบ · เดือนที่ค่างวดรวมเกินงบ · +{over_by} · เกินงบ (a chip without its amount, to screen readers) · และอีก {k} เดือนหลังจากนั้น |
-| Strip link | ใช้กันชนช่วยจ่าย › · ดูภาระผ่อนรายเดือน › |
+| Hero | เดือนนี้และอีก {n} เดือนอยู่ในงบ · เดือนนี้ยังอยู่ในงบ · เกินงบ {n} เดือน ({first} ถึง {last}) · ดูทุกเดือน (the chevron, to screen readers) |
+| Hero buffer line | กันชนพอจ่ายส่วนที่เกิน · กันชนช่วยได้บางส่วน · ใช้กันชน › |
+| Result bars | เกินงบ {n} เดือน: {first} ถึง {last} · อยู่ในงบ · เกินงบ · เกินเกณฑ์ที่ ธปท. แนะนำ · ส่วนของชิ้นนี้ |
+| Installments | งวดที่ {x} จาก {y} · หมด {month} · เริ่ม {month} · ผ่อนครบแล้ว {n} รายการ · ไม่นับในยอดต่อเดือน |
 | Wallet | กันชนของคุณ › · พอ {n} เดือน · ยังไม่พอ 1 เดือน · ไม่มีค่างวด |
 | Assistant | ผู้ช่วย KidNee · ตัวอย่าง · อ่านต่อ › · ย่อ · กำลังสรุป... |
 | Consolidation | ตอนนี้ยังไม่จำเป็นต้องรวมหนี้ · ทางเลือกจากธนาคาร · ตอนนี้ · ถ้ารวมหนี้ (ตัวอย่าง) · ยอดรวมทั้งหมด · ค่างวดลดลงเดือนละ {monthly_reduction} ทุกเดือนกลับมาอยู่ในงบ · สนใจรวมหนี้ |
-| Form | ชื่อสินค้า (ไม่บังคับ) · แอปที่ผ่อน (ไม่บังคับ) · เป็นรายการเงินสด? · ยอดเงิน · {n} เดือน · กรอกข้อมูล 4 ข้อด้านบนให้ครบก่อน |
+| Form | ชื่อสินค้า (ไม่บังคับ) · แอปที่ผ่อน (ไม่บังคับ) · เป็นรายการเงินสด? · ยอดเงิน · {n} เดือน · กรอกราคา จำนวนเดือน ค่างวด และเดือนเริ่มจ่ายให้ครบก่อน |
 
 Months are Thai short names with the Buddhist-era year ("พ.ย. 2569"), as the
 backend writes them.
@@ -603,7 +634,7 @@ prefix; to be confirmed when wiring).
 | 1 | `GET /settings` | | `SettingsOut` | 404 = none yet |
 | 1 | `POST /settings` / `PUT /settings` | `SettingsIn` (`saving_rule` is `{mode:"percent",percent}` or `{mode:"fixed",amount}`) | `SettingsOut` with `warnings` | 409 exists (POST), 404 none (PUT), 422 |
 | 2 | `GET /debts/summary` | | `DebtSummary` (`installments: InstallmentLine[]`) | |
-| 2, 2b | `GET /debts/months` **TODO, mock only** | `?count=N` (optional; without it, up to the last month due) | `MonthsOut { months: MonthDetail[] }` from this month, no candidate; `MonthDetail` = `MonthRow` + `over_by` (`total - budget` when `over_budget`, else `"0.00"`; asked of the backend session; null when absent, UI-39) + `installments: MonthInstallment[]` (`installment_id, item_name, platform_name, monthly_amount, installment_no, installments_total, is_last`) | 409 `SETTINGS_REQUIRED`, 422 bad count |
+| 2, 2b | `GET /debts/months` (on main since #39; its rows lack only `platform_name`, **TODO(backend)**, read as null, UI-39) | `?count=N` (optional; without it, up to the last month due) | `MonthsOut { months: MonthDetail[] }` from this month, no candidate (main also sends `months_truncated`, unused here); `MonthDetail` = `MonthRow` + `installments: MonthInstallment[]` (`installment_id, item_name, platform_name, monthly_amount, installment_no, installments_total, is_last`). Home and 2b call it without `count`. No `over_by`: nothing on screen needs it since the hero lost its chips (UI-42) | 409 `SETTINGS_REQUIRED`, 422 bad count |
 | 3 | `GET /installments/suggested-monthly` **TODO, mock only** | `?item_price=&months=` | `SuggestedMonthlyOut { monthly_amount }`: price / months rounded UP to 0.01 | 422 |
 | 2, 4 | `GET /buffer` | | `BufferOut` (`months_covered` null when nothing is owed) | |
 | 3 | `POST /installments/preview` | `ManualEntryIn` | `PreviewOut` = `VerdictOut` + `saving_if_recorded` (**TODO**: the field is new) | 409 `SETTINGS_REQUIRED`, 422 |
@@ -622,16 +653,16 @@ and `code`.
 
 **Fields the backend does not send yet (UI-39, `src/apiFields.ts`).** Checked
 against the backend's schemas on main: `monthly_reduction` (the plan's estimate),
-`over_by` (the month rows), `platform_name` (installment lines, in
-`GET /debts/summary` and in the month rows), and `POST /assistant/summary`, which
-has no endpoint yet. The mock sends them all. `api.ts` passes each of these answers
-through its reader, and a screen never crashes on such a field:
+`platform_name` (installment lines, in `GET /debts/summary` and in the month rows),
+and `POST /assistant/summary`, which has no endpoint yet. The mock sends them all.
+`api.ts` passes each of these answers through its reader, and a screen never
+crashes on such a field:
 - absent or not what the contract says (a JSON number, a sign, a comma): read as
   null, with one console warning per answer and field, for example
-  `GET /debts/months: no readable over_by (6 times), so Home's over-budget chips
-  show without their amounts. TODO(backend): send it.`;
-- the screen leaves out only what needs it: the offer's benefit line, a chip's
-  amount, a row's app name. Nothing is guessed, and the answer given is not changed;
+  `GET /assistant/plan: no readable consolidation.estimate.monthly_reduction, so the
+  offer card shows without its benefit line. TODO(backend): send it.`;
+- the screen leaves out only what needs it: the offer's benefit line, a row's app
+  name. Nothing is guessed, and the answer given is not changed;
 - the summary without `text` is an error (the bubble's state with "ลองอีกครั้ง");
   without `is_example` it keeps its example tag, the safe side for AI text.
 
@@ -639,7 +670,8 @@ Fields the backend already sends are not checked again on screen.
 
 ## 10. Demo persona and scenes
 
-**ม่อน**, 24, first job. Income 20,000.00, payday the 25th, installment budget
+**ม่อน** (demo user `demo-mon`; UI-45 checks that no older name is left in
+`frontend/` or here), 24, first job. Income 20,000.00, payday the 25th, installment budget
 5,000.00, auto-save 10% of the price, leftover saving on, consent given. Main
 account 9,500.00, buffer 4,800.00.
 
@@ -647,7 +679,7 @@ Existing installments (months relative to the demo month; on 27 Oct 2026):
 All recorded by hand; the app is the user's own text.
 - หูฟังไร้สาย, app ShopDemo: 2,000.00 a month, last month ธ.ค. 2569 (ends soon).
 - ตู้เย็น, no app given ("ไม่ระบุแอป"): 1,500.00 a month, last month มิ.ย. 2570.
-- กระเป๋าเป้, app ShopDemo: paid off (listed under "ไม่นับในยอดต่อเดือน").
+- กระเป๋าเป้, app ShopDemo: paid off (folded into "ผ่อนครบแล้ว 1 รายการ ›").
 Now: 3,500.00 a month.
 
 | Example | Price | Plan | Busiest month | Verdict |
@@ -660,15 +692,18 @@ Now: 3,500.00 a month.
 1. **Settings** (`/#/settings`): empty first-time form. Tap "Demo: กรอกข้อมูลตัวอย่างของ
    ม่อน", save. Optionally change the budget to 7,000 to show the one-third
    warning (7,000 x 3 > 20,000), then back to 5,000.
-2. **Home**: 3,500.00 of 5,000.00, "เดือนนี้และอีก 5 เดือนอยู่ในงบ", the wallet
-   4,800.00 (พอ 1 เดือน), installments grouped by app. Tap the month card for
+2. **Home**: 3,500.00 of 5,000.00, "เดือนนี้และอีก 8 เดือนอยู่ในงบ", the wallet
+   4,800.00 (พอ 1 เดือน), installments grouped by app ("งวดที่ 4 จาก 6 · หมด ธ.ค.
+   2569"), and "ผ่อนครบแล้ว 1 รายการ ›". Tap the month card for
    "ภาระผ่อนรายเดือน" (Oct 2569 to Jun 2570; open ธ.ค. to see "งวดสุดท้าย"), back,
    then tap **เช็กก่อนผ่อน**.
 3. **Form**: type 1000 and tap "3 เดือน" to show the 0% suggestion 333.34; point
    out that the check waits for the first due month
-   ("กรอกข้อมูล 4 ข้อด้านบนให้ครบก่อน").
+   ("กรอกราคา จำนวนเดือน ค่างวด และเดือนเริ่มจ่ายให้ครบก่อน").
 4. **YELLOW**: tap "เกินงบ", then **ประเมินภาระผ่อน**. On the result screen, Nov
-   and Dec are striped and listed. Point out "บันทึกได้เสมอ". Tap "ยังไม่ซื้อ".
+   and Dec are amber, the laptop's share is the pale top of each bar, and the line
+   under them says "เกินงบ 2 เดือน: พ.ย. 2569 ถึง ธ.ค. 2569". Point out
+   "บันทึกได้เสมอ". Tap "ยังไม่ซื้อ".
 5. **RED**: "แก้ไข" back, tap "เกินเกณฑ์", ประเมินภาระผ่อน. The ธปท. guidance
    sentence.
 6. **GREEN**: tap "อยู่ในงบ", ประเมินภาระผ่อน, then **บันทึก**: 1,200.00 saved to
@@ -676,10 +711,9 @@ Now: 3,500.00 a month.
 7. **Home** again: the installments now total 4,700.00 a month (from next month), buffer 6,000.00.
 8. The bell shows 1 (the ตู้เย็น manual-entry alert); open it, the badge clears.
    Home's assistant bubble and the banner "ตอนนี้ยังไม่จำเป็นต้องรวมหนี้".
-9. Demo, "ม่อน: เกินงบตั้งแต่เดือนนี้": Home's hero turns amber with six chips
-   (ต.ค. to ธ.ค. 2569 +2,500.00, ม.ค. to มี.ค. 2570 +500.00), "และอีก 3 เดือนหลังจากนั้น"
-   (เม.ย. to มิ.ย. 2570), "ค่างวดส่วนที่เกินงบรวมทุกเดือน 10,500.00 บาท", "กันชน 9,600.00
-   บาท ยังขาดอีก 900.00 บาท" and "ใช้กันชนช่วยจ่าย ›". "ทางเลือกจากธนาคาร": 7,500.00 a month
+9. Demo, "ม่อน: เกินงบตั้งแต่เดือนนี้": Home's hero bar turns amber past the budget
+   mark, with one warning line "⚠ เกินงบ 9 เดือน (ต.ค. 2569 ถึง มิ.ย. 2570)" and one
+   buffer line "กันชนช่วยได้บางส่วน" with "ใช้กันชน ›". "ทางเลือกจากธนาคาร": 7,500.00 a month
    now, 3,369.88 if consolidated, but 80,877.12 in total against 67,500.00, all four
    the same size; "ค่างวดลดลงเดือนละ 4,130.12 บาท ทุกเดือนกลับมาอยู่ในงบ" (example rate
    18%, 24 months); "สนใจรวมหนี้". Tap the hero: "กลับมาอยู่ในงบเดือน ก.ค. 2570"
@@ -688,12 +722,12 @@ Now: 3,500.00 a month.
 
 Home per scene (UI-33 tests the rules behind it):
 
-| Scene | Hero | Strip link | Assistant | Consolidation |
+| Scene | Hero | Buffer line | Assistant | Consolidation |
 |---|---|---|---|---|
 | ม่อน: ตั้งค่าแล้ว | all in budget, one line | none | summary | banner |
-| มีเดือนเกินงบ | later months over, 2 chips, buffer covers | ใช้กันชนช่วยจ่าย | summary | banner |
-| เกินงบตั้งแต่เดือนนี้ | this month over, 6 chips, buffer short | ใช้กันชนช่วยจ่าย | summary | bank offer |
-| มีเดือนเกินงบ กันชนว่าง | later months over, wallet empty | ดูภาระผ่อนรายเดือน | summary | banner |
+| มีเดือนเกินงบ | this month in budget; "เกินงบ 2 เดือน (พ.ย. 2569 ถึง ธ.ค. 2569)" | กันชนพอจ่ายส่วนที่เกิน, ใช้กันชน › | summary | banner |
+| เกินงบตั้งแต่เดือนนี้ | "เกินงบ 9 เดือน (ต.ค. 2569 ถึง มิ.ย. 2570)" | กันชนช่วยได้บางส่วน, ใช้กันชน › | summary | bank offer |
+| มีเดือนเกินงบ กันชนว่าง | as มีเดือนเกินงบ, wallet empty | none | summary | banner |
 | ผู้ช่วยกำลังสรุป (ตอบช้า) | all in budget | none | loading | banner |
 | ผู้ช่วยสรุปไม่สำเร็จ | all in budget | none | error, retry | banner |
 
@@ -709,7 +743,7 @@ Node 22.12 or later (Vite 8). From `frontend/`:
 ```bash
 npm ci              # exact versions from package-lock.json
 npm run dev         # http://127.0.0.1:5173 (loopback only, never 0.0.0.0)
-npm test            # UI-01 to UI-36 (compiled with tsc, run with node --test)
+npm test            # UI-01 to UI-45 (compiled with tsc, run with node --test)
 npm run typecheck   # tsc --noEmit, strict
 npm run build       # typecheck + production build to dist/
 npm audit
@@ -720,6 +754,10 @@ again with `npm run dev -- --force`. Vite keeps pre-bundled dependencies in
 `node_modules/.vite`, and a stale copy makes the browser get "504 (Outdated
 Optimize Dep)" for files such as `react-dom_client.js`, which leaves a blank page.
 If it still happens, delete `node_modules/.vite` and run `npm run dev -- --force`.
+
+Manual check, never in CI (it needs Chrome and the dev server): with `npm run dev`
+running, `node scripts/nav-layer-check.mjs` checks that the nav is the top layer
+over everything that scrolls, on every screen (5.8, "Layers"; `scripts/README.md`).
 
 To use the real backend: run it on `127.0.0.1:8000` with
 `DEMO_ENDPOINTS_ENABLED=true` for payday, then set `USE_MOCK = false` in
