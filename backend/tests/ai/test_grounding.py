@@ -16,6 +16,8 @@ from app.affordability.months import Month
 from app.ai.grounding import (
     BANNED,
     THAI_MONTH_NAMES,
+    THAI_MONTH_SHORT,
+    THAI_MONTH_UNDOTTED,
     Allowed,
     Check,
     MonthMention,
@@ -125,6 +127,7 @@ def test_AI_10_grounded_text_passes() -> None:
         "ปี 2569",  # a Buddhist year of an input month
         "ธปท. แนะนำว่าไม่ควรเกิน 1 ใน 3 ของรายได้",  # the fixed phrase of the L65 guidance
         "มี 2 เดือนที่เกินงบ",  # a count, as "N เดือน"
+        "เดือนตุลา 2569 ถึง ธ.ค 2569",  # a short name, and no last dot
         "ภาพรวมหนี้ของคุณดูได้ที่หน้าหลัก",  # the debt overview, not consolidation
     ],
 )
@@ -162,6 +165,12 @@ def test_AI_11_a_wrong_number_is_refused(text: str) -> None:
         ("กันชนตอนนี้ 2 บาท", Check.NUMBER_NOT_IN_INPUT),  # a count, not before เดือน
         ("ยอด 2,569.00 บาท", Check.NUMBER_NOT_IN_INPUT),  # a year, as an amount
         ("ยอด 2,569 บาท", Check.NUMBER_NOT_IN_INPUT),
+        ("ยอด 2569 บาท", Check.NUMBER_NOT_IN_INPUT),  # a year only after ปี or พ.ศ.
+        ("กลับมาอยู่ในงบเดือนกุมภา 2570", Check.MONTH_NOT_IN_INPUT),  # short names
+        ("ถึง มกรา 2570", Check.MONTH_NOT_IN_INPUT),
+        ("ถึง ม.ค 2570", Check.MONTH_NOT_IN_INPUT),
+        ("เดือนมีนา", Check.MONTH_NOT_IN_INPUT),
+        ("มีเดือนเดียวที่ค่างวดเกินงบ คือ พ.ย. 2569", Check.NUMBER_IN_WORDS),
         ("ตอนนี้ผ่อนอยู่สามรายการ", Check.NUMBER_IN_WORDS),
         ("สูงกว่างบเกือบสองเท่า", Check.NUMBER_IN_WORDS),
         ("เหลือที่ว่างอีกพันห้าร้อย", Check.NUMBER_IN_WORDS),
@@ -215,6 +224,8 @@ def test_AI_14_every_banned_phrase_is_refused(phrase: str) -> None:
         ("ลองแบ่งเงินไปลงทุน", Check.BANNED_PHRASE),  # 05 AI-06: no investing
         ("ลองปลดหนี้ก้อนเล็กก่อน", Check.BANNED_PHRASE),  # L69: no payoff order
         ("เคลียร์หนี้ให้หมดเร็ว ๆ", Check.BANNED_PHRASE),
+        ("เดือน ต.ค. 2569 ค่างวดรวม 3,500.00 บาท ยังผ่อนเพิ่มอีกได้", Check.BANNED_PHRASE),
+        ("ยังซื้อเพิ่มอีกได้", Check.BANNED_PHRASE),
         ("ลองรวบหนี้กับธนาคาร", Check.CONSOLIDATION_NOT_OFFERED),  # L70: a synonym
         ("ลองรีไฟแนนซ์ดู", Check.CONSOLIDATION_NOT_OFFERED),
         ("Your total is fine", Check.NOT_THAI),
@@ -274,10 +285,19 @@ def test_AI_14_the_first_broken_rule_is_reported_with_its_token() -> None:
         ("เดือน ต.ค. 2569 ค่างวดรวม 6,500.00 บาท\nทุกเดือนอยู่ในงบ", OVER_NOW),
         ("ค่างวดรวม 6,500.00 บาท อยู่ในงบ 5,000.00 บาท", OVER_NOW),
         ("ไม่มีเดือนไหนเกินงบ", OVER_NOW),
+        ("เดือน ต.ค. 2569 ค่างวดรวม 6,500.00 บาท ยังไม่เกินงบ", OVER_NOW),
+        ("ค่างวดรวม 6,500.00 บาท อยู่ภายในงบ", OVER_NOW),
         ("ทุกเดือนยังอยู่ในงบ", BASE),  # months over later
+        ("ทุกเดือนไม่เกินงบ", BASE),
+        ("ทุก ๆ เดือนยังอยู่ในงบ", BASE),
         ("เดือนนี้เกินงบ", BASE),  # this month is in budget
         ("ค่างวดรวม 3,500.00 บาท เกินงบ", ALL_IN),  # nothing is over budget
         ("บางเดือนเกิน 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ", BASE),  # verdict is not RED
+        ("บางเดือนเกินกว่า 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ", BASE),
+        (
+            "ค่างวดทุกเดือนไม่เกิน 1 ใน 3 ของรายได้ ตามที่ ธปท. แนะนำ",
+            replace(BASE, above_one_third=True),  # RED: some month is above a third
+        ),
         # A real amount with the wrong label.
         ("เกินงบ 5,000.00 บาท", OVER_NOW),  # the budget, not the amount over it
         ("เกินงบ 2 เดือน", allowed("5000.00", counts=(3,), any_over=True)),  # not the count
@@ -310,6 +330,11 @@ def test_AI_30_a_claim_the_facts_do_not_support_is_refused(text: str, allow: All
         ("ทุกเดือนอยู่ในงบ และไม่เกินงบเลย", ALL_IN),
         ("ธปท. แนะนำว่าไม่ควรเกิน 1 ใน 3 ของรายได้", ALL_IN),
         ("บางเดือนเกิน 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ", replace(BASE, above_one_third=True)),
+        (
+            "บางเดือนเกิน 1 ใน 3 ของรายได้ ซึ่ง ธปท. แนะนำว่าไม่ควรเกิน 1 ใน 3 ของรายได้",
+            replace(BASE, above_one_third=True),
+        ),
+        ("กลับมาอยู่ภายในงบเดือน ธ.ค. 2569", OVER_NOW),
     ],
 )
 def test_AI_30_a_claim_the_facts_support_passes(text: str, allow: Allowed) -> None:
@@ -357,16 +382,16 @@ def test_AI_19_every_display_format_of_an_amount_is_read_as_its_value(
 @settings(max_examples=EXAMPLES, deadline=None)
 @given(
     index=st.integers(min_value=1900 * 12, max_value=2400 * 12),
-    full=st.booleans(),
+    names=st.sampled_from([THAI_MONTHS, THAI_MONTH_NAMES, THAI_MONTH_SHORT, THAI_MONTH_UNDOTTED]),
     era=st.booleans(),
     thai_digits=st.booleans(),
     before=FILLER,
 )
 def test_AI_19_a_thai_month_and_buddhist_year_is_read_as_that_month(
-    index: int, full: bool, era: bool, thai_digits: bool, before: str
+    index: int, names: tuple[str, ...], era: bool, thai_digits: bool, before: str
 ) -> None:
     month = Month(index)
-    name = (THAI_MONTH_NAMES if full else THAI_MONTHS)[month.month - 1]
+    name = names[month.month - 1]
     year = str(month.year + 543)
     year = year.translate(THAI_DIGITS) if thai_digits else year
     text = f"{before}เดือน {name} {'พ.ศ. ' if era else ''}{year}"

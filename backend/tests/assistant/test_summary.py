@@ -155,7 +155,7 @@ def test_AI_10_grounded_model_text_is_shown_as_ai() -> None:
         (MON_AI + " ถ้ารวมหนี้ ธนาคารจะพิจารณา", Check.CONSOLIDATION_NOT_OFFERED),  # AI-14
     ],
 )
-def test_AI_11_to_05_refused_model_text_gives_the_fallback(text: str, why: Check) -> None:
+def test_AI_11_to_14_refused_model_text_gives_the_fallback(text: str, why: Check) -> None:
     result = ask(MON, FakeWriter(text=text))
     assert (result.text, result.source, result.reason) == (
         fallback_text(MON),
@@ -197,7 +197,7 @@ def test_AI_15_no_key_gives_the_fallback_without_asking() -> None:
         (RuntimeError("a writer bug"), Reason.API_ERROR),
     ],
 )
-def test_AI_16_08_timeout_and_api_errors_give_the_fallback_once(
+def test_AI_16_17_timeout_and_api_errors_give_the_fallback_once(
     error: Exception, reason: Reason
 ) -> None:
     writer = FakeWriter(error=error)
@@ -246,6 +246,27 @@ def test_AI_18_no_key_is_not_cached() -> None:
     writer = FakeWriter(text=MON_AI)
     assert ask(MON, writer, cache).reason is Reason.OK
     assert len(writer.calls) == 1
+
+
+def test_AI_18_the_cache_is_read_and_written_under_the_users_lock() -> None:
+    """So two reloads at once never both miss and both ask the model."""
+
+    class Watched(SummaryCache):
+        def __init__(self) -> None:
+            super().__init__()
+            self.held: list[tuple[str, bool]] = []
+
+        def get(self, user_id: str, key: str) -> summary.Summary | None:
+            self.held.append(("get", self.lock(user_id).locked()))
+            return super().get(user_id, key)
+
+        def put(self, user_id: str, key: str, value: summary.Summary) -> None:
+            self.held.append(("put", self.lock(user_id).locked()))
+            super().put(user_id, key, value)
+
+    cache = Watched()
+    ask(MON, FakeWriter(text=MON_AI), cache)
+    assert cache.held == [("get", True), ("put", True)]
 
 
 def test_AI_18_the_users_lock_is_held_while_the_model_is_asked() -> None:

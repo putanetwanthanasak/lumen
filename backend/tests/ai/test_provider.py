@@ -81,6 +81,8 @@ def writer(sdk: FakeSdk, model: str = DEFAULT_MODEL) -> AnthropicWriter:
         settings(None),
         settings(""),
         settings("   "),
+        settings(KEY),  # no provider named: the key may be another provider's
+        settings(KEY, provider="  "),
         settings(KEY, provider="openai"),  # another provider's key never goes to Anthropic
         settings(KEY, provider="gemini"),
     ],
@@ -94,10 +96,10 @@ def test_AI_15_a_key_gives_the_anthropic_writer_without_building_the_client() ->
     assert isinstance(made, AnthropicWriter)
     assert made.model == DEFAULT_MODEL  # claude-haiku-5-5 when LLM_MODEL_PLANNER is unset
     assert DEFAULT_MODEL == "claude-haiku-5-5"
-    named = summary_writer(settings(KEY, model=" claude-sonnet-5-5 "))
+    named = summary_writer(settings(KEY, model=" claude-sonnet-5-5 ", provider="anthropic"))
     assert named is not None
     assert named.model == "claude-sonnet-5-5"
-    blank = summary_writer(settings(KEY, model="  "))
+    blank = summary_writer(settings(KEY, model="  ", provider=" anthropic "))
     assert blank is not None
     assert blank.model == DEFAULT_MODEL
     # Building the writer built no client: the guard (AI-23) would have failed the test.
@@ -114,7 +116,7 @@ def test_AI_23_building_the_real_client_fails_the_test_loudly() -> None:
 
 
 def test_AI_23_the_real_writer_cannot_reach_the_network_in_a_test() -> None:
-    real = summary_writer(settings(KEY))
+    real = summary_writer(settings(KEY, provider="anthropic"))
     assert real is not None
     # A BaseException: the writer's `except Exception` does not turn it into an error.
     with pytest.raises(pytest.fail.Exception, match="real Anthropic client"):

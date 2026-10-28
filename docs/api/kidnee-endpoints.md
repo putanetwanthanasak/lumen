@@ -364,7 +364,7 @@ Model: `assistant/schemas.py` (`SummaryOut`); service `assistant/summary.py`. Ho
 - `source` is `ai` (the model's words passed the grounding check) or `fallback` (the app's own template from the same numbers).
 - `reason` is one of:
   - `ok` (only with `source: "ai"`)
-  - `no_key`: `LLM_API_KEY` is not set, or `LLM_PROVIDER` names another provider; the model is never called
+  - `no_key`: `LLM_API_KEY` is not set, or `LLM_PROVIDER` is not `anthropic` (unset included, so a key meant for another provider is never sent); the model is never called
   - `timeout`: no answer within the 8 s timeout
   - `api_error`: any other API error, a refusal, a cut-off or an empty answer
   - `grounding_failed`: the model's text had a number or month not in its input (a count only as "N เดือน", a year only as 4 bare digits), a number in Thai words, a dash, a banned phrase, a budget claim the numbers do not support ("ทุกเดือนอยู่ในงบ" while a month is over, an amount after "เกินงบ" or "ลดลง" that is not the amount over budget or the reduction), or broke a wording rule. The check refuses the wrong claims it looks for; it cannot prove every sentence true.

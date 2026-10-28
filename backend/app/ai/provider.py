@@ -91,11 +91,12 @@ class AnthropicWriter:
 
 
 def summary_writer(settings: Settings) -> Writer | None:
-    """The real writer, or None when there is no key (unset or blank) or another
-    LLM provider is configured. Checks only whether the key is set."""
+    """The real writer, or None unless LLM_PROVIDER is "anthropic" and the key is set
+    (not blank). An unset provider gives None too, so a key meant for another
+    provider is never sent to Anthropic. Checks only whether the key is set."""
     provider = (settings.llm_provider or "").strip().lower()
     key = settings.llm_api_key
-    if provider not in ("", "anthropic") or key is None or not key.get_secret_value().strip():
+    if provider != "anthropic" or key is None or not key.get_secret_value().strip():
         return None
     model = (settings.llm_model_planner or "").strip() or DEFAULT_MODEL
     return AnthropicWriter(key, model)

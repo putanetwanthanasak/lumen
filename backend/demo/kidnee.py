@@ -267,10 +267,12 @@ def model_config_lines(settings: Settings) -> list[str]:
     key = settings.llm_api_key
     is_set = key is not None and key.get_secret_value().strip() != ""
     model = (settings.llm_model_planner or "").strip() or f"{DEFAULT_MODEL} (default)"
+    provider = (settings.llm_provider or "").strip().lower()
     return [
         f"LLM_API_KEY: {'set' if is_set else 'not set'}",
         f"LLM_MODEL_PLANNER: {model}",
-        f"LLM_PROVIDER: {settings.llm_provider or '(empty)'}",
+        f"LLM_PROVIDER: {settings.llm_provider or '(empty)'}"
+        + ("" if provider == "anthropic" else ": set it to anthropic, or no model is called"),
     ]
 
 

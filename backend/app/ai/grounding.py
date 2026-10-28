@@ -45,8 +45,26 @@ THAI_MONTH_NAMES = (
     "พฤศจิกายน",
     "ธันวาคม",
 )
+# The short spoken names ("กุมภา") and the abbreviations without their last dot ("ธ.ค").
+THAI_MONTH_SHORT = (
+    "มกรา",
+    "กุมภา",
+    "มีนา",
+    "เมษา",
+    "พฤษภา",
+    "มิถุนา",
+    "กรกฎา",
+    "สิงหา",
+    "กันยา",
+    "ตุลา",
+    "พฤศจิกา",
+    "ธันวา",
+)
+THAI_MONTH_UNDOTTED = tuple(name.removesuffix(".") for name in THAI_MONTHS)
 MONTH_OF = {
-    name: i + 1 for names in (THAI_MONTHS, THAI_MONTH_NAMES) for i, name in enumerate(names)
+    name: i + 1
+    for names in (THAI_MONTHS, THAI_MONTH_NAMES, THAI_MONTH_SHORT, THAI_MONTH_UNDOTTED)
+    for i, name in enumerate(names)
 }
 # Longest first, so "พฤศจิกายน" is never read as a shorter name. The year is taken
 # only when it is a whole 4-digit number ("ต.ค. 25690" leaves 25690 a plain number).
@@ -131,15 +149,24 @@ DIGIT_WORD = "(?:หนึ่ง|สอง|สาม|สี่|ห้า|หก|
 NUMBER_WORDS_RE = re.compile(
     r"หมื่น|แสน|ล้าน|ครึ่ง|ร้อยละ|เปอร์เซ็น"
     rf"|{DIGIT_WORD}(?:ร้อย|พัน)|(?:ร้อย|พัน){DIGIT_WORD}"
+    r"|(?:เดือน|งวด|รายการ|ก้อน|ครั้ง|แอป)\s*เดียว"
     rf"|(?<!เรียบ)(?:{DIGIT_WORD}|ร้อย|พัน)+"
     r"\s*(?:เดือน|บาท|งวด|ปี|ครั้ง|รายการ|เท่า|ชิ้น|ส่วน|ก้อน|อย่าง|แอป|วัน|สัปดาห์)"
 )
 # Claims about the budget, checked against the facts.
-ALL_IN_BUDGET_RE = re.compile(r"ทุกเดือน(?:ยัง|ก็)?\s*อยู่ในงบ|ไม่มี(?:เดือน)?\S{0,8}?เกินงบ|ไม่เกินงบเลย")
-IN_BUDGET_RE = re.compile("(?<!กลับมา)(?<!ไม่)อยู่ในงบ")
+IN_BUDGET = r"(?<!กลับมา)(?<!ไม่)อยู่\s*(?:ภาย)?ในงบ"  # "อยู่ในงบ", "อยู่ภายในงบ"
+ALL_IN_BUDGET_RE = re.compile(
+    rf"ทุก\s*(?:ๆ\s*)?เดือน\s*\S{{0,6}}?\s*(?:ไม่เกินงบ|{IN_BUDGET})"
+    r"|ไม่มี(?:เดือน)?\S{0,8}?เกินงบ|ไม่เกินงบเลย"
+)
+IN_BUDGET_RE = re.compile(f"{IN_BUDGET}|ไม่เกินงบ")
 OVER_BUDGET_RE = re.compile("(?<!ไม่)เกินงบ")
 THIS_MONTH_OVER_RE = re.compile(r"เดือนนี้(?:ค่างวด(?:รวม)?)?(?:ก็)?\s*เกินงบ")
-ABOVE_THIRD_RE = re.compile(r"(?<!ไม่)(?<!ไม่ควร)เกิน\s*(?:1\s*ใน\s*3|หนึ่งในสาม)")
+ONE_THIRD = r"\s*(?:กว่า\s*)?(?:1\s*ใน\s*3|หนึ่งในสาม)"
+ABOVE_THIRD_RE = re.compile(f"(?<!ไม่)(?<!ไม่ควร)เกิน{ONE_THIRD}")
+NOT_ABOVE_THIRD_RE = re.compile(f"ไม่เกิน{ONE_THIRD}")  # "ไม่ควรเกิน" is the guidance itself
+# More debt in other words: "ยังผ่อนเพิ่มอีกได้", "ซื้อเพิ่มได้อีก".
+MORE_DEBT_RE = re.compile(r"(?:ผ่อน|ซื้อ|รูด|กด)\S{0,8}?(?:เพิ่ม|อีก)\S{0,8}?ได้|รับค่างวดเพิ่ม")
 # An amount right after these words must be one of these facts.
 SIGNED = f"[{SIGNS}]?" r"\d[\d,]*(?:\.\d+)?"
 OVER_BY_RE = re.compile(rf"เกินงบ(?:อยู่|ไป)?\s*(?P<num>{SIGNED})(?P<unit>\s*เดือน)?")
@@ -205,6 +232,7 @@ class NumberMention:
     value: Decimal
     bare: bool  # digits only, no comma or decimal part: may be a count or a year
     months_after: bool  # "เดือน" right after it: a number of months
+    year_word: bool  # "ปี" or "พ.ศ." right before it: a year
 
 
 @dataclass(frozen=True)
@@ -246,7 +274,8 @@ def extract(text: str) -> Extracted:
         value = _decimal(digits)
         bare = digits.isdigit()
         after = re.match(r"\s*เดือน", rest[m.end() :]) is not None
-        mentions.append(NumberMention(-value if m.group("sign") else value, bare, after))
+        year = re.search(r"(?:ปี|พ\.ศ\.)\s*$", rest[: m.start()]) is not None
+        mentions.append(NumberMention(-value if m.group("sign") else value, bare, after, year))
     left = NUMBER_RE.sub(" ", rest)
     stray = [c for c in left if unicodedata.numeric(c, None) is not None]
     return Extracted(months, mentions, malformed, stray)
@@ -288,6 +317,9 @@ def _wording(text: str, allowed: Allowed) -> Iterator[Failure]:
     for phrase in BANNED:
         if phrase in text:
             yield Failure(Check.BANNED_PHRASE, phrase)
+    more = MORE_DEBT_RE.search(text)
+    if more is not None:
+        yield Failure(Check.BANNED_PHRASE, more.group(0))
     if CONSOLIDATION_RE.search(text) is not None:
         if not allowed.consolidation_offered:
             yield Failure(Check.CONSOLIDATION_NOT_OFFERED, "รวมหนี้")
@@ -311,6 +343,7 @@ def _claims(text: str, allowed: Allowed) -> Iterator[Failure]:
         (allowed.over_now, IN_BUDGET_RE),  # "within budget" while this month is over
         (not allowed.over_now, THIS_MONTH_OVER_RE),  # "this month is over" while it is not
         (not allowed.above_one_third, ABOVE_THIRD_RE),  # "above a third" while none is
+        (allowed.above_one_third, NOT_ABOVE_THIRD_RE),  # "not above a third" while one is
     ]
     for applies, pattern in refused:
         found = pattern.search(text) if applies else None
@@ -340,7 +373,7 @@ def _values(found: Extracted, allowed: Allowed) -> Iterator[Failure]:
         yield Failure(Check.MALFORMED_NUMBER, token)
     for n in found.mentions:
         counted = n.bare and n.months_after and n.value in allowed.counts
-        year = n.bare and n.value in years  # "ปี 2569", never "2,569.00"
+        year = n.bare and n.year_word and n.value in years  # "ปี 2569", never "2569 บาท"
         if n.value not in allowed.numbers and not counted and not year:
             yield Failure(Check.NUMBER_NOT_IN_INPUT, str(n.value))
     for c in found.stray:

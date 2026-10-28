@@ -123,6 +123,17 @@ def test_AI_15_no_key_over_http_never_builds_the_client(plan_api: Api) -> None:
     }
 
 
+def test_AI_22_the_read_transaction_ends_before_the_model_is_asked(
+    summary_api: Api, writer: FakeWriter
+) -> None:
+    """No database connection stays idle in a transaction for the model's 8 s."""
+    mon(summary_api)
+    seen: list[bool] = []
+    writer.during = lambda: seen.append(summary_api.session.in_transaction())
+    assert get_summary(summary_api).status_code == 200
+    assert seen == [False]
+
+
 def test_AI_18_a_reload_never_asks_again_until_the_numbers_change(
     summary_api: Api, writer: FakeWriter
 ) -> None:
