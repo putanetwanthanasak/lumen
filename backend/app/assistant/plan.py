@@ -364,6 +364,7 @@ def consolidation(
     # third is not RED; compared without division.
     if payment * 3 > income:
         return Consolidation(Reason.PAYMENT_ABOVE_ONE_THIRD_OF_INCOME, None)
+    [this_month] = month_totals([d.schedule for d in debts], first=now, count=1)
     return Consolidation(
         Reason.ELIGIBLE,
         Estimate(
@@ -374,9 +375,7 @@ def consolidation(
             monthly_payment=payment,
             total_cost=total_cost,
             current_remaining_total=principal,
-            current_monthly_total=month_totals([d.schedule for d in debts], first=now, count=1)[
-                0
-            ].total,
+            current_monthly_total=this_month.total,
         ),
     )
 
