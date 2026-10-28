@@ -155,9 +155,6 @@ export const HOME = {
       : together
         ? `เกินงบ ${count} เดือน (${first} ถึง ${last})`
         : `เกินงบ ${count} เดือน (ในช่วง ${first} ถึง ${last})`,
-  bufferCovers: "กันชนพอจ่ายส่วนที่เกิน",
-  bufferHelpsSome: "กันชนช่วยได้บางส่วน",
-  useBuffer: "ใช้กันชน ›",
   bufferTitle: "กันชนของคุณ ›",
   walletCovers: (months: number) => `พอ ${months} เดือน`,
   walletCoversNone: "ยังไม่พอ 1 เดือน",

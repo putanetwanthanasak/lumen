@@ -5,8 +5,9 @@ source of truth for `frontend/`. Copy lives in `frontend/src/copy.ts`, tokens in
 `frontend/src/index.css`, and API types in `frontend/src/api-types.ts`; this file
 explains them and must stay in step with them.
 
-Status (2026-10-28): every screen is built. All data is mocked in `src/mock/`
-until the wiring session sets `USE_MOCK = false` in `src/api.ts`. Session 15-UI
+Status (2026-10-29): every screen is built and calls the real API (Session 17):
+`npm run dev` and the build call `/api/...`; `npm run dev -- --mode mock` answers
+from `src/mock/` instead, for the scenes (section 10). Session 15-UI
 reworked Home's visual hierarchy: one card type per job, cards that shrink when
 there is nothing to act on, and one accent colour per feature (sections 4, 5.9
 and 7.2).
@@ -190,7 +191,7 @@ words, not cards.
 | Accent | Tokens | Icon | Text | Used for |
 |---|---|---|---|---|
 | `debt` green | `leaf-*` | home, check | ภาพรวมหนี้ | debt overview, main actions, in-budget lines |
-| `buffer` teal | `teal-*` | shield | กันชน | the wallet, the buffer screen's header and balance card, its nav tab, the hero's buffer line and "ใช้กันชน ›" |
+| `buffer` teal | `teal-*` | shield | กันชน | the wallet, the buffer screen's header and balance card, its nav tab, the hero's buffer line and "ใช้กันชนจ่ายส่วนที่เกิน", a prepared month's check |
 | `warn` amber | `warn-*` | triangle | เกินงบ | a month over budget: the hero's warning line and the part of its bar above the budget |
 | `bank` blue | `bank-*` | bank columns | ทางเลือกจากธนาคาร | the consolidation offer only |
 | `ai` soft tint | `ai-*` | chat bubble with a sparkle | ผู้ช่วย KidNee | the assistant only, never a solid colour |
@@ -232,10 +233,14 @@ in Noto Sans Thai (34px allowed for other system fonts; UI-40). They are
 - `secondary`: white with a 2px `leaf-700` border ("ยังไม่ซื้อ", retry).
 - `ghost`: text only.
 - `bank`: the secondary outline in the bank's blue ("สนใจรวมหนี้"), from `OUTLINE`
-  in `accent.ts`. The teal outline went with the over-budget strip: the hero's
-  "ใช้กันชน ›" is a text link.
-- `busy` disables the button and shows the "กำลัง..." label, so a double tap sends
-  one request.
+  in `accent.ts`.
+- `buffer`: filled teal (`FILL.buffer`), the month's move "ใช้กันชนจ่ายส่วนที่เกิน"
+  on Home's hero and the buffer screen. `bufferOutline`: the same in a teal outline
+  (`OUTLINE.buffer`), on each month of ภาระผ่อนรายเดือน, where it is not the
+  screen's main action.
+- `busy` disables the button and shows the "กำลัง..." label. A money move is also
+  guarded outside React (`mover`), since two taps can land before the re-render
+  that disables it.
 - Full width, pill shape, optional leading icon.
 
 ### 5.2 Cards (`Card`)
@@ -306,9 +311,9 @@ covers), each with its own icon. Connection errors use
 
 ### 5.8 Shell (`Screen.tsx`)
 - **Header:** logo, or back button + title. On the right, in this order: the
-  dashed "Demo" button (PR B, opens the Demo panel), the notifications bell (PR B)
-  with a red badge of the API's `unread_count` ("9+" above nine; its label reads
-  "แจ้งเตือน ยังไม่ได้อ่าน N รายการ"), and settings as a gear icon. A screen can take
+  dashed "Demo" button (opens the Demo panel; shown only while the demo endpoints
+  answer, 7.8), the notifications bell with no badge (the API keeps no read state),
+  and settings as a gear icon. A screen can take
   its feature's accent (`Screen`'s `accent` prop): the buffer screen's header is
   tinted teal with the shield before the title.
 - **Body:** scrolls; inside the phone frame its scrollbar is hidden
@@ -414,10 +419,15 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
    - this month over: the warning alone, which covers this month too.
    The warning is one line, "⚠ เกินงบ {n} เดือน ({first} ถึง {last})", counted from
    the rows (UI-41; "ในช่วง" when they are not one run, "เกินงบ 1 เดือน ({month})" for
-   one). Then one buffer line, from the plan's `buffer_plan.covered`, while the
-   buffer holds money: "✓ กันชนพอจ่ายส่วนที่เกิน", or "กันชนช่วยได้บางส่วน" with the
-   shield, and the text link "ใช้กันชน ›" in the buffer's teal (to the buffer
-   screen). An empty buffer, or no plan, gives no buffer line. No month chips, no
+   one). Then one buffer line for the first month over budget, from
+   `GET /buffer/shortfalls` (UI-46), as the API's `state` says: "{month} เกินงบ
+   {shortfall}" (amber triangle, not prepared), "{month} เกินงบ {shortfall}
+   เตรียมจากกันชนแล้ว {prepared} ยังขาด {gap}" (amber, partly prepared), or
+   "{month} เกินงบ {shortfall} เตรียมเงินจากกันชนแล้ว" (teal check, prepared). While
+   the buffer can pay some of the gap, the filled teal button "ใช้กันชนจ่ายส่วนที่เกิน"
+   opens the buffer screen at that month. The line stays on the first month over, so
+   after a move it shows that month prepared. No month over, or no answer, gives no
+   buffer line. No month chips, no
    amount over budget and no total over all months: 7.2b has them month by month.
    There is no separate upcoming-months card.
 3. **เช็กก่อนผ่อน**, the 56px primary button, with a one-line hint.
@@ -449,8 +459,8 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
      request (UI-31, L71).
 7. **Installments**, grouped by the app the user named (apps in the order they
    first appear, then "ไม่ระบุแอป"): name, "งวดที่ {x} จาก {y} · หมด {last month}",
-   amount per month, remaining (UI-43). The line comes from `GET /debts/months`
-   (on main since #39; the app reads the mock until wiring): the number in this
+   amount per month, remaining (UI-43). The line comes from `GET /debts/months`:
+   the number in this
    month's row and the month marked `is_last`; "เริ่ม {first} · หมด {last}" for one that starts later, never
    "งวดที่ 1" as if due now; "ผ่อน {months} เดือน" when no row lists it. Each part
    stays whole, so a line breaks only at the dot. Paid-off lines fold into one line,
@@ -461,13 +471,21 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
    to the total. A disputed line still owed keeps "คุณแจ้งว่าไม่ใช่รายการของคุณ".
    Empty: "ยังไม่มีรายการผ่อน ก่อนผ่อนชิ้นต่อไป กด เช็กก่อนผ่อน ได้เลย".
 - States: loading, error, settings missing, empty list. If the plan fails to load,
-  Home still shows; cards 5 and 6 are left out and the hero has no buffer line.
+  Home still shows and cards 5 and 6 are left out; if the shortfalls fail, the hero
+  has no buffer line.
 - At 390x844 the last card ends at least 90px, and the footer at least 40px, above
   the raised centre button.
 
 ### 7.2b ภาระผ่อนรายเดือน (`#/months`)
 - Every month from this month to the last month with an installment, from
-  `GET /debts/months` (on main since #39; the mock until wiring, section 9).
+  `GET /debts/months`.
+- Each month over budget also shows its buffer state line (as the hero's, from
+  `GET /buffer/shortfalls`) and, while the buffer can pay some of the gap, an
+  outlined teal "ใช้กันชนจ่ายส่วนที่เกิน" that opens the buffer screen at that month
+  (UI-48). The screen still shows the months when that answer fails.
+- At the bottom, one quiet caption (`text-caption`, muted, never a warning box,
+  UI-48): "ยอดในแอปผ่อนไม่ตรงกับที่นี่? อาจมีรายการที่คุณไม่ได้ทำ
+  ติดต่อแอปผ่อนโดยตรงจากช่องทางในแอป อย่าโอนเงินให้ใครที่โทรมาทวง".
 - Per month: "3,500.00 บาท จากงบ 5,000.00 บาท", a bar on one scale for all months
   with a budget mark, and a status chip with icon + text: "อยู่ในงบ" (check),
   "เกินงบ" (triangle) or "เกินเกณฑ์ที่ ธปท. แนะนำ" (octagon; wins over เกินงบ).
@@ -554,19 +572,39 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
   เกินงบรวมทุกเดือน {shortfall}", then "กันชน {balance} พอจ่ายส่วนที่เกินได้ทั้งหมด"
   (teal) or "กันชน {balance} ยังขาดอีก {still_short}" (amber); with no month over,
   "ทุกเดือนอยู่ในงบ ยังไม่ต้องใช้กันชน". It reloads after a move, so it always matches
-  the balance above it.
-- "ย้ายกลับบัญชีหลัก": an amount and one button, always enabled (L66: the user's
-  own action, never automatic, never blocked). One `client_request_id` per typed
-  amount, reused on a retry, so a double tap moves the money once (UI-13).
+  the balance above it. Its `covered` and `still_short` are measured against the
+  `remaining_gap`, what the moves made for each month have not yet prepared.
+- **"เดือนที่ค่างวดเกินงบ"**: one card per month over budget (`GET /buffer/shortfalls`,
+  UI-47), opened scrolled to the month that Home or 7.2b asked for. The state line,
+  then, while the month is not prepared, three numbered steps:
+  ① "ใช้กันชน {amount}", ② "ย้ายเข้าบัญชีหลัก +{amount}", ③ "จ่ายค่างวดในแอปผ่อน
+  (ผู้ใช้ทำเอง) ค่างวด {month} {total}"; the helper "ย้ายก่อนวันที่แอปผ่อนตัดเงิน
+  แนะนำทำในวันเงินเดือนเข้า"; and the filled teal button "ใช้กันชนจ่ายส่วนที่เกิน".
+  {amount} is the API's `remaining_gap`, or the balance when that is smaller (a
+  comparison; screens never add or subtract money, UI-51). The move sends
+  `for_month`. After it, ① and ② get a check, ① reads "ใช้กันชน {amount} (กันชน
+  {before} → {after})" with both balances from the API, and a success line says
+  "ย้าย {amount}เข้าบัญชีหลักแล้ว กันชนเหลือ {balance} จ่ายค่างวดในแอปผ่อนได้เลย". The
+  "after" balance shows only once the move is done: before it, it would need
+  arithmetic on the client. Step ③ stays the user's own: KidNee never pays the app.
+  A prepared month shows its check line and no steps. Between the user's own
+  accounts the word is "ย้าย", never "โอน" (UI-47).
+- "ย้ายกลับบัญชีหลัก": an amount and an outlined button (the month's move is the
+  primary), always enabled (L66: the user's own action, never automatic, never
+  blocked); it sends no `for_month`. Every move keeps one `client_request_id` per
+  amount and month, reused on a retry, and a second press while a move is out is
+  ignored (`mover` in `bufferMove.ts`), so a double tap moves the money once
+  (UI-13, UI-47).
 - 422 `AMOUNT_ABOVE_BALANCE` is a field error that names the balance. Any other
   failure is an unknown outcome: the screen never says where the money is, reads
   the balance again, and asks to press again with the same amount (same id, so it
   never moves twice). Done: the new balance.
 
 ### 7.5 Screen 5: Notifications (`#/alerts`, `screens/Notifications.tsx`)
-- Opened from the header bell (with a back button to Home). Opening it marks every
-  notification read (`POST /notifications/read`), so the badge clears; the ones
-  that were unread keep a "ใหม่" tag while the screen is open (UI-24).
+- Opened from the header bell (with a back button to Home). The API keeps no read
+  state, so there is no badge and no "ใหม่" tag. When the user has more alerts than
+  the answer lists, a line under them says "แสดง {shown} รายการล่าสุด จากทั้งหมด
+  {count} รายการ" (UI-24). A consolidation loan's alert has the bank icon.
 - Newest first; icon per kind; the text is the backend's (`notifications/copy.py`,
   copied verbatim into `mock/alerts.ts`). A payday shortfall links to the buffer
   while it holds money, else to ภาระผ่อนรายเดือน (UI-17). Empty:
@@ -586,9 +624,17 @@ else imported them, so deleting was safe. Their parts now live in 7.2 (cards 4 a
 ### 7.8 Demo panel (`components/DemoPanel.tsx`)
 - A dashed "Demo" button in the header opens a sheet over the phone frame, marked
   "สำหรับนำเสนอเท่านั้น ไม่ใช่ส่วนหนึ่งของแอป".
+- The button shows only while the demo endpoints answer: on open, the app sends
+  `POST /demo/payday` with an empty body, which writes nothing. A 422 means they are
+  on; a 404, or no answer, means off, and there is no button (UI-49).
+- "ผู้ใช้ตัวอย่าง" (the real API only): switches between the personas seeded in
+  `lumen_kidnee` (`demo-mon` ม่อน, `demo-over`, `demo-consolidate`, each with its
+  one-line story; section 10). It sets `X-Demo-User`, keeps the choice in
+  `localStorage` (an unknown id is ignored), goes Home and reloads (UI-49).
 - Payday: pick a month, run `POST /demo/payday`, see the outcome in words; a
-  second run for the same month says it already ran (L67, once a month).
-- Scenes (mock only): first launch; ม่อน with settings; "มีเดือนเกินงบ" (records
+  second run for the same month says it already ran (L67, once a month). The
+  screen on show reloads after it.
+- Scenes (`--mode mock` only): first launch; ม่อน with settings; "มีเดือนเกินงบ" (records
   the YELLOW laptop from next month: 2 months over, the buffer covers it, no
   consolidation); "เกินงบตั้งแต่เดือนนี้" (records the RED motorbike from this
   month: 9 months over, the pause line, the buffer still short, consolidation
@@ -621,7 +667,10 @@ Source of truth: `frontend/src/copy.ts`. The key strings:
 | Settings missing | บอกรายได้และงบผ่อนต่อเดือนก่อน KidNee ถึงจะช่วยคิดให้ได้ |
 | Money errors | กรอกจำนวนเงินด้วยนะ · ทศนิยมได้ไม่เกิน 2 ตำแหน่ง · จำนวนเงินต้องมากกว่า 0 |
 | Hero | เดือนนี้และอีก {n} เดือนอยู่ในงบ · เดือนนี้ยังอยู่ในงบ · เกินงบ {n} เดือน ({first} ถึง {last}) · ดูทุกเดือน (the chevron, to screen readers) |
-| Hero buffer line | กันชนพอจ่ายส่วนที่เกิน · กันชนช่วยได้บางส่วน · ใช้กันชน › |
+| Buffer state line (hero, 7.2b, 7.4) | {month} เกินงบ {shortfall} · เตรียมจากกันชนแล้ว {prepared} ยังขาด {gap} · เตรียมเงินจากกันชนแล้ว · ใช้กันชนจ่ายส่วนที่เกิน |
+| Buffer steps | ใช้กันชน {amount} · ย้ายเข้าบัญชีหลัก +{amount} · จ่ายค่างวดในแอปผ่อน (ผู้ใช้ทำเอง) ค่างวด {month} {total} · ย้ายก่อนวันที่แอปผ่อนตัดเงิน แนะนำทำในวันเงินเดือนเข้า · ย้าย {amount}เข้าบัญชีหลักแล้ว กันชนเหลือ {balance} จ่ายค่างวดในแอปผ่อนได้เลย |
+| Months, last line | ยอดในแอปผ่อนไม่ตรงกับที่นี่? อาจมีรายการที่คุณไม่ได้ทำ ติดต่อแอปผ่อนโดยตรงจากช่องทางในแอป อย่าโอนเงินให้ใครที่โทรมาทวง |
+| Rejected field (422) | ระบบไม่รับค่านี้ ลองแก้แล้วกดอีกครั้ง |
 | Result bars | เกินงบ {n} เดือน: {first} ถึง {last} · อยู่ในงบ · เกินงบ · เกินเกณฑ์ที่ ธปท. แนะนำ · ค่างวดที่มีอยู่ · ค่างวดชิ้นใหม่ |
 | Installments | งวดที่ {x} จาก {y} · หมด {month} · เริ่ม {month} · ผ่อนครบแล้ว {n} รายการ · ไม่นับในยอดต่อเดือน |
 | Wallet | กันชนของคุณ › · พอ {n} เดือน · ยังไม่พอ 1 เดือน · ไม่มีค่างวด |
@@ -634,53 +683,65 @@ backend writes them.
 
 ## 9. API types per screen
 
-All in `frontend/src/api-types.ts`, copied from the merged backend. Money is a
-string. `src/api.ts` is the only module that gets data (test UI-07); it sends
-`X-Demo-User: demo-mon` (L60, demo only) and calls `/api/...`, which the Vite
-proxy forwards to `http://127.0.0.1:8000` with `/api` stripped (the backend has no
-prefix; to be confirmed when wiring).
+All in `frontend/src/api-types.ts`, copied from the backend; every call and field
+with its exact JSON is in `docs/api/kidnee-endpoints.md`. Money is a string.
+`src/api.ts` is the only module that gets data (test UI-07). It sends
+`X-Demo-User` for the chosen persona (`src/personas.ts`, `demo-mon` by default;
+L60, demo only) and calls `/api/...`: in dev the Vite proxy forwards it to
+`http://127.0.0.1:8000` with `/api` stripped, and in the one-server demo the API
+is mounted at `/api` (L73). With `--mode mock` the same calls are answered by
+`src/mock/server.ts`, and nothing reaches a server (UI-50).
 
 | Screen | Call | Request | Response | Errors |
 |---|---|---|---|---|
 | 1 | `GET /settings` | | `SettingsOut` | 404 = none yet |
 | 1 | `POST /settings` / `PUT /settings` | `SettingsIn` (`saving_rule` is `{mode:"percent",percent}` or `{mode:"fixed",amount}`) | `SettingsOut` with `warnings` | 409 exists (POST), 404 none (PUT), 422 |
-| 2 | `GET /debts/summary` | | `DebtSummary` (`installments: InstallmentLine[]`) | |
-| 2, 2b | `GET /debts/months` (on main since #39; its rows lack only `platform_name`, **TODO(backend)**, read as null, UI-39) | `?count=N` (optional; without it, up to the last month due) | `MonthsOut { months: MonthDetail[] }` from this month, no candidate (main also sends `months_truncated`, unused here); `MonthDetail` = `MonthRow` + `installments: MonthInstallment[]` (`installment_id, item_name, platform_name, monthly_amount, installment_no, installments_total, is_last`). Home and 2b call it without `count`. No `over_by`: nothing on screen needs it since the hero lost its chips (UI-42) | 409 `SETTINGS_REQUIRED`, 422 bad count |
-| 3 | `GET /installments/suggested-monthly` **TODO, mock only** | `?item_price=&months=` | `SuggestedMonthlyOut { monthly_amount }`: price / months rounded UP to 0.01 | 422 |
+| 2 | `GET /debts/summary` | | `DebtSummary` (`installments: InstallmentLine[]`, with `platform_name`, `first_due_date`, `last_due_date`) | |
+| 2, 2b | `GET /debts/months` | `?count=N` (optional; Home and 2b leave it out) | `MonthsOut { months: MonthDetail[], months_truncated }`; `MonthDetail` = `MonthRow` + `budget`, `over_by` + `installments: MonthInstallment[]` (`installment_id, item_name, platform_name, monthly_amount, installment_no, installments_total, is_last, last_month`) | 409 `SETTINGS_REQUIRED`, 422 bad count |
+| 3 | `GET /installments/suggested-monthly` | `?item_price=&months=` | `SuggestedMonthlyOut { monthly_amount }`: price / months rounded UP to 0.01 | 422 |
 | 2, 4 | `GET /buffer` | | `BufferOut` (`months_covered` null when nothing is owed) | |
-| 3 | `POST /installments/preview` | `ManualEntryIn` | `PreviewOut` = `VerdictOut` + `saving_if_recorded` (**TODO**: the field is new) | 409 `SETTINGS_REQUIRED`, 422 |
-| 3b | `POST /installments` | `ManualEntryIn` (same `client_request_id`; **TODO**: new optional `platform_name`, at most 60 characters, no control characters; the backend forbids extra fields today, so it 422s until added) | `RecordedOut` (`saved_amount`, `monthly_total`, `warnings: VerdictOut`); 201 new, 200 repeat | 409 reused id with other fields, 409 `SETTINGS_REQUIRED` |
-| 4 | `POST /buffer/move-to-main` | `MoveIn` | `MovedOut`; 201, 200 repeat | 409, 422 `AMOUNT_ABOVE_BALANCE` |
-| Demo | `POST /demo/payday` | `{ month: "YYYY-MM" }` | `PaydayOut` | 404 when demo endpoints are off |
-| 5 | `GET /notifications` **TODO, mock only** | | `NotificationsOut` (`notifications: NotificationOut[]`, newest first: `kind`, `title`, `body`, `created_at`, `read`; and `unread_count`) | |
-| 5 | `POST /notifications/read` **TODO, mock only** | | `NotificationsOut`, every item read, `unread_count: 0` | |
-| 2, 2b, 3, 4 | `GET /assistant/plan` (merged backend; mocked with the same shape and rules in `mock/assistant.ts`, UI-28) | | `AssistantPlanOut`: `months: PlanMonth[]` (`month, total, budget, over_budget, headroom`), `months_truncated`, `back_in_budget_month`, `pause_until`, `safe_new_monthly`, `safe_new_from`, `safe_new_months`, `buffer_plan {shortfall, balance, covered, still_short}`, `consolidation {eligible, reason, estimate}`; `EstimateOut` = `principal, annual_rate, rate_is_example, rate_note, term_months, first_due_month, monthly_payment, total_cost, current_remaining_total, extra_cost`, and `monthly_reduction` (**TODO(backend)**, mock only: the monthly amounts the loan pays off, which is `monthly_total`, minus `monthly_payment`; "0.00" when not above zero; null when absent, UI-39) | 409 `SETTINGS_REQUIRED` |
-| 2 | `POST /assistant/summary` **TODO, mock only**; Home calls it on open | | `AssistantSummaryOut {text, is_example}` | 409 `SETTINGS_REQUIRED` |
+| 2, 2b, 4 | `GET /buffer/shortfalls` | | `ShortfallsOut`: `balance`, `shortfall`, `remaining_gap`, `covered`, `still_short`, and `months: ShortfallMonth[]` (`month, total, budget, shortfall, prepared, remaining_gap, state, covered_by_buffer, still_short`), `months_truncated`; `state` is `not_prepared`, `partly_prepared` or `prepared` | 409 `SETTINGS_REQUIRED` |
+| 3 | `POST /installments/preview` | `ManualEntryIn` | `PreviewOut` = `VerdictOut` + `saving_if_recorded` | 409 `SETTINGS_REQUIRED`, 422 |
+| 3b | `POST /installments` | `ManualEntryIn` (same `client_request_id` on a retry; `platform_name` trimmed, `null` when blank, at most 60 characters) | `RecordedOut` (`saved_amount`, `monthly_total`, `warnings: VerdictOut`); 201 new, 200 repeat | 409 reused id with other fields, 409 `SETTINGS_REQUIRED`, 422 |
+| 4 | `POST /buffer/move-to-main` | `MoveIn` (`client_request_id`, `amount`, and `for_month` only for a month's move) | `MovedOut` (with `for_month`); 201, 200 repeat | 409 reused id with another amount or month, 422 `AMOUNT_ABOVE_BALANCE` |
+| Demo | `POST /demo/payday` | `{ month: "YYYY-MM" }` (`{}` as the probe, 7.8) | `PaydayOut` | 404 when demo endpoints are off |
+| 5 | `GET /notifications` | | `NotificationsOut` (`notifications: NotificationOut[]`, newest first: `kind`, `title`, `body`, `created_at`, `installment_id`; and `count`, every alert the user has) | |
+| 2, 2b, 3, 4 | `GET /assistant/plan` | | `AssistantPlanOut`: `months`, `months_truncated`, `back_in_budget_month`, `pause_until`, `safe_new_monthly`, `safe_new_from`, `safe_new_months`, `buffer_plan {shortfall, remaining_gap, balance, covered, still_short}`, `consolidation {eligible, reason, estimate}`; `EstimateOut` adds `current_monthly_total` (the offer's "ตอนนี้") and `monthly_reduction` | 409 `SETTINGS_REQUIRED` |
+| 2 | (no call) the assistant's example | | Worded from `GET /assistant/plan` by `exampleSummary` and always labelled ตัวอย่าง (AI is roadmap only). `POST /assistant/summary` exists only in the mock | |
 | Demo | `POST /demo/scene` **mock only** | `{ scene }` | 204 | |
 
 Error bodies: `{"detail": {"code", "message"}}` for coded errors, a plain string
-`detail` for older ones, and FastAPI's list for 422. `ApiError` exposes `status`
-and `code`.
+`detail` for older ones, and FastAPI's list for 422. `ApiError` exposes `status`,
+`code` and `fields`, the last name in each 422 `loc` (UI-50). The forms map those
+names to their own fields and mark them "ระบบไม่รับค่านี้ ลองแก้แล้วกดอีกครั้ง"; a 422
+on nothing the user can fix shows the general failure. `SETTINGS_REQUIRED` opens
+settings (the form keeps its draft).
 
-**Fields the backend does not send yet (UI-39, `src/apiFields.ts`).** Checked
-against the backend's schemas on main: `monthly_reduction` (the plan's estimate),
-`platform_name` (installment lines, in `GET /debts/summary` and in the month rows),
-and `POST /assistant/summary`, which has no endpoint yet. The mock sends them all.
-`api.ts` passes each of these answers through its reader, and a screen never
-crashes on such a field:
+**Readers (UI-39, `src/apiFields.ts`).** The backend now sends `monthly_reduction`,
+`current_monthly_total` and `platform_name`. `api.ts` still passes these answers
+through its reader, so a screen never crashes on such a field:
 - absent or not what the contract says (a JSON number, a sign, a comma): read as
-  null, with one console warning per answer and field, for example
-  `GET /assistant/plan: no readable consolidation.estimate.monthly_reduction, so the
-  offer card shows without its benefit line. TODO(backend): send it.`;
+  null, with one console warning per answer and field;
 - the screen leaves out only what needs it: the offer's benefit line, a row's app
   name. Nothing is guessed, and the answer given is not changed;
 - the summary without `text` is an error (the bubble's state with "ลองอีกครั้ง");
   without `is_example` it keeps its example tag, the safe side for AI text.
 
-Fields the backend already sends are not checked again on screen.
+Fields not listed here are not checked again on screen.
 
-## 10. Demo persona and scenes
+## 10. Demo personas and scenes
 
+**On the real API** (`python -m demo.kidnee reset --yes`, then `serve`; KD-04,
+KD-05), the Demo panel switches between three seeded personas, each telling one
+story. Their numbers are in `docs/api/kidnee-endpoints.md`:
+- `demo-mon`, ม่อน: every month in budget.
+- `demo-over`: this month and next over budget by 1,500.00 each; the buffer
+  covers both. The one to show the three steps and the prepared state.
+- `demo-consolidate`: nine months over budget, a small buffer that pays part of the
+  first month (partly prepared), and the bank's consolidation offer.
+Platform names are fictional ("ShopDemo", "RideDemo"), and one item is unnamed.
+
+**In the mock** (`npm run dev -- --mode mock`), the rest of this section:
 **ม่อน** (demo user `demo-mon`; UI-45 checks that no older name is left in
 `frontend/` or here), 24, first job. Income 20,000.00, payday the 25th, installment budget
 5,000.00, auto-save 10% of the price, leftover saving on, consent given. Main
@@ -720,11 +781,11 @@ Now: 3,500.00 a month.
 6. **GREEN**: tap "อยู่ในงบ", ประเมินภาระผ่อน, then **บันทึก**: 1,200.00 saved to
    the buffer, new total 4,700.00.
 7. **Home** again: the installments now total 4,700.00 a month (from next month), buffer 6,000.00.
-8. The bell shows 1 (the ตู้เย็น manual-entry alert); open it, the badge clears.
+8. The bell: the ตู้เย็น manual-entry alert, newest first.
    Home's assistant bubble and the banner "ตอนนี้ยังไม่จำเป็นต้องรวมหนี้".
 9. Demo, "ม่อน: เกินงบตั้งแต่เดือนนี้": Home's hero bar turns amber past the budget
    mark, with one warning line "⚠ เกินงบ 9 เดือน (ต.ค. 2569 ถึง มิ.ย. 2570)" and one
-   buffer line "กันชนช่วยได้บางส่วน" with "ใช้กันชน ›". "ทางเลือกจากธนาคาร": 7,500.00 a month
+   buffer line "ต.ค. 2569 เกินงบ 2,500.00 บาท" with "ใช้กันชนจ่ายส่วนที่เกิน". "ทางเลือกจากธนาคาร": 7,500.00 a month
    now, 3,369.88 if consolidated, but 80,877.12 in total against 67,500.00, all four
    the same size; "ค่างวดลดลงเดือนละ 4,130.12 บาท ทุกเดือนกลับมาอยู่ในงบ" (example rate
    18%, 24 months); "สนใจรวมหนี้". Tap the hero: "กลับมาอยู่ในงบเดือน ก.ค. 2570"
@@ -736,13 +797,13 @@ Home per scene (UI-33 tests the rules behind it):
 | Scene | Hero | Buffer line | Assistant | Consolidation |
 |---|---|---|---|---|
 | ม่อน: ตั้งค่าแล้ว | all in budget, one line | none | summary | banner |
-| มีเดือนเกินงบ | this month in budget; "เกินงบ 2 เดือน (พ.ย. 2569 ถึง ธ.ค. 2569)" | กันชนพอจ่ายส่วนที่เกิน, ใช้กันชน › | summary | banner |
-| เกินงบตั้งแต่เดือนนี้ | "เกินงบ 9 เดือน (ต.ค. 2569 ถึง มิ.ย. 2570)" | กันชนช่วยได้บางส่วน, ใช้กันชน › | summary | bank offer |
-| มีเดือนเกินงบ กันชนว่าง | as มีเดือนเกินงบ, wallet empty | none | summary | banner |
+| มีเดือนเกินงบ | this month in budget; "เกินงบ 2 เดือน (พ.ย. 2569 ถึง ธ.ค. 2569)" | พ.ย. 2569 เกินงบ 1,500.00 บาท, ใช้กันชนจ่ายส่วนที่เกิน | summary | banner |
+| เกินงบตั้งแต่เดือนนี้ | "เกินงบ 9 เดือน (ต.ค. 2569 ถึง มิ.ย. 2570)" | ต.ค. 2569 เกินงบ 2,500.00 บาท, ใช้กันชนจ่ายส่วนที่เกิน | summary | bank offer |
+| มีเดือนเกินงบ กันชนว่าง | as มีเดือนเกินงบ, wallet empty | พ.ย. 2569 เกินงบ 1,500.00 บาท, no button | summary | banner |
 | ผู้ช่วยกำลังสรุป (ตอบช้า) | all in budget | none | loading | banner |
 | ผู้ช่วยสรุปไม่สำเร็จ | all in budget | none | error, retry | banner |
 
-Shortcuts for slides: `http://127.0.0.1:5173/?persona#/home` starts with the
+Shortcuts for slides (mock only): `http://127.0.0.1:5173/?persona#/home` starts with the
 settings saved; `?persona&scene=YELLOW#/think` fills that example and opens its
 result screen.
 Reloading the page resets the mock.
@@ -753,8 +814,9 @@ Node 22.12 or later (Vite 8). From `frontend/`:
 
 ```bash
 npm ci              # exact versions from package-lock.json
-npm run dev         # http://127.0.0.1:5173 (loopback only, never 0.0.0.0)
-npm test            # UI-01 to UI-45 (compiled with tsc, run with node --test)
+npm run dev         # http://127.0.0.1:5173 (loopback only, never 0.0.0.0), calls the API on 127.0.0.1:8000
+npm run dev -- --mode mock   # the same screens on the in-browser mock, with the scenes
+npm test            # UI-01 to UI-51 (compiled with tsc, run with node --test)
 npm run typecheck   # tsc --noEmit, strict
 npm run build       # typecheck + production build to dist/
 npm audit
@@ -766,13 +828,14 @@ again with `npm run dev -- --force`. Vite keeps pre-bundled dependencies in
 Optimize Dep)" for files such as `react-dom_client.js`, which leaves a blank page.
 If it still happens, delete `node_modules/.vite` and run `npm run dev -- --force`.
 
-Manual check, never in CI (it needs Chrome and the dev server): with `npm run dev`
-running, `node scripts/nav-layer-check.mjs` checks that the nav is the top layer
+Manual check, never in CI (it needs Chrome and the dev server): with
+`npm run dev -- --mode mock` running (it uses the scenes), `node scripts/nav-layer-check.mjs` checks that the nav is the top layer
 over everything that scrolls, on every screen (5.8, "Layers"; `scripts/README.md`).
 
-To use the real backend: run it on `127.0.0.1:8000` with
-`DEMO_ENDPOINTS_ENABLED=true` for payday, then set `USE_MOCK = false` in
-`src/api.ts`.
+The real backend for `npm run dev`: run it on `127.0.0.1:8000` with
+`DEMO_ENDPOINTS_ENABLED=true` for payday and the persona switcher. The one-server
+demo (`python -m demo.kidnee serve`, L73) serves the built `dist/` with the API
+and its own `lumen_kidnee` database; build first (`npm run build`).
 
 Dependencies (exact pins, nothing else without asking): react 19.3.0, react-dom
 19.3.0, vite 8.3.4, @vitejs/plugin-react 6.1.2, typescript 7.0.2, tailwindcss
