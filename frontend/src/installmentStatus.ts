@@ -47,11 +47,11 @@ export function groupByPlatform(lines: readonly InstallmentLine[]): PlatformGrou
 
 /**
  * Where an installment is in its plan, from GET /debts/months (this month first, up to
- * the last month due; TODO(backend), mock only): the instalment number in the first
- * row that lists it, its total, and the month marked `is_last` (UI-43). Looked up in
- * the API's rows, never counted out here. An installment that starts after this month
- * says when it starts instead, so "งวดที่ 1" never reads as due now. Null when no row
- * lists it: the row then keeps "ผ่อน {months} เดือน".
+ * the last month due; on main since #39): the instalment number in the first row that
+ * lists it, its total, and the month marked `is_last` (UI-43). Looked up in the API's
+ * rows, never counted out here. An installment that starts after this month says when
+ * it starts instead, so "งวดที่ 1" never reads as due now. Null when no row lists it:
+ * the row then keeps "ผ่อน {months} เดือน".
  */
 export function scheduleText(id: string, months: readonly MonthDetail[]): string | null {
   const thisMonth = months[0]?.month;

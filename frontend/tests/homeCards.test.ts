@@ -10,7 +10,7 @@
  * UI-42 (markup): the hero is one card: a chevron, a bar with the budget marked, one
  *   warning line and one buffer line with its link; no inner box, no month chips, no total.
  * UI-43: the installments list: where each one is in its plan, from GET /debts/months
- *   (TODO(backend), mock only), and the paid-off ones folded into one line.
+ *   (on main since #39), and the paid-off ones folded into one line.
  */
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";

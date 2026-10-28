@@ -366,7 +366,7 @@ function debtSummary(): DebtSummary {
 }
 
 /**
- * TODO(backend): GET /debts/months. From this month, with no candidate: `count`
+ * GET /debts/months, as on main since #39. From this month, with no candidate: `count`
  * months, or up to the last month an owed installment is due.
  */
 function months(path: string): MockResponse {

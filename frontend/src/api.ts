@@ -114,8 +114,9 @@ export async function getDebtSummary(): Promise<DebtSummary> {
 }
 
 /**
- * TODO(backend): GET /debts/months is not built yet; answered by the mock only.
- * With `count`, that many months from now; without, up to the last month due.
+ * GET /debts/months, on main since #39 (backend/app/debts/months.py); the mock answers
+ * while USE_MOCK is true. With `count`, that many months from now; without, up to the
+ * last month due. Its rows lack only platform_name (TODO(backend), apiFields.ts).
  */
 export async function getMonths(count?: number): Promise<MonthsOut> {
   return readMonths((await call<MonthsOut>("GET", count === undefined ? "/debts/months" : `/debts/months?count=${count}`)).body);
