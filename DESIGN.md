@@ -143,13 +143,14 @@ Components use tokens only, never raw hex.
 | `desk` | `#e3ebe6` | page behind the phone frame |
 | `ok-bg` / `ok-line` / `ok-ink` | `#e8f7ee` / `#9fdcb8` / `#0b5735` | GREEN, success |
 | `warn-bg` / `warn-line` / `warn-ink` | `#fff6db` / `#f5c451` / `#6e4500` | YELLOW, budget warning |
+| `warn-edge` | `#b07400` | the over-budget strip's edge, where it meets the page |
 | `risk-bg` / `risk-line` / `risk-ink` | `#fdecec` / `#f3a3a3` / `#9b1c1c` | RED, field errors |
 | `info-bg` / `info-line` / `info-ink` | `#eaf3fb` / `#a9cbe9` / `#1d4e7a` | neutral notices, Demo tags |
 | `bar-ok` / `bar-over` / `bar-risk` | `#138a52` / `#c27c00` / `#9b1c1c` | month bars |
 | `teal-50` / `100` / `200` / `700` / `800` | `#e8f7f7` / `#c4ebec` / `#94d9dc` / `#0c6a72` / `#0a535a` | the buffer (feature 2) |
 | `bank-50` / `200` / `700` / `800` | `#eef3fd` / `#b3c9f2` / `#2a4fa0` / `#1f3d7d` | the bank's consolidation offer |
-| `ai-from` / `ai-to` / `ai-line` / `ai-ink` | `#f3effe` / `#e8f4fd` / `#d6ccf6` / `#4b3699` | the assistant only (soft gradient) |
-| `quiet-bg` / `quiet-line` / `quiet-ink` | `#eef2f6` / `#d3dce6` / `#3f5166` | a note with nothing to act on |
+| `ai-from` / `ai-to` / `ai-line` / `ai-ink` / `ai-edge` | `#f3effe` / `#e8f4fd` / `#d6ccf6` / `#4b3699` / `#8a76d6` | the assistant only (soft gradient; `ai-edge` is the panel's edge) |
+| `quiet-bg` / `quiet-line` / `quiet-ink` / `quiet-edge` | `#eef2f6` / `#d3dce6` / `#3f5166` / `#7a8a9d` | a note with nothing to act on (`quiet-edge` is the banner's edge) |
 
 Contrast (WCAG 2.2, measured): white on `leaf-700` 6.31; `ink` on card 16.44;
 `ink-muted` on card 7.22 and on surface 6.73; `ok-ink`/`ok-bg` 7.81;
@@ -161,15 +162,24 @@ Accents: `teal-800` on `teal-50` 7.96, on card 8.76, on `warn-bg` 8.11; white on
 `ai-to` 8.22; `quiet-ink` on `quiet-bg` 7.23; `warn-ink` on card 8.35. Non-text:
 `teal-700` on `teal-50` 5.75, on `teal-200` 3.98 (the meter's filled and empty
 segments), on `warn-bg` 5.86; `bank-700` on `bank-50` 6.93; the hero bar on its
-`leaf-50` track, `bar-ok` 4.12 and `bar-over` 3.19. Test UI-35 recomputes these
-pairs from `index.css`.
+`leaf-50` track, `bar-ok` 4.12 and `bar-over` 3.19. The offer's title, white on
+`bank-700`, 7.71; its tag, `bank-800` on white, 10.39.
+Card edges against the page (surface / card), at least 3:1 (1.4.11): `warn-edge`
+3.67 / 3.93, `bank-700` 7.19 / 7.71, `ai-edge` 3.47 / 3.72, `quiet-edge` 3.29 /
+3.53. The light lines they replace blend in: `bank-200` 1.56, `ai-line` 1.42,
+`quiet-line` 1.29, `warn-line` 1.52 on surface. Test UI-35 recomputes these pairs
+from `index.css`, the edges from `EDGE` in `accent.ts`.
 
 ### Feature accents (`src/accent.ts`)
 
 One colour per feature, and never colour only: each accent comes with its icon
 and its text. The teal, bank, ai and quiet classes appear in `accent.ts` only
 (UI-34 scans `src/`), and the coloured lines and chips on Home are `Marked` values
-(accent, icon, text).
+(accent, icon, text). A tinted card that meets the page takes its `EDGE`, so its
+light tint never blends into the page: the strip (`warn-edge`, 2px), the bank's
+offer (`bank-700`, 2px), the assistant's panel (`ai-edge`) and the consolidation
+banner (`quiet-edge`). UI-35 measures each edge, and checks Home's markup in three
+scenes for a tinted card without its edge.
 
 | Accent | Tokens | Icon | Text | Used for |
 |---|---|---|---|---|
@@ -242,8 +252,14 @@ word), the sentence, and "นี่เป็นคำแนะนำเท่า
 - Visible label above, help text below (16px), error below with an icon and
   `role="alert"`.
 - Money fields: `type="text"` with `inputMode="decimal"`, never a number input,
-  so the browser cannot turn the value into a float. A "บาท" suffix.
-- Placeholders start with "เช่น" so they never look like a value already filled in.
+  so the browser cannot turn the value into a float. A "บาท" suffix. A comma is
+  accepted only as a thousands separator in groups of three ("12,000",
+  "12,000.50"); "1,5" is refused, never read as 15. Counts (months):
+  `inputMode="numeric"`.
+- Placeholders start with "เช่น" so they never look like a value already filled in,
+  and show a form the field takes ("เช่น 12,000").
+- A field shows its error once the user leaves it with something typed. An empty
+  field is only not done yet, which the form's check says (7.3).
 - Toggle: a 44x64 switch with `role="switch"`.
 - Saving mode: two large radio cards (percent / fixed). Only the chosen mode's
   input is shown and sent (L63).
@@ -268,8 +284,11 @@ covers), each with its own icon. Connection errors use
   (`.phone-scroll`: `scrollbar-width: none` and `::-webkit-scrollbar`), while
   wheel, touchpad, touch and keyboard scrolling still work (the body takes focus,
   with a visible focus ring). Nothing outside the frame hides a scrollbar (UI-22).
-- **Action bar** (optional): fixed under the body, above the nav (the result
-  screen's บันทึก / ยังไม่ซื้อ).
+- **Action bar** (optional): fixed under the body, above the nav: the result
+  screen's บันทึก / ยังไม่ซื้อ (no nav there), and the form's ประเมินภาระผ่อน (with the
+  nav). With the nav under it, the bar's bottom padding is the centre button's raise
+  plus at least 12px (`ACTIONS_PAD_WITH_NAV`, `pb-8`, UI-27): its button keeps 16px
+  clear of the raised button, measured at 390px and in the 370px desktop frame.
 - **Bottom nav: three tabs**, one line each at 390px: หน้าหลัก (feature 1),
   **เช็กก่อนผ่อน** (centre, a raised 56px round button), กันชน (feature 2). The list and
   which tab is selected live in `navStyle.ts` (`NAV_TABS`, `navActive`, UI-30):
@@ -286,7 +305,8 @@ covers), each with its own icon. Connection errors use
 - **Pinned bars:** header, action bar and nav never shrink; only `<main>` scrolls.
   While the nav shows, `<main>` has bottom padding of the centre button's raise
   plus at least 24px (`pb-14`; `SCROLL_PAD_WITH_NAV` in `navStyle.ts`, UI-27), so
-  the last item is never hidden behind it; with the action bar instead, `pb-6`.
+  the last item is never hidden behind it; with an action bar, `pb-6`, since the
+  bar takes the raise (`bottomPads`).
   The frame uses `overflow: clip`, which nothing can scroll, and every visually
   hidden input sits in a `relative` label (UI-26). Without that, focusing a hidden
   radio scrolled the frame itself and lifted the nav into the middle of the screen.
@@ -299,12 +319,12 @@ data (UI-33); they format, never add up.
 | Card | Shape | Shrinks or goes when |
 |---|---|---|
 | Hero, this month | the only white card with a `text-display` number; the bar; one status line | nothing over budget in the months shown: no strip, one line |
-| Over-budget strip | an amber band joined to the hero's bottom edge: title, month chips in two columns ("⚠ พ.ย. 2569" over "+1,500.00 บาท"), "และอีก {k} เดือนหลังจากนั้น", the total over all months, the buffer line, an outline link | shown only while a month is over |
+| Over-budget strip | an amber band joined to the hero's bottom edge, framed in `warn-edge` (2px): title, month chips in two columns ("⚠ พ.ย. 2569" over "+1,500.00 บาท"), "และอีก {k} เดือนหลังจากนั้น", the total over all months, the buffer line, an outline link | shown only while a month is over |
 | เช็กก่อนผ่อน | the 56px green pill and its hint | never |
 | Wallet | one wide teal button: shield badge, "กันชนของคุณ ›", the balance at `text-title`; on the right 6 segments and "พอ {n} เดือน" | never; the meter is empty at 0 months |
-| Assistant bubble | a soft gradient panel; the mascot speaks from the left into a white bubble with a tail | loading: "กำลังสรุป..." at a fixed height, no spinner; error: one line and "ลองอีกครั้ง"; no plan: left out |
-| Consolidation banner | one slim grey-blue line, 44px, "ⓘ ... ›"; tap to show the reason | it is the offer's shrunk form |
-| Bank offer | a blue card with a 2px border, two columns "ตอนนี้" and "ถ้ารวมหนี้ (ตัวอย่าง)", an arrow between them | shown only when the plan says eligible (L70) |
+| Assistant bubble | a soft gradient panel with an `ai-edge` border; the mascot speaks from the left into a white bubble with a tail | loading: "กำลังสรุป..." at a fixed height, no spinner; error: one line and "ลองอีกครั้ง"; no plan: left out |
+| Consolidation banner | one slim grey-blue line, 44px, with a `quiet-edge` border, "ⓘ ... ›"; tap to show the reason | it is the offer's shrunk form |
+| Bank offer | a white card framed in `bank-700` (2px) with a solid blue header band: the bank icon, the white title, the "ตัวอย่างการประมาณ" tag. On the white body (`p-4`): two light-blue boxes "ตอนนี้" and "ถ้ารวมหนี้ (ตัวอย่าง)", every amount at `text-lead` bold, the arrow on the gap between them (not a column of its own, so each amount keeps its "บาท" on one line in the 370px frame); one benefit line; the example rate | shown only when the plan says eligible (L70) |
 | Installments | flat (border, no shadow), last | empty: one sentence |
 
 ## 6. Layout and navigation
@@ -368,12 +388,19 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
    - not eligible: the banner "ตอนนี้ยังไม่จำเป็นต้องรวมหนี้" for `NOT_NEEDED`, else
      "ตอนนี้ยังไม่คุ้มที่จะรวมหนี้"; it opens to the reason in plain words
      (`ASSIST.reason`);
-   - eligible: "ทางเลือกจากธนาคาร" tagged "ตัวอย่างการประมาณ". "ตอนนี้" shows
-     `monthly_total` and `current_remaining_total`; "ถ้ารวมหนี้ (ตัวอย่าง)" shows
-     `monthly_payment` and `total_cost`, so a lower payment that costs more in total
-     is plain to see. Then the term, the example rate "(ไม่ใช่อัตราจริง)" and how much
-     more it costs. "สนใจรวมหนี้" only shows "ธนาคารจะติดต่อกลับเพื่อพิจารณา" with
-     "ตัวเลขนี้ยังไม่ใช่ข้อเสนอ": no form and no request (UI-31, L71).
+   - eligible: "ทางเลือกจากธนาคาร" in the blue band, tagged "ตัวอย่างการประมาณ".
+     "ตอนนี้" shows `monthly_total` and `current_remaining_total`; "ถ้ารวมหนี้
+     (ตัวอย่าง)" shows `monthly_payment` and `total_cost`. Each total is as large and
+     as bold as its monthly amount (UI-38), so a lower payment that costs more in
+     total is plain to see without a line of its own. Then one benefit line at body
+     size, "ค่างวดลดลงเดือนละ {monthly_reduction} ทุกเดือนกลับมาอยู่ในงบ", from the API
+     (never worked out on screen) and left out unless it is above 0.00;
+     "ทุกเดือนกลับมาอยู่ในงบ" holds for every offer, since the plan offers only a loan
+     that brings every month back within budget (L70 b). Then the term and the example rate
+     "(ไม่ใช่อัตราจริง)". A phrase that does not fit moves to the next line whole
+     (`KeepLastPhrase`), never split inside it. "สนใจรวมหนี้" only shows
+     "ธนาคารจะติดต่อกลับเพื่อพิจารณา" with "ตัวเลขนี้ยังไม่ใช่ข้อเสนอ": no form and no
+     request (UI-31, L71).
 7. **Installments**, grouped by the app the user named (apps in the order they
    first appear, then "ไม่ระบุแอป"): name, months, amount per month, remaining.
    Lines the API marks as not owed (paid off, cancelled) are listed under "ไม่นับในยอดต่อเดือน", so the rows above always add up to the total. A
@@ -408,9 +435,18 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
 0. **Hint** under the intro (PR B, from the plan): "ผ่อนเพิ่มได้ไม่เกินเดือนละ
    {safe_new_monthly} ตั้งแต่ {safe_new_from}", or "ตั้งแต่ ... ยังผ่อนเพิ่มไม่ได้โดยไม่เกินงบ"
    when it is 0.00. Advice only; nothing is blocked. Left out if the plan fails.
-1. Fields: kind, item name (optional), **แอปที่ผ่อน** (optional free text, at most
-   60 characters, placeholder "เช่น ShopDemo"; never a list of real platforms,
-   rule 5), price, months, monthly amount, first due month.
+1. Fields, the four the preview needs first (UI-37): **ราคาสินค้า** (**ยอดเงิน** for
+   a cash kind), **จำนวนเดือนที่ผ่อน** with quick picks "3 เดือน", "6 เดือน", "10
+   เดือน" and "12 เดือน" under it (a tap fills the field, typing still works, the
+   picked one is `aria-pressed`), **ค่างวดต่อเดือน**, **เริ่มจ่ายงวดแรก**. Then
+   "รายละเอียดเพิ่มเติม (ไม่บังคับ)", folded (`aria-expanded`), with ชื่อสินค้า and
+   **แอปที่ผ่อน** (free text, at most 60 characters, placeholder "เช่น ShopDemo"; never
+   a list of real platforms, rule 5). It opens by itself when a kept form or a demo
+   example has a name or an app.
+1b. **Kind:** "ผ่อนสินค้า" is preselected. The small link "เป็นรายการเงินสด?" shows the
+   three kinds (the link goes, the keyboard moves to the checked kind): ผ่อนสินค้า on
+   its own row, กดเงินสด and สินเชื่อเงินสด side by side. A cash kind shows
+   "รายการเงินสดจะไม่กันเงินเข้ากันชน", and the kinds stay shown while one is chosen.
 2. **Monthly amount:** once price and months are valid, it is prefilled with the
    0% suggestion from `src/api.ts` (price / months rounded UP to 0.01; the screen
    computes nothing). Help: "คิดแบบผ่อน 0% ถ้าแอปแจ้งยอดต่อเดือนไม่ตรงนี้
@@ -419,14 +455,19 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
 3. **First due month:** no default. Two required choices of equal size, the word on
    one line and the month on a smaller second line: "เดือนนี้" / "ต.ค. 2569" and
    "เดือนหน้า" / "พ.ย. 2569". Help: "ดูได้ในหน้าสรุปก่อนกดผ่อนของแอปผ่อน".
-   "ประเมินภาระผ่อน" stays disabled until one is chosen.
-4. "ประเมินภาระผ่อน" calls the preview (writes nothing) and opens 7.3b. The form
-   is kept, so "แก้ไข" there returns to it with every value.
+4. **"ประเมินภาระผ่อน"** sits in the action bar above the nav (5.8), always in view.
+   It stays disabled until the four fields are valid (`canPreview`, UI-37); while it
+   is, "กรอกข้อมูล 4 ข้อด้านบนให้ครบก่อน" sits above it (its `aria-describedby`). It
+   calls the preview (writes nothing) and opens 7.3b. The form is kept, so "แก้ไข"
+   there returns to it with every value.
 5. Changing a field while the preview is in flight drops its answer.
 - Demo strip: three buttons (อยู่ในงบ, เกินงบ, เกินเกณฑ์) fill มิ้นท์'s examples,
   first due month next month.
+- No label wraps or clips at 390px or in the 370px desktop frame (measured in the
+  DOM, every state).
 - States: loading, error (try again), settings missing (also from a 409
-  `SETTINGS_REQUIRED`).
+  `SETTINGS_REQUIRED`). One screen from loading to the form: the header (and its
+  bell) and the nav are mounted once.
 
 ### 7.3b ผลการประเมิน (`#/result`), the main slide screenshot
 1. Top: a one-line summary ("โน้ตบุ๊ก 30,000.00 บาท · 10 เดือน · เดือนละ 3,000.00
@@ -526,7 +567,8 @@ Source of truth: `frontend/src/copy.ts`. The key strings:
 | Strip link | ใช้กันชนช่วยจ่าย › · ดูภาระผ่อนรายเดือน › |
 | Wallet | กันชนของคุณ › · พอ {n} เดือน · ยังไม่พอ 1 เดือน · ไม่มีค่างวด |
 | Assistant | ผู้ช่วย KidNee · ตัวอย่าง · อ่านต่อ › · ย่อ · กำลังสรุป... |
-| Consolidation | ตอนนี้ยังไม่จำเป็นต้องรวมหนี้ · ทางเลือกจากธนาคาร · ตอนนี้ · ถ้ารวมหนี้ (ตัวอย่าง) · ยอดรวมทั้งหมด · สนใจรวมหนี้ |
+| Consolidation | ตอนนี้ยังไม่จำเป็นต้องรวมหนี้ · ทางเลือกจากธนาคาร · ตอนนี้ · ถ้ารวมหนี้ (ตัวอย่าง) · ยอดรวมทั้งหมด · ค่างวดลดลงเดือนละ {monthly_reduction} ทุกเดือนกลับมาอยู่ในงบ · สนใจรวมหนี้ |
+| Form | เป็นรายการเงินสด? · ยอดเงิน · {n} เดือน · รายละเอียดเพิ่มเติม (ไม่บังคับ) · กรอกข้อมูล 4 ข้อด้านบนให้ครบก่อน |
 
 Months are Thai short names with the Buddhist-era year ("พ.ย. 2569"), as the
 backend writes them.
@@ -553,7 +595,7 @@ prefix; to be confirmed when wiring).
 | Demo | `POST /demo/payday` | `{ month: "YYYY-MM" }` | `PaydayOut` | 404 when demo endpoints are off |
 | 5 | `GET /notifications` **TODO, mock only** | | `NotificationsOut` (`notifications: NotificationOut[]`, newest first: `kind`, `title`, `body`, `created_at`, `read`; and `unread_count`) | |
 | 5 | `POST /notifications/read` **TODO, mock only** | | `NotificationsOut`, every item read, `unread_count: 0` | |
-| 2, 2b, 3, 4 | `GET /assistant/plan` (merged backend; mocked with the same shape and rules in `mock/assistant.ts`, UI-28) | | `AssistantPlanOut`: `months: PlanMonth[]` (`month, total, budget, over_budget, headroom`), `months_truncated`, `back_in_budget_month`, `pause_until`, `safe_new_monthly`, `safe_new_from`, `safe_new_months`, `buffer_plan {shortfall, balance, covered, still_short}`, `consolidation {eligible, reason, estimate}`; `EstimateOut` = `principal, annual_rate, rate_is_example, rate_note, term_months, first_due_month, monthly_payment, total_cost, current_remaining_total, extra_cost` | 409 `SETTINGS_REQUIRED` |
+| 2, 2b, 3, 4 | `GET /assistant/plan` (merged backend; mocked with the same shape and rules in `mock/assistant.ts`, UI-28) | | `AssistantPlanOut`: `months: PlanMonth[]` (`month, total, budget, over_budget, headroom`), `months_truncated`, `back_in_budget_month`, `pause_until`, `safe_new_monthly`, `safe_new_from`, `safe_new_months`, `buffer_plan {shortfall, balance, covered, still_short}`, `consolidation {eligible, reason, estimate}`; `EstimateOut` = `principal, annual_rate, rate_is_example, rate_note, term_months, first_due_month, monthly_payment, total_cost, current_remaining_total, extra_cost`, and `monthly_reduction` (**TODO(backend)**, mock only: the monthly amounts the loan pays off, which is `monthly_total`, minus `monthly_payment`; "0.00" when not above zero) | 409 `SETTINGS_REQUIRED` |
 | 2 | `POST /assistant/summary` **TODO, mock only**; Home calls it on open | | `AssistantSummaryOut {text, is_example}` | 409 `SETTINGS_REQUIRED` |
 | Demo | `POST /demo/scene` **mock only** | `{ scene }` | 204 | |
 
@@ -588,8 +630,9 @@ Now: 3,500.00 a month.
    4,800.00 (พอ 1 เดือน), installments grouped by app. Tap the month card for
    "ภาระผ่อนรายเดือน" (Oct 2569 to Jun 2570; open ธ.ค. to see "งวดสุดท้าย"), back,
    then tap **เช็กก่อนผ่อน**.
-3. **Form**: type 1000 and 3 months to show the 0% suggestion 333.34; point out
-   that the first due month must be chosen.
+3. **Form**: type 1000 and tap "3 เดือน" to show the 0% suggestion 333.34; point
+   out that the check waits for the first due month
+   ("กรอกข้อมูล 4 ข้อด้านบนให้ครบก่อน").
 4. **YELLOW**: tap "เกินงบ", then **ประเมินภาระผ่อน**. On the result screen, Nov
    and Dec are striped and listed. Point out "บันทึกได้เสมอ". Tap "ยังไม่ซื้อ".
 5. **RED**: "แก้ไข" back, tap "เกินเกณฑ์", ประเมินภาระผ่อน. The ธปท. guidance
@@ -603,8 +646,9 @@ Now: 3,500.00 a month.
    (ต.ค. to ธ.ค. 2569 +2,500.00, ม.ค. to มี.ค. 2570 +500.00), "และอีก 3 เดือนหลังจากนั้น"
    (เม.ย. to มิ.ย. 2570), "ค่างวดส่วนที่เกินงบรวมทุกเดือน 10,500.00 บาท", "กันชน 9,600.00
    บาท ยังขาดอีก 900.00 บาท" and "ใช้กันชนช่วยจ่าย ›". "ทางเลือกจากธนาคาร": 7,500.00 a month
-   now, 3,369.88 if consolidated, but 80,877.12 in total against 67,500.00 (example
-   rate 18%, 24 months); "สนใจรวมหนี้". Tap the hero: "กลับมาอยู่ในงบเดือน ก.ค. 2570"
+   now, 3,369.88 if consolidated, but 80,877.12 in total against 67,500.00, all four
+   the same size; "ค่างวดลดลงเดือนละ 4,130.12 บาท ทุกเดือนกลับมาอยู่ในงบ" (example rate
+   18%, 24 months); "สนใจรวมหนี้". Tap the hero: "กลับมาอยู่ในงบเดือน ก.ค. 2570"
    and "ตอนนี้ยังไม่ควรผ่อนเพิ่ม". The form's hint. กันชน: 10,500.00 over in all,
    900.00 still short. Demo payday.
 
