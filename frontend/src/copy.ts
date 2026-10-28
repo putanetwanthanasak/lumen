@@ -181,7 +181,7 @@ export const THINK = {
   firstDueNext: "เดือนหน้า",
   firstDueError: "เลือกเดือนที่เริ่มจ่ายงวดแรก",
   check: "ประเมินภาระผ่อน",
-  checkNeeds: "กรอกข้อมูล 4 ข้อด้านบนให้ครบก่อน",
+  checkNeeds: "กรอกราคา จำนวนเดือน ค่างวด และเดือนเริ่มจ่ายให้ครบก่อน",
   checking: "กำลังประเมิน...",
   monthsTitle: "ค่างวดรวมแต่ละเดือน ถ้าผ่อนชิ้นนี้",
   budgetLine: (budget: string) => `เส้นประ คืองบ ${budget}`,

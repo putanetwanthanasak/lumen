@@ -378,6 +378,8 @@ test("UI_37_the_check_sits_in_the_bar_above_the_nav_and_waits_for_the_four_field
   const why = /aria-describedby="([^"]+)"/.exec(button[2] ?? "")?.[1];
   assert.ok(why !== undefined);
   assert.ok(empty.includes(`<p id="${why}" class="text-center text-body text-ink-muted">${THINK.checkNeeds}</p>`));
+  // It names the four, so it never reads as "the first four fields" above the optional two.
+  assert.equal(THINK.checkNeeds, "กรอกราคา จำนวนเดือน ค่างวด และเดือนเริ่มจ่ายให้ครบก่อน");
   // The four valid: enabled, and the hint is gone.
   const ready = /<button type="submit" form="[^"]+"([^>]*)>/.exec(render(FORM))?.[1] ?? "";
   assert.doesNotMatch(ready, /\sdisabled=""|\saria-describedby=/);
