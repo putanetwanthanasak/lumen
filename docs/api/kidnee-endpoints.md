@@ -25,7 +25,7 @@ Source of truth: the pydantic models named under each endpoint. If this file and
 | `InstallmentLine.platform_name`, `MonthInstallment.platform_name` | Returned (Session 17); `null` when not named | Group `null` under "ไม่ระบุแอป". |
 | `MonthDetail.over_by` | Returned (Session 17) | Remove its `TODO(backend)`. |
 | `MonthInstallment.last_month` | New (Session 17) | Optional: the line's last due month. |
-| `EstimateOut.monthly_reduction` | Returned (Session 17) | Remove its `TODO(backend)`. |
+| `EstimateOut.monthly_reduction`, `current_monthly_total` | Returned (Session 17) | Remove its `TODO(backend)`. Show `current_monthly_total` as the offer's "ตอนนี้", so both of the card's figures come from the same month as the hero. |
 | `POST /buffer/move-to-main` `for_month` | New (Session 17) | Send it from "ใช้กันชนจ่ายส่วนที่เกิน"; leave it out for "ย้ายกลับบัญชีหลัก". |
 | `GET /buffer/shortfalls` rows | Add `prepared`, `remaining_gap`, `state` (Session 17) | Show the prepared state from `state`; never compute it. |
 | `NotificationsOut.unread_count`, `NotificationOut.read`, `POST /notifications/read` | No read state; `count` = every alert the user has | Use `count`; drop the unread badge logic and the mark-read call. |
@@ -343,8 +343,9 @@ Model: `assistant/schemas.py` (`PlanOut`). It writes nothing; the UI never calls
   - `PAYMENT_ABOVE_BUDGET`
   - `PAYMENT_ABOVE_ONE_THIRD_OF_INCOME`
   - `ELIGIBLE`
-- When eligible, `estimate` holds `principal`, `annual_rate`, `rate_is_example: true`, `rate_note: "example, not a real rate"`, `term_months`, `first_due_month`, `monthly_payment`, `total_cost`, `current_remaining_total`, `extra_cost` and `monthly_reduction`.
-- `monthly_reduction` (Session 17) is the counted plans' monthly total (L43, the same figure as `GET /debts/summary` `monthly_total`) minus `monthly_payment`. Whenever there is an estimate it is above 0. `demo-consolidate` on 2026-10-29: `"monthly_payment": "3369.88"`, `"monthly_reduction": "4130.12"` (7,500.00 - 3,369.88).
+- When eligible, `estimate` holds `principal`, `annual_rate`, `rate_is_example: true`, `rate_note: "example, not a real rate"`, `term_months`, `first_due_month`, `monthly_payment`, `total_cost`, `current_remaining_total`, `extra_cost`, `current_monthly_total` and `monthly_reduction`.
+- `current_monthly_total` (Session 17) is what the plans cost this month: the current month's total, the same as the first row of `GET /debts/months` (Home's hero). It is not `GET /debts/summary` `monthly_total` (L43), which also holds plans not due this month, for example one that starts later.
+- `monthly_reduction` (Session 17) is `max(0, current_monthly_total - monthly_payment)`. It is `"0.00"` when the loan costs as much as this month or more, which can happen when the run over budget comes later; the card then leaves out its benefit line. Show both figures as sent; never compute them. `demo-consolidate` on 2026-10-29: `"current_monthly_total": "7500.00"`, `"monthly_payment": "3369.88"`, `"monthly_reduction": "4130.12"`.
 - `buffer_plan.remaining_gap` (Session 17): see `GET /buffer/shortfalls`.
 - 409 `SETTINGS_REQUIRED`.
 
