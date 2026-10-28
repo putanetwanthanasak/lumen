@@ -20,6 +20,8 @@ from app.api_body import QueryInt
 from app.assistant.plan import HORIZON_CAP
 from app.models import Installment
 
+ZERO = Decimal("0.00")
+
 
 class MonthsQuery(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
@@ -35,10 +37,12 @@ class _Out(BaseModel):
 class MonthInstallment(_Out):
     installment_id: uuid.UUID
     item_name: str
+    platform_name: str | None = Field(description="Manual entries only; null when not named.")
     monthly_amount: Decimal
     installment_no: int = Field(description='"งวดที่ x": 1 in its first due month.')
     installments_total: int = Field(description='"จาก y": the installment\'s months.')
     is_last: bool = Field(description="This is its last due month.")
+    last_month: str = Field(description='Its last due month, "YYYY-MM".')
 
 
 class MonthDetail(_Out):
@@ -46,6 +50,7 @@ class MonthDetail(_Out):
     total: Decimal = Field(description="Installments due that month (the L65 total).")
     budget: Decimal
     over_budget: bool
+    over_by: Decimal = Field(description="total - budget when over budget, else 0.00.")
     over_one_third: bool
     installments: list[MonthInstallment] = Field(description="Due that month, in recorded order.")
 
@@ -68,10 +73,12 @@ def _line(due: _Due, month: Month) -> MonthInstallment:
     return MonthInstallment(
         installment_id=due.row.id,
         item_name=due.row.item_name,
+        platform_name=due.row.platform_name,
         monthly_amount=due.row.monthly_amount,
         installment_no=month.index - due.schedule.first_month.index + 1,
         installments_total=due.schedule.months,
         is_last=month == due.schedule.last_month,
+        last_month=str(due.schedule.last_month),
     )
 
 
@@ -96,6 +103,7 @@ def months_view(session: Session, user_id: str, *, today: date, count: int | Non
                 total=t.total,
                 budget=profile.budget,
                 over_budget=over_budget(t.total, profile.budget),
+                over_by=max(t.total - profile.budget, ZERO),
                 over_one_third=over_one_third(t.total, profile.income),
                 installments=[_line(d, t.month) for d in dues if d.schedule.due_in(t.month)],
             )

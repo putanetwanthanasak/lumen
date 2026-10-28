@@ -9,13 +9,16 @@ simply not that much to move.
 import logging
 import uuid
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from enum import StrEnum
+from typing import cast
 
-from sqlalchemy import Select, select, text
+from sqlalchemy import Select, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.affordability.months import Month
 from app.audit import service as audit
 from app.buffer.schemas import MoveIn
 from app.debts.service import summary
@@ -66,6 +69,23 @@ class Moved:
     outcome: Outcome
     transaction_id: uuid.UUID
     amount: Decimal = ZERO
+    for_month: date | None = None
+
+
+def prepared_by_month(session: Session, user_id: str, *, since: Month) -> dict[Month, Decimal]:
+    """What the user moved to the main account for each month from `since` on
+    (Session 17). Earlier months are over and prepare nothing any more."""
+    found = session.execute(
+        select(SavingsTransaction.for_month, func.sum(SavingsTransaction.amount))
+        .where(
+            SavingsTransaction.user_id == user_id,
+            SavingsTransaction.type == SavingsType.WITHDRAWAL,
+            SavingsTransaction.for_month >= since.first_day(),
+        )
+        .group_by(SavingsTransaction.for_month)
+    ).all()
+    # The WHERE leaves out the NULL months of free moves.
+    return {Month.of(cast(date, month)): total for month, total in found}
 
 
 def _locked_balance(session: Session, user_id: str) -> Decimal | None:
@@ -105,6 +125,7 @@ def move_to_main(session: Session, *, user_id: str, request: MoveIn) -> Moved | 
             type=SavingsType.WITHDRAWAL,
             amount=request.amount,
             client_request_id=request.client_request_id,
+            for_month=request.for_month,
         )
         .on_conflict_do_nothing(
             index_elements=[SavingsTransaction.user_id, SavingsTransaction.client_request_id],
@@ -124,7 +145,11 @@ def move_to_main(session: Session, *, user_id: str, request: MoveIn) -> Moved | 
         user_id=user_id,
         ref_type="savings_transaction",
         ref_id=str(transaction_id),
-        detail={"client_request_id": request.client_request_id, "amount": str(request.amount)},
+        detail={
+            "client_request_id": request.client_request_id,
+            "amount": str(request.amount),
+            "for_month": None if request.for_month is None else str(Month.of(request.for_month)),
+        },
     )
     try:
         reconcile.assert_user_invariants(session, user_id)
@@ -132,7 +157,7 @@ def move_to_main(session: Session, *, user_id: str, request: MoveIn) -> Moved | 
         session.rollback()
         logger.error("reconcile failed, move to main rolled back: %s", exc)
         raise
-    return Moved(Outcome.CREATED, transaction_id, request.amount)
+    return Moved(Outcome.CREATED, transaction_id, request.amount, request.for_month)
 
 
 def transfer_to_main(
@@ -155,9 +180,9 @@ def _earlier(user_id: str, client_request_id: str) -> Select[SavingsTransaction]
 def _resubmitted(
     session: Session, *, user_id: str, request: MoveIn, earlier: SavingsTransaction
 ) -> Moved:
-    """The same amount gets the first answer again; another amount is a conflict
-    (as L55), audited."""
-    if earlier.amount != request.amount:
+    """The same amount and month get the first answer again; another amount or
+    another month is a conflict (as L55), audited."""
+    if (earlier.amount, earlier.for_month) != (request.amount, request.for_month):
         audit.record(
             session,
             actor=Actor.USER,
@@ -168,4 +193,4 @@ def _resubmitted(
             detail={"client_request_id": request.client_request_id},
         )
         return Moved(Outcome.CONFLICT, earlier.id)
-    return Moved(Outcome.DUPLICATE, earlier.id, earlier.amount)
+    return Moved(Outcome.DUPLICATE, earlier.id, earlier.amount, earlier.for_month)

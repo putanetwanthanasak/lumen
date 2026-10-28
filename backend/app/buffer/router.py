@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from app.affordability.months import Month
 from app.affordability.router import SETTINGS_REQUIRED_ERROR
 from app.affordability.service import SettingsRequiredError
 from app.api_body import json_body
@@ -71,7 +72,7 @@ def read_shortfalls(
     responses=UNAUTHORIZED
     | {
         200: {"description": "The same request again: the first move, not repeated"},
-        409: {"description": "client_request_id already used with another amount"},
+        409: {"description": "client_request_id already used with another amount or month"},
         422: {"description": "Invalid body, or AMOUNT_ABOVE_BALANCE"},
     },
 )
@@ -86,13 +87,16 @@ def move_to_main(
         raise ABOVE_BALANCE  # nothing was written
     session.commit()  # the conflict's audit row commits too
     if result.outcome == service.Outcome.CONFLICT:
-        raise HTTPException(status_code=409, detail="client_request_id reused with another amount")
+        raise HTTPException(
+            status_code=409, detail="client_request_id reused with another amount or month"
+        )
     # After the commit, and on a repeat too: see service.move_to_main.
     service.transfer_to_main(bank, user_id=user_id, request=request, moved=result)
     body = MovedOut(
         transaction_id=result.transaction_id,
         status=result.outcome.value,
         amount=result.amount,
+        for_month=None if result.for_month is None else str(Month.of(result.for_month)),
         balance=service.balance(session, user_id),
     )
     status_code = 201 if result.outcome == service.Outcome.CREATED else 200

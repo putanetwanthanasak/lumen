@@ -1,5 +1,7 @@
-"""BS-04: GET /buffer/shortfalls over the Ledger and the buffer, "today" fixed at
-2026-11-10 (the plan_api fixture). The arithmetic itself is BS-01 to BS-03."""
+"""BS-04 to BS-06: GET /buffer/shortfalls over the Ledger and the buffer, "today"
+fixed at 2026-11-10 (the plan_api fixture). The arithmetic itself is BS-01 to BS-03
+and BS-05 to BS-07 in tests/assistant/test_shortfalls.py; here, what was moved for a
+month (Session 17) is read from the database and shown per month."""
 
 import uuid
 from datetime import date
@@ -7,8 +9,10 @@ from decimal import Decimal
 
 import pytest
 
+from app.clock import today
+from app.main import app
 from app.models import UserSettings
-from tests.db.factories import manual_installment, profile, user_balance
+from tests.db.factories import manual_installment, profile, savings_tx, user_balance
 from tests.user_settings.conftest import USER, Api
 
 pytestmark = pytest.mark.db
@@ -23,6 +27,34 @@ def configure(api: Api, budget: str = "5000.00", buffer: str = "2700.00") -> Non
         )
     )
     api.session.add(user_balance(user_id=USER, savings_balance=Decimal(buffer)))
+    if Decimal(buffer) > 0:
+        # Where the buffer came from, so a move through the API reconciles.
+        api.session.add(
+            savings_tx(
+                user_id=USER,
+                type="leftover_save",
+                amount=Decimal(buffer),
+                payday_month=date(2026, 10, 1),
+                source_vendor=None,
+                source_event_id=None,
+            )
+        )
+    api.session.flush()
+
+
+def moved(api: Api, amount: str, for_month: date | None, user: str = USER) -> None:
+    """A move already in the Ledger, as POST /buffer/move-to-main writes it."""
+    api.session.add(
+        savings_tx(
+            user_id=user,
+            type="withdrawal",
+            amount=Decimal(amount),
+            client_request_id=str(uuid.uuid4()),
+            for_month=for_month,
+            source_vendor=None,
+            source_event_id=None,
+        )
+    )
     api.session.flush()
 
 
@@ -53,6 +85,7 @@ def test_BS_04_shortfalls_over_http(plan_api: Api) -> None:
     assert response.json() == {
         "balance": "2700.00",
         "shortfall": "3000.00",
+        "remaining_gap": "3000.00",
         "covered": False,
         "still_short": "300.00",
         "months": [
@@ -61,6 +94,9 @@ def test_BS_04_shortfalls_over_http(plan_api: Api) -> None:
                 "total": "6500.00",
                 "budget": "5000.00",
                 "shortfall": "1500.00",
+                "prepared": "0.00",
+                "remaining_gap": "1500.00",
+                "state": "not_prepared",
                 "covered_by_buffer": "1500.00",
                 "still_short": "0.00",
             },
@@ -69,6 +105,9 @@ def test_BS_04_shortfalls_over_http(plan_api: Api) -> None:
                 "total": "6500.00",
                 "budget": "5000.00",
                 "shortfall": "1500.00",
+                "prepared": "0.00",
+                "remaining_gap": "1500.00",
+                "state": "not_prepared",
                 "covered_by_buffer": "1200.00",
                 "still_short": "300.00",
             },
@@ -99,6 +138,7 @@ def test_BS_04_within_budget_is_an_empty_list(plan_api: Api) -> None:
     assert api.call("GET", "/buffer/shortfalls").json() == {
         "balance": "0.00",
         "shortfall": "0.00",
+        "remaining_gap": "0.00",
         "covered": True,
         "still_short": "0.00",
         "months": [],
@@ -120,3 +160,98 @@ def test_BS_04_rows_stop_at_600(plan_api: Api) -> None:
     body = api.call("GET", "/buffer/shortfalls").json()
     assert (len(body["months"]), body["months_truncated"]) == (600, True)
     assert body["shortfall"] == "6.03"  # 603 months of 0.01, shown or not
+
+
+# --- BS-05, BS-06: moves made for a month, from the database ------------------------------
+
+
+def rows(api: Api) -> list[tuple[str, str, str, str, str]]:
+    body = api.call("GET", "/buffer/shortfalls").json()
+    return [
+        (m["month"], m["shortfall"], m["prepared"], m["remaining_gap"], m["state"])
+        for m in body["months"]
+    ]
+
+
+def test_BS_05_moves_for_a_month_are_summed_and_shown_per_month(plan_api: Api) -> None:
+    api = plan_api
+    configure(api, buffer="0.00")
+    manual(api, "6500.00", 3, date(2026, 11, 1))  # Nov..Jan, 1,500 over each
+    moved(api, "1000.00", date(2026, 11, 1))
+    moved(api, "500.00", date(2026, 11, 1))  # two moves for Nov: 1,500 in all
+    moved(api, "400.00", date(2026, 12, 1))
+    moved(api, "700.00", None)  # a free move prepares no month
+    moved(api, "1500.00", date(2027, 1, 1), user="user_b")  # another user's
+
+    assert rows(api) == [
+        ("2026-11", "1500.00", "1500.00", "0.00", "prepared"),
+        ("2026-12", "1500.00", "400.00", "1100.00", "partly_prepared"),
+        ("2027-01", "1500.00", "0.00", "1500.00", "not_prepared"),
+    ]
+    body = api.call("GET", "/buffer/shortfalls").json()
+    assert (body["shortfall"], body["remaining_gap"], body["still_short"]) == (
+        "4500.00",
+        "2600.00",
+        "2600.00",
+    )
+
+
+def test_BS_06_a_move_for_last_month_is_over_once_the_month_turns(plan_api: Api) -> None:
+    api = plan_api
+    configure(api, buffer="0.00")
+    manual(api, "6500.00", 3, date(2026, 10, 1))  # Oct..Dec
+    moved(api, "1500.00", date(2026, 10, 1))  # prepared October
+    moved(api, "1500.00", date(2026, 11, 1))  # prepared November
+
+    app.dependency_overrides[today] = lambda: date(2026, 10, 31)
+    assert [r[4] for r in rows(api)] == ["prepared", "prepared", "not_prepared"]
+
+    app.dependency_overrides[today] = lambda: date(2026, 11, 1)  # the month turns
+    assert rows(api) == [
+        ("2026-11", "1500.00", "1500.00", "0.00", "prepared"),
+        ("2026-12", "1500.00", "0.00", "1500.00", "not_prepared"),
+    ]
+    body = api.call("GET", "/buffer/shortfalls").json()
+    assert body["remaining_gap"] == "1500.00"  # October's 1,500 closes nothing any more
+
+
+def test_BS_07_after_moves_the_totals_still_equal_the_assistant_plans_buffer(
+    plan_api: Api,
+) -> None:
+    api = plan_api
+    configure(api, buffer="999.99")
+    manual(api, "5300.00", 4, date(2026, 11, 1))
+    moved(api, "300.00", date(2026, 11, 1))
+    moved(api, "100.00", date(2026, 12, 1))
+    shortfalls = api.call("GET", "/buffer/shortfalls").json()
+    plan = api.call("GET", "/assistant/plan").json()["buffer_plan"]
+    assert {k: shortfalls[k] for k in plan} == plan
+    assert (plan["shortfall"], plan["remaining_gap"], plan["covered"]) == (
+        "1200.00",
+        "800.00",
+        True,
+    )
+
+
+def test_BS_05_a_move_through_the_api_prepares_its_month_once(plan_api: Api) -> None:
+    api = plan_api
+    configure(api, buffer="2700.00")
+    manual(api, "6500.00", 2, date(2026, 11, 1))
+    body = {"client_request_id": "prep-nov", "amount": "1500.00", "for_month": "2026-11"}
+
+    first = api.call("POST", "/buffer/move-to-main", body)
+    again = api.call("POST", "/buffer/move-to-main", body)  # a double tap
+
+    assert (first.status_code, again.status_code) == (201, 200)
+    assert first.json()["for_month"] == "2026-11"
+    assert again.json()["status"] == "duplicate"
+    shortfalls = api.call("GET", "/buffer/shortfalls").json()
+    assert (shortfalls["balance"], shortfalls["shortfall"], shortfalls["remaining_gap"]) == (
+        "1200.00",
+        "3000.00",
+        "1500.00",
+    )
+    assert rows(api) == [
+        ("2026-11", "1500.00", "1500.00", "0.00", "prepared"),
+        ("2026-12", "1500.00", "0.00", "1500.00", "not_prepared"),
+    ]

@@ -1,4 +1,4 @@
-"""BF-01 to BF-05, BF-08, BF-09: the buffer (L66) over HTTP. BF-06 and BF-07 run
+"""BF-01 to BF-05, BF-08, BF-09, BF-11: the buffer (L66) over HTTP. BF-06 and BF-07 run
 concurrently in tests/concurrency. 05 has no BF section; BF-02, BF-03 and BF-07 are
 05 SV-04, SV-05 and SV-06 for this endpoint.
 
@@ -7,6 +7,7 @@ rule, here 500.00 out of the mock bank's 10,000.00 opening balance.
 """
 
 import logging
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -256,6 +257,108 @@ def test_BF_08_same_request_id_with_another_amount_conflicts(api: Api) -> None:
         select(AuditLog).where(AuditLog.action == "client_request_id_reused")
     ).scalars()
     assert (reused.user_id, reused.ref_id) == (USER, first.json()["transaction_id"])
+
+
+# --- BF-11: a move may name the month it prepares (Session 17) ---------------------------
+
+
+def move_for(api: Api, amount: str, for_month: Any, request_id: str = "move-1") -> Any:
+    body = {"client_request_id": request_id, "amount": amount, "for_month": for_month}
+    return api.call("POST", "/buffer/move-to-main", body)
+
+
+def stored_months(api: Api) -> list[date | None]:
+    return list(
+        api.session.execute(
+            select(SavingsTransaction.for_month)
+            .where(SavingsTransaction.type == "withdrawal")
+            .order_by(SavingsTransaction.created_at, SavingsTransaction.id)
+        ).scalars()
+    )
+
+
+def test_BF_11_for_month_is_stored_and_echoed(api: Api) -> None:
+    save(api)
+    response = move_for(api, "100.00", "2026-12")
+    assert response.status_code == 201
+    assert response.json()["for_month"] == "2026-12"
+    assert stored_months(api) == [date(2026, 12, 1)]
+    [audit] = api.session.execute(
+        select(AuditLog).where(AuditLog.action == "buffer_moved_to_main")
+    ).scalars()
+    assert audit.detail["for_month"] == "2026-12"
+
+
+@pytest.mark.parametrize("body_month", [None, "absent"])
+def test_BF_11_without_for_month_it_is_a_free_move(api: Api, body_month: str | None) -> None:
+    save(api)
+    response = move(api, "100.00") if body_month == "absent" else move_for(api, "100.00", None)
+    assert response.status_code == 201
+    assert response.json()["for_month"] is None
+    assert stored_months(api) == [None]
+
+
+def test_BF_11_any_month_is_accepted_it_never_blocks_the_move(api: Api) -> None:
+    # L66: the month is a label. A past month, or one within budget, moves the money.
+    save(api)
+    assert move_for(api, "100.00", "2020-01", "move-a").status_code == 201
+    assert move_for(api, "100.00", "2099-12", "move-b").status_code == 201
+    assert stored_balance(api) == Decimal("300.00")
+
+
+def test_BF_11_the_same_request_with_the_same_month_moves_once(api: Api) -> None:
+    save(api)
+    first = move_for(api, "100.00", "2026-12")
+    again = move_for(api, "100.00", "2026-12")
+    assert (first.status_code, again.status_code) == (201, 200)
+    assert again.json() == first.json() | {"status": "duplicate"}
+    assert stored_months(api) == [date(2026, 12, 1)]
+    assert api.bank.get_balance(USER) == OPENING - Decimal("400.00")  # credited once
+
+
+@pytest.mark.parametrize(
+    ("first_month", "second_month"),
+    [("2026-12", "2027-01"), ("2026-12", None), (None, "2026-12")],
+    ids=["another_month", "month_dropped", "month_added"],
+)
+def test_BF_11_the_same_request_id_with_another_month_conflicts(
+    api: Api, first_month: str | None, second_month: str | None
+) -> None:
+    save(api)
+    first = move_for(api, "100.00", first_month)
+    response = move_for(api, "100.00", second_month)
+
+    assert (first.status_code, response.status_code) == (201, 409)
+    assert withdrawals(api) == [Decimal("100.00")]
+    assert stored_balance(api) == Decimal("400.00")
+    [reused] = api.session.execute(
+        select(AuditLog).where(AuditLog.action == "client_request_id_reused")
+    ).scalars()
+    assert (reused.user_id, reused.ref_id) == (USER, first.json()["transaction_id"])
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'"2026-13"',
+        b'"2026-00"',
+        b'"2026-1"',
+        b'"2026-11-01"',
+        b'"11-2026"',
+        b'""',
+        b"202611",
+        b'"0000-01"',
+        b'"2026-11\\n"',  # a JSON-escaped newline: control characters are refused
+    ],
+)
+def test_BF_11_a_bad_month_is_422_and_moves_nothing(api: Api, raw: bytes) -> None:
+    save(api)
+    body = b'{"client_request_id": "move-1", "amount": "100.00", "for_month": ' + raw + b"}"
+    response = api.call("POST", "/buffer/move-to-main", body)
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"][-1] == "for_month"
+    assert withdrawals(api) == []
+    assert stored_balance(api) == Decimal("500.00")
 
 
 # --- BF-09: the bank moves the money at most once (S1) ----------------------------------

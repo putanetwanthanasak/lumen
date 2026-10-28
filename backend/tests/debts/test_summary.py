@@ -85,6 +85,7 @@ def test_summary_one_debt_exact_shape(webhook: Webhook) -> None:
         "contract_id": "c_1",
         "kind": "purchase",
         "item_name": "Headphones",
+        "platform_name": None,  # a platform row: its vendor names it
         "principal": "20000.00",
         "monthly_amount": "3333.33",
         "months": 6,

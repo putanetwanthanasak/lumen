@@ -214,6 +214,13 @@ class Installment(Base):
             "OR (min_payment IS NOT NULL AND monthly_rate IS NOT NULL)",
             name="consolidation_loan_terms",
         ),
+        # Session 17: the app the user pays a manual entry in, as they typed it. Only
+        # a manual row has one; the platform rows carry their vendor.
+        CheckConstraint(
+            f"platform_name IS NULL OR vendor = '{MANUAL_VENDOR}'",
+            name="platform_name_manual_only",
+        ),
+        CheckConstraint("char_length(platform_name) <= 60", name="platform_name_length"),
         # The idempotency key for manual entry (L62): a double submit, however
         # concurrent, creates one installment.
         Index(
@@ -253,6 +260,7 @@ class Installment(Base):
     disputed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     dispute_signal_status: Mapped[str | None] = mapped_column(Text)
     client_request_id: Mapped[str | None] = mapped_column(Text)
+    platform_name: Mapped[str | None] = mapped_column(Text)  # NULL: not named
     created_at: Mapped[datetime] = created_at_column()
 
 
@@ -313,6 +321,11 @@ class SavingsTransaction(Base):
             "(type = 'leftover_save') = (payday_month IS NOT NULL)",
             name="leftover_save_has_payday_month",
         ),
+        # Session 17: a move to the main account may name the month it prepares
+        # money for (a label only, L66); nothing else carries one.
+        CheckConstraint(
+            "type = 'withdrawal' OR for_month IS NULL", name="for_month_on_withdrawal_only"
+        ),
         Index(
             "uq_savings_transactions_leftover_save_month",
             "user_id",
@@ -335,6 +348,7 @@ class SavingsTransaction(Base):
     )
     client_request_id: Mapped[str | None] = mapped_column(Text)
     payday_month: Mapped[date | None] = mapped_column(Date)  # first day of the month
+    for_month: Mapped[date | None] = mapped_column(Date)  # first day of the month
     created_at: Mapped[datetime] = created_at_column()
 
 

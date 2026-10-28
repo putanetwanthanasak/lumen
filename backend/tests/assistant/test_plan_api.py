@@ -120,6 +120,7 @@ def test_AS_01_doc_example_over_http(plan_api: Api) -> None:
         "safe_new_months": 12,
         "buffer_plan": {
             "shortfall": "1400.00",
+            "remaining_gap": "1400.00",
             "balance": "1000.00",
             "covered": False,
             "still_short": "400.00",
@@ -152,6 +153,7 @@ def test_AS_05_eligible_plan_returns_the_estimate_labelled_as_an_example(plan_ap
             "total_cost": "20489.04",
             "current_remaining_total": "17100.00",
             "extra_cost": "3389.04",
+            "monthly_reduction": "4846.29",
         },
     }
 

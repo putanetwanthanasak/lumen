@@ -9,7 +9,7 @@ from decimal import Decimal
 from fractions import Fraction
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from app.affordability.months import Month, Scheduled, Verdict, month_totals, month_verdict
@@ -609,3 +609,89 @@ def test_AS_05_a_principal_beyond_numeric_12_2_is_too_large_before_any_payment_m
     )
 
     assert result.consolidation.reason is Reason.ESTIMATE_TOO_LARGE
+
+
+# --- AS-11: monthly_reduction (Session 17) -----------------------------------------------
+
+
+def test_AS_11_monthly_reduction_is_the_monthly_total_minus_the_payment() -> None:
+    estimate = plan([debt("3700.00", 3), debt("2000.00", 3)]).consolidation.estimate
+    assert estimate is not None
+    assert estimate.current_monthly_total == Decimal("5700.00")
+    assert estimate.monthly_reduction == Decimal("4846.29")  # 5,700.00 - 853.71
+    assert type(estimate.monthly_reduction) is Decimal
+
+
+def test_AS_11_a_plan_that_starts_later_is_in_the_monthly_total() -> None:
+    # L43: every counted plan's monthly amount, also one that is not due yet, the
+    # same figure as GET /debts/summary monthly_total.
+    debts = [debt("6000.00", 3), debt("1000.00", 2, offset=6)]
+    estimate = plan(debts).consolidation.estimate
+    assert estimate is not None
+    assert estimate.current_monthly_total == Decimal("7000.00")
+    assert estimate.monthly_reduction == Decimal("7000.00") - estimate.monthly_payment
+
+
+@st.composite
+def mostly_eligible(draw: st.DrawFn) -> tuple[list[Debt], Decimal, Decimal]:
+    """A budget, a plan over it from now for 3 to 12 months (a run L70 a needs), a
+    few small, short plans, so the loan's payment usually fits the budget, and an
+    income of at least 3 x the budget, so a payment within budget is not RED."""
+    budget = draw(money("100.00", "20000.00"))
+    over = draw(money("0.01", "5000.00"))
+    months = draw(st.integers(min_value=3, max_value=12))
+    base = Debt(
+        schedule=Scheduled(NOW, months, budget + over),
+        ledger_remaining=months * (budget + over),
+        manual=True,
+        overdue=False,
+        disputed=False,
+    )
+    others = draw(
+        st.lists(
+            st.builds(
+                lambda monthly, months, offset: Debt(
+                    schedule=Scheduled(NOW.plus(offset), months, monthly),
+                    ledger_remaining=months * monthly,
+                    manual=True,
+                    overdue=False,
+                    disputed=False,
+                ),
+                money("0.01", "2000.00"),
+                st.integers(min_value=1, max_value=6),
+                st.integers(min_value=-3, max_value=6),
+            ),
+            max_size=3,
+        )
+    )
+    income = draw(money(str(budget * 3), "1000000.00"))
+    return [base, *others], budget, income
+
+
+@settings(max_examples=EXAMPLES, deadline=None)
+@given(
+    case=st.one_of(
+        st.tuples(debts_strategy, money("0.00", "40000.00"), money("0.01", "120000.00")),
+        mostly_eligible(),
+    ),
+)
+def test_AS_11_monthly_reduction_is_above_zero_whenever_there_is_an_estimate(
+    case: tuple[list[Debt], Decimal, Decimal],
+) -> None:
+    debts, budget, income = case
+    result = build(
+        debts,
+        now=NOW,
+        income=income,
+        budget=budget,
+        buffer_balance=Decimal("0.00"),
+        annual_rate=RATE,
+        term=TERM,
+    )
+    estimate = result.consolidation.estimate
+    event(f"estimate: {estimate is not None}")  # --hypothesis-show-statistics
+    if estimate is None:
+        return
+    monthly_total = sum((d.schedule.monthly_amount for d in debts), Decimal("0.00"))
+    assert estimate.monthly_reduction == monthly_total - estimate.monthly_payment
+    assert estimate.monthly_reduction > 0

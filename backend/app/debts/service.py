@@ -56,6 +56,7 @@ class InstallmentLine(_Out):
     contract_id: str
     kind: str
     item_name: str
+    platform_name: str | None = Field(description="Manual entries only; null when not named.")
     principal: Decimal
     monthly_amount: Decimal
     months: int
@@ -96,6 +97,7 @@ def summary(session: Session, user_id: str) -> DebtSummary:
             contract_id=i.contract_id,
             kind=i.kind,
             item_name=i.item_name,
+            platform_name=i.platform_name,
             principal=i.principal,
             monthly_amount=i.monthly_amount,
             months=i.months,

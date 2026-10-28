@@ -1,7 +1,8 @@
 """MI-xx: POST /installments, manual entry (L62), saving by the user's rule (L63) and
 the alert with the L43 monthly total. 05 has no IDs for this, so MI-01 to MI-12 are
 new (Session 12). MI-05 and a committed MI-06 are in tests/concurrency, MI-10 and
-MI-12 in tests/db."""
+MI-12 in tests/db. MI-13 (Session 17): the optional platform_name; its CHECKs are
+in tests/db."""
 
 import json
 import logging
@@ -490,3 +491,78 @@ def test_S1_manual_commit_fails_after_transfer_retry_debits_the_bank_once(
     assert retry.status_code == 201, retry.text
     assert api.bank.get_balance(USER) == OPENING - Decimal("120.00")  # debited once
     assert savings_amounts(api) == [Decimal("120.00")]  # the retry did record the saving
+
+
+# --- MI-13: platform_name, the app the user pays it in (Session 17) -----------------------
+
+
+@pytest.mark.parametrize("name", ["ShopDemo", "ก" * 60, "a"])
+def test_MI_13_platform_name_is_stored_and_returned(api: Api, name: str) -> None:
+    configured(api)
+    assert post(api, entry(platform_name=name)).status_code == 201
+    [row] = installments(api)
+    assert row.platform_name == name
+    [line] = api.call("GET", "/debts/summary").json()["installments"]
+    assert line["platform_name"] == name
+
+
+@pytest.mark.parametrize("body", [{}, {"platform_name": None}], ids=["absent", "null"])
+def test_MI_13_platform_name_is_optional(api: Api, body: dict[str, Any]) -> None:
+    configured(api)
+    data = entry() | body
+    assert post(api, data).status_code == 201
+    [row] = installments(api)
+    assert row.platform_name is None
+    [line] = api.call("GET", "/debts/summary").json()["installments"]
+    assert line["platform_name"] is None
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["", "ก" * 61, "Shop\x00Demo", "Shop\nDemo", "\x1f", 5, ["ShopDemo"]],
+    ids=["empty", "61_characters", "nul", "newline", "unit_separator", "number", "list"],
+)
+def test_MI_13_a_bad_platform_name_is_422_and_records_nothing(api: Api, name: Any) -> None:
+    configured(api)
+    response = post(api, entry(platform_name=name))
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"][-1] == "platform_name"
+    assert installments(api) == []
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [("ShopDemo", "RideDemo"), ("ShopDemo", None), (None, "ShopDemo")],
+    ids=["another_name", "name_dropped", "name_added"],
+)
+def test_MI_13_same_request_id_with_another_platform_name_conflicts(
+    api: Api, first: str | None, second: str | None
+) -> None:
+    opt_in(api.session)
+    assert post(api, entry(platform_name=first)).status_code == 201
+    response = post(api, entry(platform_name=second))
+    assert response.status_code == 409
+    [row] = installments(api)
+    assert row.platform_name == first  # the first entry, unchanged
+    assert savings_amounts(api) == [Decimal("120.00")]
+    assert count(api, AuditLog, AuditLog.action == "client_request_id_reused") == 1
+
+
+def test_MI_13_same_request_id_with_the_same_platform_name_replays(api: Api) -> None:
+    opt_in(api.session)
+    first = post(api, entry(platform_name="ShopDemo"))
+    again = post(api, entry(platform_name="ShopDemo"))
+    assert (first.status_code, again.status_code) == (201, 200)
+    assert again.json() == first.json() | {"status": "duplicate"}
+
+
+def test_MI_13_the_preview_of_a_used_request_id_follows_the_same_comparison(api: Api) -> None:
+    # As POST: the first saving for the same fields, 0.00 when the name differs (409).
+    opt_in(api.session)
+    post(api, entry(platform_name="ShopDemo"))
+    same = api.call("POST", "/installments/preview", entry(platform_name="ShopDemo"))
+    other = api.call("POST", "/installments/preview", entry(platform_name="RideDemo"))
+    assert (same.json()["saving_if_recorded"], other.json()["saving_if_recorded"]) == (
+        "120.00",
+        "0.00",
+    )
