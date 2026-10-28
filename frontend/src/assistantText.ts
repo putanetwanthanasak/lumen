@@ -29,13 +29,21 @@ export function formHint(plan: AssistantPlanOut): string | null {
   return ASSIST.formHint(formatBaht(plan.safe_new_monthly), thaiMonth(plan.safe_new_from));
 }
 
-/** The buffer screen's over-budget card: the shortfall, then covered or still short. */
+/**
+ * The buffer screen's over-budget card: the shortfall, then covered or still short.
+ * `covered` and `still_short` are measured on `remaining_gap`, so once a month is
+ * prepared the gap is said between them and the numbers add up (review F2).
+ */
 export function bufferPlanLines(b: BufferPlanOut): { tone: "ok" | "warn"; lines: string[] } {
   if (toSatang(b.shortfall) === 0n) return { tone: "ok", lines: [ASSIST.bufferNone] };
+  const shortfall = ASSIST.shortfall(formatBaht(b.shortfall));
+  if (toSatang(b.remaining_gap) === 0n) return { tone: "ok", lines: [shortfall, ASSIST.allPrepared] };
+  const gap = toSatang(b.remaining_gap) === toSatang(b.shortfall) ? [] : [ASSIST.notPrepared(formatBaht(b.remaining_gap))];
   return {
     tone: b.covered ? "ok" : "warn",
     lines: [
-      ASSIST.shortfall(formatBaht(b.shortfall)),
+      shortfall,
+      ...gap,
       b.covered ? ASSIST.covered(formatBaht(b.balance)) : ASSIST.stillShort(formatBaht(b.balance), formatBaht(b.still_short)),
     ],
   };

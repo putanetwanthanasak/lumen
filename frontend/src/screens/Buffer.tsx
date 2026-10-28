@@ -5,7 +5,7 @@
  * and is never blocked; an amount above the balance comes back as 422
  * AMOUNT_ABOVE_BALANCE and is said next to the button or the field.
  */
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, getBuffer, getShortfalls, moveToMain } from "../api.ts";
 import { bufferPlanLines } from "../assistantText.ts";
 import type { BufferOut, MovedOut, ShortfallsOut } from "../api-types.ts";
@@ -14,7 +14,7 @@ import { ASSIST, BUFFER, BUFFER_STATE, MONEY_ERRORS } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Alert, Button, Card, ErrorState, Field, Loading, MarkedText } from "../components/ui.tsx";
-import { mover, type Mover } from "../bufferMove.ts";
+import { latestOnly, mover, type MoveLock, type Mover } from "../bufferMove.ts";
 import { shortfallView, takeBufferMonth, type Prepare, type ShortfallView } from "../bufferState.ts";
 import { walletFor, WALLET_SEGMENTS } from "../homeLayout.ts";
 import { formatAmount, formatBaht, parseMoneyInput, type Money } from "../money.ts";
@@ -29,11 +29,14 @@ async function loadBuffer(): Promise<BufferData> {
   return { buffer, shortfalls };
 }
 
-/** One mover per form: a second press while a move is out is ignored (UI-47). */
-function useMover(): Mover {
-  const [m] = useState(() => mover(moveToMain, () => crypto.randomUUID(), (e) => (e instanceof ApiError ? e.code : null)));
+/** One mover per form, all on the screen's one lock: a press while any move is out is ignored (UI-47). */
+function useMover(lock: MoveLock): Mover {
+  const [m] = useState(() => mover(moveToMain, () => crypto.randomUUID(), (e) => (e instanceof ApiError ? e.code : null), lock));
   return m;
 }
+
+/** What every move on the screen shares: the lock, whether one is out, and the balance before it. */
+type Moves = { lock: MoveLock; moving: boolean; setMoving: (on: boolean) => void; balanceNow: () => Money };
 
 export function BufferScreen() {
   const [load, reload] = useLoad(loadBuffer);
@@ -52,18 +55,33 @@ export function BufferBody({ buffer, shortfalls, onMoved }: { buffer: BufferOut;
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [moved, setMoved] = useState<MovedOut | null>(null);
-  // One id per amount: a retry of the same move (lost answer) moves the money once.
-  const free = useMover();
+  // One lock for every move on the screen (review F1); one id per amount and month.
+  const [lock] = useState<MoveLock>(() => ({ held: false }));
+  const [moving, setMoving] = useState(false);
+  const free = useMover(lock);
   const [balance, setBalance] = useState(buffer.balance);
+  // The balance as the API last said, read when a move starts (its "before").
+  const latestBalance = useRef(buffer.balance);
+  const showBalance = (value: Money) => {
+    latestBalance.current = value;
+    setBalance(value);
+  };
   // The last GET /buffer answer: the months covered and the monthly total are the API's.
   const [current, setCurrent] = useState(buffer);
   const cover = walletFor(current, balance); // null between a move and the next GET /buffer
   // The months over budget as the API last said; read again after every move.
   const [months, setMonths] = useState(shortfalls);
+  const [reads] = useState(latestOnly);
   const refresh = () => {
-    getBuffer().then(setCurrent, () => undefined);
-    getShortfalls().then(setMonths, () => undefined);
+    const isLatest = reads.take(); // an older answer never replaces a newer one
+    getBuffer().then((b) => {
+      if (!isLatest()) return;
+      showBalance(b.balance);
+      setCurrent(b);
+    }, () => undefined);
+    getShortfalls().then((s) => isLatest() && setMonths(s), () => undefined);
   };
+  const moves: Moves = { lock, moving, setMoving, balanceNow: () => latestBalance.current };
 
   // Opened from Home or ภาระผ่อนรายเดือน at a month: show that month's card.
   useEffect(() => {
@@ -83,13 +101,13 @@ export function BufferBody({ buffer, shortfalls, onMoved }: { buffer: BufferOut;
     setError(null);
     setFailed(false);
     setBusy(true);
+    setMoving(true);
     try {
       const out = await pending;
       setMoved(out);
-      setBalance(out.balance);
+      showBalance(out.balance);
       // The months covered for the new balance come from the API (review F4).
-      getBuffer().then(setCurrent, () => undefined);
-      getShortfalls().then(setMonths, () => undefined);
+      refresh();
       setAmount("");
     } catch (e) {
       if (e instanceof ApiError && e.code === "AMOUNT_ABOVE_BALANCE") {
@@ -98,13 +116,11 @@ export function BufferBody({ buffer, shortfalls, onMoved }: { buffer: BufferOut;
         // Unknown outcome: the money may already have moved. Say so, and read the
         // balance again instead of showing the old one (review B1 F4).
         setFailed(true);
-        getBuffer().then((b) => {
-          setBalance(b.balance);
-          setCurrent(b);
-        }, () => undefined);
+        refresh();
       }
     } finally {
       setBusy(false);
+      setMoving(false);
     }
   }
 
@@ -142,11 +158,12 @@ export function BufferBody({ buffer, shortfalls, onMoved }: { buffer: BufferOut;
       {months !== null && (
         <ShortfallSection
           shortfalls={months}
-          balance={balance}
+          moves={moves}
           onMoved={(out) => {
-            setBalance(out.balance);
+            showBalance(out.balance);
             refresh();
           }}
+          onUnknown={refresh}
         />
       )}
 
@@ -186,7 +203,7 @@ export function BufferBody({ buffer, shortfalls, onMoved }: { buffer: BufferOut;
             />
             {failed && <Alert tone="info" title={BUFFER.failed} />}
             {/* The free move: no month (no for_month), so it prepares nothing. */}
-            <Button type="submit" busy={busy} icon="wallet" variant="secondary">
+            <Button type="submit" busy={busy} disabled={moving} icon="wallet" variant="secondary">
               {busy ? BUFFER.moving : BUFFER.move}
             </Button>
           </form>
@@ -202,7 +219,17 @@ const prepareId = (month: string) => `prepare-${month}`;
  * Each month over budget, in date order: its state, and while it is not prepared, its
  * move. The summary on top is the API's (`covered`, `still_short`, over the gaps left).
  */
-function ShortfallSection({ shortfalls, balance, onMoved }: { shortfalls: ShortfallsOut; balance: Money; onMoved: (out: MovedOut) => void }) {
+function ShortfallSection({
+  shortfalls,
+  moves,
+  onMoved,
+  onUnknown,
+}: {
+  shortfalls: ShortfallsOut;
+  moves: Moves;
+  onMoved: (out: MovedOut) => void;
+  onUnknown: () => void;
+}) {
   const { tone, lines } = bufferPlanLines(shortfalls);
   const [head = "", ...rest] = lines;
   return (
@@ -213,7 +240,7 @@ function ShortfallSection({ shortfalls, balance, onMoved }: { shortfalls: Shortf
         {rest.join(" ")}
       </Alert>
       {shortfalls.months.map((row) => (
-        <PrepareCard key={row.month} view={shortfallView(row, shortfalls.balance)} balance={balance} onMoved={onMoved} />
+        <PrepareCard key={row.month} view={shortfallView(row, shortfalls.balance)} moves={moves} onMoved={onMoved} onUnknown={onUnknown} />
       ))}
     </section>
   );
@@ -226,29 +253,45 @@ type Done = { out: MovedOut; before: Money };
  * "ใช้กันชนจ่ายส่วนที่เกิน", which moves the amount the API gave with `for_month`. Once
  * moved, the steps show the API's numbers and the success line; the state line comes
  * from the next GET /buffer/shortfalls. A retry after a lost answer sends the same id,
- * so the money moves once; a second press while the move is out is ignored (UI-47).
+ * so the money moves once; a press while any move on the screen is out is ignored (UI-47).
  */
-function PrepareCard({ view, balance, onMoved }: { view: ShortfallView; balance: Money; onMoved: (out: MovedOut) => void }) {
+function PrepareCard({
+  view,
+  moves,
+  onMoved,
+  onUnknown,
+}: {
+  view: ShortfallView;
+  moves: Moves;
+  onMoved: (out: MovedOut) => void;
+  onUnknown: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const forMonth = useMover();
+  const forMonth = useMover(moves.lock);
   const [done, setDone] = useState<Done | null>(null);
   const prepare: Prepare | null = done === null ? view.prepare : null;
   const month = thaiMonth(view.month);
 
   async function move(p: Prepare) {
     const pending = forMonth.press(p.amount, p.month);
-    if (pending === null) return; // a second press while the first is out
+    if (pending === null) return; // another move on the screen is out
+    // The balance before this move, as the API last said (never the first load's).
+    const before = moves.balanceNow();
     setProblem(null);
     setBusy(true);
+    moves.setMoving(true);
     try {
       const out = await pending;
-      setDone({ out, before: balance });
+      setDone({ out, before });
       onMoved(out);
     } catch (e) {
-      setProblem(e instanceof ApiError && e.code === "AMOUNT_ABOVE_BALANCE" ? BUFFER.aboveBalance : BUFFER.failed);
+      const above = e instanceof ApiError && e.code === "AMOUNT_ABOVE_BALANCE";
+      setProblem(above ? BUFFER.aboveBalance : BUFFER.failed);
+      if (!above) onUnknown(); // the money may have moved: read the balance again
     } finally {
       setBusy(false);
+      moves.setMoving(false);
     }
   }
 
@@ -278,7 +321,7 @@ function PrepareCard({ view, balance, onMoved }: { view: ShortfallView; balance:
         <>
           <p className="text-body text-ink-muted">{BUFFER_STATE.helper}</p>
           {problem !== null && <Alert tone="info" title={problem} />}
-          <Button variant="buffer" icon={ACCENT.buffer.icon} busy={busy} onClick={() => void move(prepare)}>
+          <Button variant="buffer" icon={ACCENT.buffer.icon} busy={busy} disabled={moves.moving} onClick={() => void move(prepare)}>
             {busy ? BUFFER_STATE.moving : BUFFER_STATE.use}
           </Button>
         </>

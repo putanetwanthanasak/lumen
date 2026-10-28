@@ -6,7 +6,7 @@
  * /demo/payday). With `--mode mock` it switches the mock's scenes instead of personas.
  */
 import { useEffect, useState } from "react";
-import { ApiError, demoEndpointsEnabled, needsSettings, runPayday, setDemoScene, USE_MOCK, type DemoScene } from "../api.ts";
+import { ApiError, demoEndpointsOnce, needsSettings, runPayday, setDemoScene, USE_MOCK, type DemoScene } from "../api.ts";
 import type { PaydayOut } from "../api-types.ts";
 import { DEMO, PAYDAY_OUTCOME } from "../copy.ts";
 import { formatBaht } from "../money.ts";
@@ -20,15 +20,12 @@ const MONTH_CHOICES = 4;
 
 let openSheet: (() => void) | null = null;
 
-// Asked once per page: a probe that writes nothing (src/api.ts).
-let enabled: Promise<boolean> | null = null;
-
 function useDemoEnabled(): boolean {
   const [on, setOn] = useState(false);
   useEffect(() => {
-    enabled ??= demoEndpointsEnabled();
     let live = true;
-    enabled.then((value) => live && setOn(value));
+    // A probe that writes nothing, kept once the API answered (src/api.ts).
+    demoEndpointsOnce().then((value) => live && setOn(value));
     return () => {
       live = false;
     };

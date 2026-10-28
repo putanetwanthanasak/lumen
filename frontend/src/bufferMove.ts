@@ -27,6 +27,9 @@ export function afterMoveError(request: MoveRequest, code: string | null): MoveR
   return code === "AMOUNT_ABOVE_BALANCE" ? null : request;
 }
 
+/** Shared by every move on one screen: while one move is out, every other press is ignored. */
+export type MoveLock = { held: boolean };
+
 export type Mover = {
   /** Null when a move is already on its way: that press is ignored, so the money moves once. */
   press(amount: Money, forMonth?: string): Promise<MovedOut> | null;
@@ -35,29 +38,51 @@ export type Mover = {
 /**
  * One move at a time, outside React state: two presses in the same task (before a
  * re-render disables the button) still send one request (UI-47, Bugs found in the
- * Session 17 log). The request is kept between presses as `moveRequest` says.
+ * Session 17 log). Pass one `lock` to every mover on a screen, so a move for another
+ * month, or the free move, waits too (review F1). Each mover keeps its own request
+ * between presses, as `moveRequest` says, so a retry still finds its id.
  */
-export function mover(send: (body: MoveIn) => Promise<MovedOut>, newId: () => string, codeOf: (error: unknown) => string | null): Mover {
+export function mover(
+  send: (body: MoveIn) => Promise<MovedOut>,
+  newId: () => string,
+  codeOf: (error: unknown) => string | null,
+  lock: MoveLock = { held: false },
+): Mover {
   let request: MoveRequest | null = null;
-  let inFlight = false;
   return {
     press(amount, forMonth) {
-      if (inFlight) return null;
-      inFlight = true;
+      if (lock.held) return null;
+      lock.held = true;
       const next = moveRequest(request, amount, newId(), forMonth);
       request = next;
       return send(moveBody(next)).then(
         (out) => {
           request = null;
-          inFlight = false;
+          lock.held = false;
           return out;
         },
         (error: unknown) => {
           request = afterMoveError(next, codeOf(error));
-          inFlight = false;
+          lock.held = false;
           throw error;
         },
       );
+    },
+  };
+}
+
+/**
+ * For answers that may arrive out of order (GET /buffer after each move): `take()`
+ * before asking, and show the answer only while `isLatest()` still holds, so an older
+ * balance never replaces a newer one (review F1).
+ */
+export function latestOnly(): { take(): () => boolean } {
+  let asked = 0;
+  return {
+    take() {
+      asked += 1;
+      const mine = asked;
+      return () => mine === asked;
     },
   };
 }

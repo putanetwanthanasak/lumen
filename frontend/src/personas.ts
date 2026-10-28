@@ -16,6 +16,9 @@ export const PERSONAS: readonly Persona[] = [
 
 const KEY = "kidnee-demo-user";
 
+declare const __KIDNEE_MOCK__: boolean | undefined; // vite.config.ts: true only with --mode mock
+const MOCK_BUILD = typeof __KIDNEE_MOCK__ !== "undefined" && __KIDNEE_MOCK__;
+
 function stored(): string | null {
   try {
     return globalThis.localStorage?.getItem(KEY) ?? null;
@@ -24,7 +27,16 @@ function stored(): string | null {
   }
 }
 
-let current = PERSONAS.find((p) => p.id === stored())?.id ?? DEMO_USER;
+/**
+ * The persona a page starts as. The mock knows only ม่อน, so `--mode mock` ignores a
+ * choice kept from the real API on the same origin (review F3); so does an unknown id.
+ */
+export function startingUser(mockBuild: boolean, saved: string | null): string {
+  if (mockBuild) return DEMO_USER;
+  return PERSONAS.find((p) => p.id === saved)?.id ?? DEMO_USER;
+}
+
+let current = startingUser(MOCK_BUILD, stored());
 
 export function demoUser(): string {
   return current;

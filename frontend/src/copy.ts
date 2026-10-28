@@ -325,6 +325,8 @@ export const ASSIST = {
   shortfall: (amount: string) => `ค่างวดส่วนที่เกินงบรวมทุกเดือน ${amount}`,
   covered: (balance: string) => `กันชน ${balance} พอจ่ายส่วนที่เกินได้ทั้งหมด`,
   stillShort: (balance: string, short: string) => `กันชน ${balance} ยังขาดอีก ${short}`,
+  notPrepared: (gap: string) => `ยังไม่ได้เตรียม ${gap}`,
+  allPrepared: "เตรียมเงินจากกันชนครบทุกเดือนที่เกินงบแล้ว",
   notNeeded: "ตอนนี้ยังไม่จำเป็นต้องรวมหนี้",
   notWorth: "ตอนนี้ยังไม่คุ้มที่จะรวมหนี้",
   reason: {

@@ -219,13 +219,32 @@ export async function getAssistantSummary(): Promise<AssistantSummaryOut> {
  * when they are off.
  */
 export async function demoEndpointsEnabled(): Promise<boolean> {
+  return (await demoEndpointsAnswer()) === true;
+}
+
+/** true on, false off (404), null when the API did not answer (a network error). */
+async function demoEndpointsAnswer(): Promise<boolean | null> {
   try {
     await call<unknown>("POST", "/demo/payday", {});
     return true;
   } catch (error) {
-    // A network error tells nothing either way: no panel until the API answers.
-    return error instanceof ApiError && error.status !== 404;
+    return error instanceof ApiError ? error.status !== 404 : null;
   }
+}
+
+let demoProbe: Promise<boolean | null> | null = null;
+
+/**
+ * The Demo panel's probe, asked once per page once the API has answered. No answer
+ * tells nothing either way: no panel for now, and the next screen asks again, so
+ * starting the frontend before the API still shows the panel later (review F4).
+ */
+export function demoEndpointsOnce(): Promise<boolean> {
+  demoProbe ??= demoEndpointsAnswer().then((answer) => {
+    if (answer === null) demoProbe = null;
+    return answer;
+  });
+  return demoProbe.then((answer) => answer === true);
 }
 
 /** POST /demo/payday: mounted only with DEMO_ENDPOINTS_ENABLED=true (404 otherwise). */

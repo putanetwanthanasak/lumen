@@ -18,7 +18,8 @@ test("UI_13_after_a_move_the_months_covered_wait_for_the_new_balance", () => {
   // The screen reads the buffer again after a move and draws the months from it.
   const screen = readFileSync("src/screens/Buffer.tsx", "utf8");
   const success = screen.slice(screen.indexOf("const out = await pending;"), screen.indexOf("} catch (e) {"));
-  assert.ok(success.includes("getBuffer().then(setCurrent"), "refresh after a move");
+  assert.ok(success.includes("refresh();"), "refresh after a move");
+  assert.match(screen, /getBuffer\(\)\.then\(\(b\) => \{\n\s+if \(!isLatest\(\)\) return;\n\s+showBalance\(b\.balance\);\n\s+setCurrent\(b\);/);
   assert.ok(screen.includes("walletFor(current, balance)"), "months only for the balance shown");
   assert.ok(!screen.includes("walletView(buffer)"), "never the months of the first load");
 });

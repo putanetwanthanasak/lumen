@@ -24,6 +24,7 @@ import {
   answerFromMock,
   ApiError,
   demoEndpointsEnabled,
+  demoEndpointsOnce,
   getAssistantSummary,
   getMonths,
   needsSettings,
@@ -31,14 +32,14 @@ import {
   USE_MOCK,
 } from "../src/api.ts";
 import type { AssistantPlanOut, BufferOut, MonthsOut, MoveIn, MovedOut, ShortfallsOut } from "../src/api-types.ts";
-import { exampleSummary } from "../src/assistantText.ts";
-import { moveBody, mover, moveRequest } from "../src/bufferMove.ts";
+import { bufferPlanLines, exampleSummary } from "../src/assistantText.ts";
+import { latestOnly, moveBody, mover, moveRequest, type MoveLock } from "../src/bufferMove.ts";
 import { shortfallsByMonth } from "../src/bufferState.ts";
 import { DemoButton } from "../src/components/DemoPanel.tsx";
 import { BUFFER, BUFFER_STATE, MONTHS_VIEW, REJECTED } from "../src/copy.ts";
 import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
 import { handle, resetMock } from "../src/mock/server.ts";
-import { demoUser, PERSONAS, setDemoUser } from "../src/personas.ts";
+import { demoUser, PERSONAS, setDemoUser, startingUser } from "../src/personas.ts";
 import { BufferBody } from "../src/screens/Buffer.tsx";
 import { MonthList } from "../src/screens/Months.tsx";
 import { rejectedErrors as settingsRejected } from "../src/settingsForm.ts";
@@ -412,12 +413,97 @@ test("UI_47_a_retry_after_a_lost_answer_resends_the_same_id_and_a_422_starts_ane
 
 test("UI_47_the_months_button_moves_for_its_month_and_the_free_move_for_none", () => {
   // Break test B-UI-190 found no test for this: the month's button must label its move,
-  // or the month never turns prepared. Each form has its own mover.
+  // or the month never turns prepared. Each form has its own mover, on the screen's lock.
   const screen = readFileSync("src/screens/Buffer.tsx", "utf8");
   const card = screen.slice(screen.indexOf("function PrepareCard("));
-  assert.match(card, /const forMonth = useMover\(\);/);
+  assert.match(card, /const forMonth = useMover\(moves\.lock\);/);
   assert.match(card, /forMonth\.press\(p\.amount, p\.month\)/);
   const free = screen.slice(screen.indexOf("async function submit("), screen.indexOf("function PrepareCard("));
   assert.match(free, /free\.press\(parsed\.value\);/);
   assert.equal(screen.split(".press(").length - 1, 2, "two moves, no other");
+});
+
+// ---- Review F1: one move at a time on the whole screen -------------------------------------
+
+test("UI_47_a_move_for_another_month_waits_while_one_is_out", async () => {
+  const lock: MoveLock = { held: false };
+  const sent: MoveIn[] = [];
+  let answer: (out: MovedOut) => void = () => undefined;
+  const send = (body: MoveIn) => {
+    sent.push(body);
+    return new Promise<MovedOut>((resolve) => {
+      answer = resolve;
+    });
+  };
+  let n = 0;
+  const newId = () => `id-${(n += 1)}`;
+  const nov = mover(send, newId, () => null, lock);
+  const dec = mover(send, newId, () => null, lock);
+  const free = mover(send, newId, () => null, lock);
+  const first = nov.press("1500.00", "2026-11");
+  assert.ok(first !== null);
+  assert.equal(dec.press("1500.00", "2026-12"), null, "Dec waits for Nov");
+  assert.equal(free.press("100.00"), null, "the free move waits too");
+  answer(movedOut(sent[0] as MoveIn));
+  await first;
+  const second = dec.press("1500.00", "2026-12");
+  assert.ok(second !== null, "free again once Nov answered");
+  answer(movedOut(sent[1] as MoveIn));
+  await second;
+  assert.deepEqual(
+    sent.map((b) => b.for_month),
+    ["2026-11", "2026-12"],
+  );
+});
+
+test("UI_47_an_older_balance_never_replaces_a_newer_one", () => {
+  const reads = latestOnly();
+  const afterNov = reads.take();
+  const afterDec = reads.take();
+  // Nov's GET /buffer answers last: it is not shown.
+  assert.deepEqual([afterNov(), afterDec()], [false, true]);
+  const screen = readFileSync("src/screens/Buffer.tsx", "utf8");
+  // One lock for the screen, given to every mover; "before" is the balance when the move starts.
+  assert.equal(screen.split("useState<MoveLock>").length - 1, 1);
+  assert.match(screen, /const free = useMover\(lock\);/);
+  assert.doesNotMatch(screen, /useMover\(\)/);
+  assert.match(screen, /const before = moves\.balanceNow\(\);/);
+  assert.match(screen, /disabled=\{moves\.moving\}/);
+  assert.match(screen, /disabled=\{moving\}/);
+});
+
+// ---- Review F2: the buffer summary adds up once a month is prepared ------------------------
+
+test("UI_47_the_buffer_summary_says_the_gap_left_once_a_month_is_prepared", () => {
+  const plan = { shortfall: "3000.00", remaining_gap: "3000.00", balance: "2000.00", covered: false, still_short: "1000.00" };
+  assert.deepEqual(bufferPlanLines(plan).lines, ["ค่างวดส่วนที่เกินงบรวมทุกเดือน 3,000.00 บาท", "กันชน 2,000.00 บาท ยังขาดอีก 1,000.00 บาท"]);
+  // Nov's 1,500.00 moved: 1,500.00 not prepared, 500.00 in the buffer, 1,000.00 short.
+  const partly = bufferPlanLines({ ...plan, remaining_gap: "1500.00", balance: "500.00" });
+  assert.deepEqual(partly, {
+    tone: "warn",
+    lines: ["ค่างวดส่วนที่เกินงบรวมทุกเดือน 3,000.00 บาท", "ยังไม่ได้เตรียม 1,500.00 บาท", "กันชน 500.00 บาท ยังขาดอีก 1,000.00 บาท"],
+  });
+  // Every month prepared and the buffer at 0.00: never "พอจ่ายส่วนที่เกินได้ทั้งหมด" with 0.00.
+  const all = bufferPlanLines({ ...plan, remaining_gap: "0.00", balance: "0.00", covered: true, still_short: "0.00" });
+  assert.deepEqual(all, { tone: "ok", lines: ["ค่างวดส่วนที่เกินงบรวมทุกเดือน 3,000.00 บาท", "เตรียมเงินจากกันชนครบทุกเดือนที่เกินงบแล้ว"] });
+});
+
+// ---- Review F3, F4: the persona in the mock, and a probe without an answer ------------------
+
+test("UI_49_the_mock_always_starts_as_mon_whatever_the_api_choice_kept", () => {
+  assert.equal(startingUser(true, "demo-over"), "demo-mon");
+  assert.equal(startingUser(false, "demo-over"), "demo-over");
+  assert.equal(startingUser(false, "someone-else"), "demo-mon");
+  assert.equal(startingUser(false, null), "demo-mon");
+});
+
+test("UI_49_a_probe_without_an_answer_is_asked_again", async () => {
+  let seen = fakeFetch(() => null); // the API is not up yet
+  assert.equal(await demoEndpointsOnce(), false);
+  seen = fakeFetch(() => ({ status: 422, body: { detail: [] } }));
+  assert.equal(await demoEndpointsOnce(), true);
+  assert.equal(seen.length, 1, "asked again");
+  seen = fakeFetch(() => ({ status: 404, body: null }));
+  assert.equal(await demoEndpointsOnce(), true, "kept once the API answered");
+  assert.equal(seen.length, 0);
 });
