@@ -314,6 +314,17 @@ covers), each with its own icon. Connection errors use
   The frame uses `overflow: clip`, which nothing can scroll, and every visually
   hidden input sits in a `relative` label (UI-26). Without that, focusing a hidden
   radio scrolled the frame itself and lifted the nav into the middle of the screen.
+- **Layers (UI-27):** the body, the action bar and the nav are each their own layer
+  (`isolate`), drawn in that order, so the nav, raised centre button included, is
+  always on top of what scrolls under it. Nothing in the body can rise over it,
+  whatever lifts it (`position`, `opacity`, a transform or a z-index): it stays inside
+  the body's layer. No z-index number does this. The only one in `src` is the Demo
+  panel's `z-30`, the overlay over the whole frame, nav included (a guard checks it).
+  Without the layers, CSS drew each positioned or semi-transparent box after every
+  plain one, so the assistant's bubble (`relative` for its tail), the uncounted
+  installments (`opacity-80`), the offer's two boxes, the month bars and the saving
+  mode choice covered the raised button as they scrolled under it. Checked in Chrome
+  on every screen and scene, at 390px and in the 370px desktop frame.
 
 ### 5.9 Card types (Home, `homeLayout.ts`)
 Each job has its own shape, and size follows importance. A card with nothing to
@@ -442,17 +453,17 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
 0. **Hint** under the intro (PR B, from the plan): "ผ่อนเพิ่มได้ไม่เกินเดือนละ
    {safe_new_monthly} ตั้งแต่ {safe_new_from}", or "ตั้งแต่ ... ยังผ่อนเพิ่มไม่ได้โดยไม่เกินงบ"
    when it is 0.00. Advice only; nothing is blocked. Left out if the plan fails.
-1. Fields, the four the preview needs first (UI-37): **ราคาสินค้า** (**ยอดเงิน** for
-   a cash kind), **จำนวนเดือนที่ผ่อน** with quick picks "3 เดือน", "6 เดือน", "10
-   เดือน" and "12 เดือน" under it (a tap fills the field, typing still works, the
-   picked one is `aria-pressed`), **ค่างวดต่อเดือน**, **เริ่มจ่ายงวดแรก**. Then
-   "รายละเอียดเพิ่มเติม (ไม่บังคับ)", folded (`aria-expanded`), with ชื่อสินค้า and
-   **แอปที่ผ่อน** (free text, at most 60 characters, placeholder "เช่น ShopDemo"; never
-   a list of real platforms, rule 5). It opens by itself when a kept form or a demo
-   example has a name or an app.
-1b. **Kind:** "ผ่อนสินค้า" is preselected. The small link "เป็นรายการเงินสด?" shows the
-   three kinds (the link goes, the keyboard moves to the checked kind): ผ่อนสินค้า on
-   its own row, กดเงินสด and สินเชื่อเงินสด side by side. A cash kind shows
+1. Fields, every one in view and none folded, in this order (UI-37): **ชื่อสินค้า
+   (ไม่บังคับ)**, then **แอปที่ผ่อน (ไม่บังคับ)** (free text, at most 60 characters,
+   placeholder "เช่น ShopDemo"; never a list of real platforms, rule 5), then the four
+   the preview needs: **ราคาสินค้า** (**ยอดเงิน** for a cash kind),
+   **จำนวนเดือนที่ผ่อน** with quick picks "3 เดือน", "6 เดือน", "10 เดือน" and "12
+   เดือน" under it (a tap fills the field, typing still works, the picked one is
+   `aria-pressed`), **ค่างวดต่อเดือน**, **เริ่มจ่ายงวดแรก**.
+1b. **Kind:** "ผ่อนสินค้า" is preselected. The small link "เป็นรายการเงินสด?" sits
+   between แอปที่ผ่อน and the price, whose label it changes. It shows the three kinds
+   (the link goes, the keyboard moves to the checked kind): ผ่อนสินค้า on its own row,
+   กดเงินสด and สินเชื่อเงินสด side by side. A cash kind shows
    "รายการเงินสดจะไม่กันเงินเข้ากันชน", and the kinds stay shown while one is chosen.
 2. **Monthly amount:** once price and months are valid, it is prefilled with the
    0% suggestion from `src/api.ts` (price / months rounded UP to 0.01; the screen
@@ -575,7 +586,7 @@ Source of truth: `frontend/src/copy.ts`. The key strings:
 | Wallet | กันชนของคุณ › · พอ {n} เดือน · ยังไม่พอ 1 เดือน · ไม่มีค่างวด |
 | Assistant | ผู้ช่วย KidNee · ตัวอย่าง · อ่านต่อ › · ย่อ · กำลังสรุป... |
 | Consolidation | ตอนนี้ยังไม่จำเป็นต้องรวมหนี้ · ทางเลือกจากธนาคาร · ตอนนี้ · ถ้ารวมหนี้ (ตัวอย่าง) · ยอดรวมทั้งหมด · ค่างวดลดลงเดือนละ {monthly_reduction} ทุกเดือนกลับมาอยู่ในงบ · สนใจรวมหนี้ |
-| Form | เป็นรายการเงินสด? · ยอดเงิน · {n} เดือน · รายละเอียดเพิ่มเติม (ไม่บังคับ) · กรอกข้อมูล 4 ข้อด้านบนให้ครบก่อน |
+| Form | ชื่อสินค้า (ไม่บังคับ) · แอปที่ผ่อน (ไม่บังคับ) · เป็นรายการเงินสด? · ยอดเงิน · {n} เดือน · กรอกข้อมูล 4 ข้อด้านบนให้ครบก่อน |
 
 Months are Thai short names with the Buddhist-era year ("พ.ย. 2569"), as the
 backend writes them.
