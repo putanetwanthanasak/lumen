@@ -11,7 +11,7 @@ import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
 import { handle, resetMock } from "../src/mock/server.ts";
 
 const TODAY = new Date(2026, 9, 27); // Oct 2026: the persona owes 3,500.00 a month
-const USER = "demo-mint";
+const USER = "demo-mon";
 const call = (method: string, path: string, body?: unknown) => handle(method, path, body, USER);
 const buffer = () => (call("GET", "/buffer").body as BufferOut).balance;
 

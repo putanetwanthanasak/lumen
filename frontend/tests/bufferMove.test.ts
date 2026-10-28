@@ -1,8 +1,27 @@
 /** Which client_request_id a buffer move sends (screen 4): UI-13. Review B1 F3, F4. */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { BUFFER } from "../src/copy.ts";
 import { afterMoveError, moveRequest } from "../src/bufferMove.ts";
+import { walletFor } from "../src/homeLayout.ts";
+
+test("UI_13_after_a_move_the_months_covered_wait_for_the_new_balance", () => {
+  // Review round 1 F4: 4,800.00 against 3,500.00 a month is 1 month. After moving it
+  // all, the balance shows 0.00 at once; the 1 month belongs to the old balance, so the
+  // meter and its caption wait for GET /buffer instead of showing it.
+  const before = { balance: "4800.00", monthly_total: "3500.00", months_covered: 1 };
+  assert.equal(walletFor(before, "4800.00")?.filled, 1);
+  assert.equal(walletFor(before, "0.00"), null);
+  const after = { balance: "0.00", monthly_total: "3500.00", months_covered: 0 };
+  assert.deepEqual([walletFor(after, "0.00")?.filled, walletFor(after, "0.00")?.caption], [0, "ยังไม่พอ 1 เดือน"]);
+  // The screen reads the buffer again after a move and draws the months from it.
+  const screen = readFileSync("src/screens/Buffer.tsx", "utf8");
+  const success = screen.slice(screen.indexOf("const out = await moveToMain("), screen.indexOf("} catch (e) {"));
+  assert.ok(success.includes("getBuffer().then(setCurrent"), "refresh after a move");
+  assert.ok(screen.includes("walletFor(current, balance)"), "months only for the balance shown");
+  assert.ok(!screen.includes("walletView(buffer)"), "never the months of the first load");
+});
 
 test("UI_13_a_retry_of_the_same_amount_after_a_failure_reuses_the_id", () => {
   const first = moveRequest(null, "800.00", "id-1");

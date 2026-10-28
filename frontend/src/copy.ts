@@ -42,6 +42,16 @@ export const VERDICT: Record<Verdict, VerdictCopy> = {
 
 export const ADVISORY_NOTE = "นี่เป็นคำแนะนำเท่านั้น คุณบันทึกรายการได้เสมอ";
 
+/** What each accent colour means (accent.ts); always shown with its icon. */
+export const ACCENT_LABEL = {
+  debt: "ภาพรวมหนี้",
+  buffer: "กันชน",
+  warn: "เกินงบ",
+  bank: "ทางเลือกจากธนาคาร",
+  ai: "ผู้ช่วย KidNee",
+  quiet: "ข้อมูลเพิ่มเติม",
+};
+
 export const NAV = {
   home: "หน้าหลัก",
   // Short labels: a quarter of 390px, one line each. Full names stay on titles and buttons.
@@ -104,7 +114,7 @@ export const SETTINGS = {
   saving: "กำลังบันทึก...",
   saved: "บันทึกการตั้งค่าแล้ว",
   failed: "บันทึกไม่สำเร็จ ลองกดบันทึกอีกครั้งได้เลย",
-  demoFill: "กรอกข้อมูลตัวอย่างของมิ้นท์",
+  demoFill: "กรอกข้อมูลตัวอย่างของม่อน",
   next: "ไปหน้าหลัก",
 };
 
@@ -112,9 +122,8 @@ export const HOME = {
   greeting: (name: string) => `สวัสดี ${name}`,
   greetingPlain: "สวัสดี",
   thisMonthTitle: (month: string) => `ค่างวดรวมเดือน ${month}`,
-  seeAllMonths: "ดูทุกเดือน ›",
+  seeAllMonths: "ดูทุกเดือน", // read aloud with the hero's chevron
   ofBudget: (budget: string) => `จากงบ ${budget}`,
-  overBudgetNow: "เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้",
   withinBudgetNow: "เดือนนี้ยังอยู่ในงบ",
   installments: "รายการผ่อนของคุณ",
   totalPerMonth: (total: string) => `รวม ${total} ต่อเดือน`,
@@ -124,18 +133,32 @@ export const HOME = {
   perMonth: (amount: string) => `${amount}/เดือน`,
   remaining: (amount: string) => `คงเหลือ ${amount}`,
   monthsLeft: (months: number) => `ผ่อน ${months} เดือน`,
+  // From GET /debts/months (UI-43): where an installment is in its plan.
+  schedule: (no: number, total: number, last: string | null) =>
+    last === null ? `งวดที่ ${no} จาก ${total}` : `งวดที่ ${no} จาก ${total} · หมด ${last}`,
+  scheduleLater: (first: string, last: string | null) => (last === null ? `เริ่ม ${first}` : `เริ่ม ${first} · หมด ${last}`),
   manual: "บันทึกเอง",
   statusPaidOff: "ผ่อนครบแล้ว",
   statusCancelled: "ยกเลิกแล้ว",
   statusCancelledAfterReport: "ยกเลิกแล้ว หลังจากคุณแจ้งว่าไม่ใช่รายการของคุณ",
   statusDisputed: "คุณแจ้งว่าไม่ใช่รายการของคุณ",
-  notCounted: "ไม่นับในยอดต่อเดือน",
-  bufferTitle: "กันชนของคุณ",
-  bufferCovers: (months: number) => `พอจ่ายค่างวดได้ประมาณ ${months} เดือน`,
-  bufferNothingOwed: "ตอนนี้ไม่มีค่างวดที่ต้องจ่าย",
-  upcomingTitle: "เดือนข้างหน้าที่ค่างวดรวมเกินงบ",
-  upcomingNone: "5 เดือนข้างหน้ายังไม่มีเดือนไหนเกินงบ",
-  upcomingRow: (total: string) => `รวม ${total}`,
+  notCounted: "ไม่นับในยอดต่อเดือน", // cancelled, or reported "not me": never under "ผ่อนครบแล้ว"
+  finished: (count: number) => `ผ่อนครบแล้ว ${count} รายการ`,
+  allInBudget: (later: number) => `เดือนนี้และอีก ${later} เดือนอยู่ในงบ`,
+  // The hero's one warning line (UI-41, UI-42), months already in Thai.
+  overWarning: (count: number, first: string, last: string, together: boolean) =>
+    count === 1
+      ? `เกินงบ 1 เดือน (${first})`
+      : together
+        ? `เกินงบ ${count} เดือน (${first} ถึง ${last})`
+        : `เกินงบ ${count} เดือน (ในช่วง ${first} ถึง ${last})`,
+  bufferCovers: "กันชนพอจ่ายส่วนที่เกิน",
+  bufferHelpsSome: "กันชนช่วยได้บางส่วน",
+  useBuffer: "ใช้กันชน ›",
+  bufferTitle: "กันชนของคุณ ›",
+  walletCovers: (months: number) => `พอ ${months} เดือน`,
+  walletCoversNone: "ยังไม่พอ 1 เดือน",
+  walletNothingOwed: "ไม่มีค่างวด",
   thinkCta: "เช็กก่อนผ่อน",
   thinkCtaHelp: "ก่อนกดผ่อนชิ้นต่อไป ประเมินภาระผ่อนรายเดือนได้ที่นี่",
 };
@@ -146,11 +169,13 @@ export const THINK = {
   kindTitle: "ประเภทรายการ",
   kinds: { purchase: "ผ่อนสินค้า", cash_withdrawal: "กดเงินสด", cash_loan: "สินเชื่อเงินสด" },
   cashNoSaving: "รายการเงินสดจะไม่กันเงินเข้ากันชน",
-  cashAmount: "ยอดเงินที่ได้รับ",
+  cashAmount: "ยอดเงิน",
+  cashLink: "เป็นรายการเงินสด?",
   itemName: "ชื่อสินค้า (ไม่บังคับ)",
   itemNamePlaceholder: "เช่น โทรศัพท์",
   price: "ราคาสินค้า",
   months: "จำนวนเดือนที่ผ่อน",
+  monthChip: (months: number) => `${months} เดือน`,
   monthsError: "กรอกจำนวนเต็ม 1 ถึง 600",
   monthly: "ค่างวดต่อเดือน",
   monthlyHelp: "คิดแบบผ่อน 0% ถ้าแอปแจ้งยอดต่อเดือนไม่ตรงนี้ แก้ให้ตรงกับแอปได้",
@@ -163,13 +188,22 @@ export const THINK = {
   firstDueNext: "เดือนหน้า",
   firstDueError: "เลือกเดือนที่เริ่มจ่ายงวดแรก",
   check: "ประเมินภาระผ่อน",
+  checkNeeds: "กรอกราคา จำนวนเดือน ค่างวด และเดือนเริ่มจ่ายให้ครบก่อน",
   checking: "กำลังประเมิน...",
   monthsTitle: "ค่างวดรวมแต่ละเดือน ถ้าผ่อนชิ้นนี้",
   budgetLine: (budget: string) => `เส้นประ คืองบ ${budget}`,
-  overMonths: (months: string) => `เดือนที่เกินงบ: ${months}`,
+  // The plain line under the chart (UI-41), months already in Thai.
+  overSummary: (count: number, first: string, last: string, together: boolean) =>
+    count === 1
+      ? `เกินงบ 1 เดือน: ${first}`
+      : together
+        ? `เกินงบ ${count} เดือน: ${first} ถึง ${last}`
+        : `เกินงบ ${count} เดือน ในช่วง ${first} ถึง ${last}`,
   legendOk: "อยู่ในงบ",
   legendOver: "เกินงบ",
   legendRisk: "เกินเกณฑ์ที่ ธปท. แนะนำ",
+  legendExisting: "ค่างวดที่มีอยู่", // the solid lower part of a bar
+  legendCandidate: "ค่างวดชิ้นใหม่", // the white top: the item being checked
   nowTotal: (total: string) => `ตอนนี้ค่างวดรวมเดือนละ ${total}`,
   record: "บันทึก",
   recording: "กำลังบันทึก...",
@@ -180,7 +214,7 @@ export const THINK = {
   savedNothing: "ครั้งนี้ไม่ได้กันเงินเข้ากันชน",
   newTotalLabel: "ค่างวดรวมต่อเดือนตอนนี้",
   failed: "ติดต่อระบบไม่สำเร็จ ลองกดอีกครั้งได้เลย",
-  demoTitle: "Demo: ลองตัวอย่างของมิ้นท์",
+  demoTitle: "Demo: ลองตัวอย่างของม่อน",
   demoScenario: { GREEN: "อยู่ในงบ", YELLOW: "เกินงบ", RED: "เกินเกณฑ์" },
   backHome: "กลับหน้าหลัก",
   another: "เช็กรายการอื่น",
@@ -266,7 +300,7 @@ export const ASSIST = {
   shortfall: (amount: string) => `ค่างวดส่วนที่เกินงบรวมทุกเดือน ${amount}`,
   covered: (balance: string) => `กันชน ${balance} พอจ่ายส่วนที่เกินได้ทั้งหมด`,
   stillShort: (balance: string, short: string) => `กันชน ${balance} ยังขาดอีก ${short}`,
-  consolidateTitle: "ควรรวมหนี้ไหม",
+  notNeeded: "ตอนนี้ยังไม่จำเป็นต้องรวมหนี้",
   notWorth: "ตอนนี้ยังไม่คุ้มที่จะรวมหนี้",
   reason: {
     NOT_NEEDED: "ยังไม่มีช่วงที่ค่างวดรวมเกินงบติดกัน 3 เดือนขึ้นไป",
@@ -274,21 +308,24 @@ export const ASSIST = {
     DISPUTED_DEBT: "มีรายการที่คุณแจ้งว่าไม่ใช่ของคุณ จึงยังรวมไม่ได้",
     ESTIMATE_TOO_LARGE: "ยอดรวมสูงเกินกว่าที่จะประมาณได้",
     PAYMENT_ABOVE_BUDGET: "ถึงรวมแล้ว ค่างวดใหม่ก็ยังเกินงบ",
+    PAYMENT_ABOVE_ONE_THIRD_OF_INCOME: "ถึงรวมแล้ว ค่างวดใหม่ก็ยังเกินเกณฑ์ที่ ธปท. แนะนำ (1 ใน 3 ของรายได้)",
     ELIGIBLE: "",
   } satisfies Record<ConsolidationReason, string>,
   worth: "รวมหนี้อาจช่วยให้ทุกเดือนกลับมาอยู่ในงบ",
   exampleTag: "ตัวอย่างการประมาณ",
   newMonthly: "ค่างวดใหม่ต่อเดือน",
   totalCost: "ต้นทุนรวมทั้งหมด",
+  nowColumn: "ตอนนี้",
+  ifConsolidated: "ถ้ารวมหนี้ (ตัวอย่าง)",
+  totalAll: "ยอดรวมทั้งหมด",
   terms: (months: number, rate: string) => `ผ่อน ${months} เดือน ดอกเบี้ยสมมติ ${rate}% ต่อปี (ไม่ใช่อัตราจริง)`,
-  extraCost: (extra: string, now: string) => `จ่ายรวมมากกว่าแผนเดิม ${extra} (ตอนนี้คงเหลือ ${now})`,
+  benefit: (reduction: string) => `ค่างวดลดลงเดือนละ ${reduction} ทุกเดือนกลับมาอยู่ในงบ`,
   interested: "สนใจรวมหนี้",
   bankWillCall: "ธนาคารจะติดต่อกลับเพื่อพิจารณา",
   bankDecides: "ธนาคารพิจารณาจากข้อมูลของธนาคารเอง ตัวเลขนี้ยังไม่ใช่ข้อเสนอ",
-  aiTitle: "ผู้ช่วย KidNee สรุปให้ฟัง",
-  aiHelp: "สรุปภาพรวมหนี้ กันชน และการรวมหนี้ในไม่กี่ประโยค",
-  aiButton: "สรุปให้ฟัง",
   aiLoading: "กำลังสรุป...",
+  aiMore: "อ่านต่อ ›",
+  aiLess: "ย่อ",
   aiExample: "ตัวอย่าง",
   aiFailed: "สรุปไม่สำเร็จ ลองอีกครั้งได้เลย",
 };
@@ -307,8 +344,11 @@ export const DEMO = {
   paydayUnavailable: "ยังเปิดใช้ไม่ได้ (ต้องเปิด DEMO_ENDPOINTS_ENABLED ที่ backend)",
   scenesTitle: "ฉาก",
   sceneFirst: "เริ่มใหม่: ยังไม่ตั้งค่า",
-  scenePersona: "มิ้นท์: ตั้งค่าแล้ว",
-  sceneOver: "มิ้นท์: มีเดือนเกินงบ",
-  sceneOverNow: "มิ้นท์: เกินงบตั้งแต่เดือนนี้",
+  scenePersona: "ม่อน: ตั้งค่าแล้ว",
+  sceneOver: "ม่อน: มีเดือนเกินงบ",
+  sceneOverNow: "ม่อน: เกินงบตั้งแต่เดือนนี้",
+  sceneOverEmpty: "ม่อน: มีเดือนเกินงบ กันชนว่าง",
+  sceneAiSlow: "ม่อน: ผู้ช่วยกำลังสรุป (ตอบช้า)",
+  sceneAiFailing: "ม่อน: ผู้ช่วยสรุปไม่สำเร็จ",
   done: "เปลี่ยนฉากแล้ว",
 };

@@ -4,7 +4,9 @@
  * Every tap target is at least 44px high; body text is 16px.
  */
 import { useId, type ReactNode } from "react";
+import { ACCENT, OUTLINE, type Marked } from "../accent.ts";
 import { COMMON } from "../copy.ts";
+import { THAI_MONTHS } from "../thaiMonth.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 
 // ---- Button -----------------------------------------------------------------
@@ -12,12 +14,16 @@ import { Icon, type IconName } from "./Icon.tsx";
 type ButtonProps = {
   children: ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "secondary" | "ghost";
+  variant?: "primary" | "secondary" | "ghost" | "bank";
   type?: "button" | "submit";
   disabled?: boolean;
   busy?: boolean;
   size?: "md" | "lg";
   icon?: IconName;
+  /** The form it submits when it sits outside it (the action bar). */
+  form?: string;
+  /** The id of the text that says why it is disabled. */
+  describedBy?: string | undefined;
 };
 
 const BUTTON_VARIANTS = {
@@ -25,6 +31,8 @@ const BUTTON_VARIANTS = {
   secondary:
     "bg-card text-leaf-800 border-2 border-leaf-700 hover:bg-leaf-50 active:bg-leaf-100 disabled:border-line disabled:text-ink-muted",
   ghost: "bg-transparent text-leaf-800 hover:bg-leaf-50 active:bg-leaf-100 disabled:text-ink-muted",
+  // A feature's own action, in its accent (accent.ts): the bank's offer.
+  bank: `${OUTLINE.bank} disabled:border-line disabled:text-ink-muted`,
 };
 
 export function Button({
@@ -36,13 +44,17 @@ export function Button({
   busy = false,
   size = "md",
   icon,
+  form,
+  describedBy,
 }: ButtonProps) {
   const height = size === "lg" ? "min-h-14 text-lead" : "min-h-12 text-body";
   return (
     <button
       type={type}
+      form={form}
       onClick={onClick}
       disabled={disabled || busy}
+      aria-describedby={describedBy}
       aria-busy={busy}
       className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-pill px-5 font-semibold transition-colors duration-200 disabled:cursor-not-allowed ${height} ${BUTTON_VARIANTS[variant]}`}
     >
@@ -68,6 +80,8 @@ type FieldProps = {
   error?: string | null;
   suffix?: string;
   inputMode?: "decimal" | "numeric" | "text";
+  /** Leaving the field: the form shows its error from then on (เช็กก่อนผ่อน, UI-37). */
+  onBlur?: () => void;
   placeholder?: string;
   maxLength?: number;
 };
@@ -86,6 +100,7 @@ export function Field({
   inputMode = "text",
   placeholder,
   maxLength,
+  onBlur,
 }: FieldProps) {
   const id = useId();
   const helpId = `${id}-help`;
@@ -110,6 +125,7 @@ export function Field({
           placeholder={placeholder}
           maxLength={maxLength}
           onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy === "" ? undefined : describedBy}
           className="min-w-0 flex-1 bg-transparent py-2 text-lead text-ink outline-none placeholder:text-ink-muted/70"
@@ -193,10 +209,11 @@ export function Checkbox({ label, checked, onChange, error }: CheckboxProps) {
 
 // ---- Alert ----------------------------------------------------------------------
 
-export type Tone = "ok" | "warn" | "risk" | "info";
+export type Tone = "ok" | "warn" | "risk" | "info" | "buffer";
 
 const TONES: Record<Tone, { box: string; icon: IconName }> = {
   ok: { box: "bg-ok-bg border-ok-line text-ok-ink", icon: "check" },
+  buffer: { box: `${ACCENT.buffer.tint} ${ACCENT.buffer.line} ${ACCENT.buffer.ink}`, icon: ACCENT.buffer.icon },
   warn: { box: "bg-warn-bg border-warn-line text-warn-ink", icon: "alert" },
   risk: { box: "bg-risk-bg border-risk-line text-risk-ink", icon: "stop" },
   info: { box: "bg-info-bg border-info-line text-info-ink", icon: "info" },
@@ -212,6 +229,38 @@ export function Alert({ tone, title, children }: { tone: Tone; title?: string; c
         {children !== undefined && <div className="text-body">{children}</div>}
       </div>
     </div>
+  );
+}
+
+/** A coloured line: its icon and its text in the accent's ink, never colour only. */
+export function MarkedText({ item, className = "" }: { item: Marked; className?: string }) {
+  return (
+    <span className={`flex items-start gap-2 text-body ${ACCENT[item.accent].ink} ${className}`}>
+      <Icon name={item.icon} size={20} className="mt-0.5" />
+      <span>
+        <KeepMonths text={item.text} />
+      </span>
+    </span>
+  );
+}
+
+// "พ.ย. 2569": a short Thai month and its Buddhist-era year (thaiMonth.ts).
+const MONTH_YEAR = new RegExp(`((?:${THAI_MONTHS.map((m) => m.replaceAll(".", "\\.")).join("|")}) [0-9]{4})`);
+
+/**
+ * Text in which a month never splits from its year at a line break ("มิ.ย." on one
+ * line, "2570" on the next); the rest wraps as usual, so a line still breaks at "ถึง".
+ */
+export function KeepMonths({ text }: { text: string }) {
+  const parts = text.split(MONTH_YEAR); // the months land at the odd places
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <span key={i} className="whitespace-nowrap">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
   );
 }
 

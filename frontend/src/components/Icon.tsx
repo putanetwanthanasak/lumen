@@ -12,9 +12,12 @@ export type IconName =
   | "bell"
   | "gear"
   | "back"
+  | "next"
   | "info"
   | "wallet"
-  | "spark"
+  | "chat"
+  | "bank"
+  | "arrow"
   | "edit"
   | "down"
   | "calendar";
@@ -29,9 +32,14 @@ const PATHS: Record<IconName, string> = {
   bell: "M6 16V11a6 6 0 1 1 12 0v5l2 2H4l2-2Zm4 4h4",
   gear: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2-1.2L14.5 3h-5l-.4 2.6a7.5 7.5 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 2 1.2l.4 2.6h5l.4-2.6a7.5 7.5 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z",
   back: "M15 18 9 12l6-6",
+  next: "m9 18 6-6-6-6",
   info: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-11v6m0-9v.5",
   wallet: "M3 7a2 2 0 0 1 2-2h13v4M3 7v10a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2Zm13 7h.5",
-  spark: "M10 3.5l1.6 4.9 4.9 1.6-4.9 1.6L10 16.5l-1.6-4.9L3.5 10l4.9-1.6L10 3.5ZM18 14l.8 2.2 2.2.8-2.2.8L18 20l-.8-2.2-2.2-.8 2.2-.8L18 14Z",
+  // A speech bubble with a small sparkle inside: the assistant talking, never a spinner.
+  chat: "M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm7 3 1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1L12 7Z",
+  // A generic building with columns (no real bank's mark).
+  bank: "M3 9.5 12 4l9 5.5H3ZM5 10v7m4.67-7v7m4.66-7v7M19 10v7M3 20h18",
+  arrow: "M5 12h14m-5-5 5 5-5 5",
   edit: "M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4",
   down: "m6 9 6 6 6-6",
   calendar: "M4 6h16v14H4V6Zm0 4h16M8 3v4m8-4v4m-7 7 2 2 4-4",

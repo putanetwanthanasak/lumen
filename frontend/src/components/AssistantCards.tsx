@@ -1,110 +1,204 @@
 /**
- * Home's two assistant cards (DESIGN.md section 7.2): "ควรรวมหนี้ไหม" from the
- * plan's consolidation (L70), and "ผู้ช่วย KidNee สรุปให้ฟัง". Numbers come from
- * GET /assistant/plan; the summary from POST /assistant/summary (mock example now).
- * "สนใจรวมหนี้" only shows a message: no form, no request call (L71: the bank decides).
+ * Home's two assistant cards (DESIGN.md section 7.2): consolidation from the plan
+ * (L70), and the assistant's chat bubble. Numbers come from GET /assistant/plan; the
+ * summary from POST /assistant/summary (mock example now). Shapes and words come
+ * from homeLayout.ts (UI-33). "สนใจรวมหนี้" only shows a message: no form, no request
+ * call (L71: the bank decides).
  */
-import { useState } from "react";
+import { useId, useState } from "react";
 import { getAssistantSummary } from "../api.ts";
-import type { AssistantSummaryOut, ConsolidationOut } from "../api-types.ts";
+import { ACCENT, EDGE, SOLID, type Accent } from "../accent.ts";
 import { ratePercent } from "../assistantText.ts";
-import { ASSIST } from "../copy.ts";
-import { formatBaht } from "../money.ts";
+import { ASSIST, COMMON } from "../copy.ts";
+import { aiBubble, type ConsolidationView } from "../homeLayout.ts";
+import { formatBaht, type Money } from "../money.ts";
+import { useLoad } from "../useLoad.ts";
 import { Icon } from "./Icon.tsx";
-import { Alert, Button, Card } from "./ui.tsx";
+import { LogoBean } from "./Logo.tsx";
+import { Button } from "./ui.tsx";
 
-function ExampleTag({ text }: { text: string }) {
+/**
+ * Thai breaks a line between any two words, so "ทุกเดือนกลับมาอยู่ในงบ" could end a
+ * line on "กลับ". The sentence's last phrase (after its last space) moves down whole.
+ */
+function KeepLastPhrase({ text }: { text: string }) {
+  const cut = text.lastIndexOf(" ");
+  if (cut < 0) return text;
   return (
-    <span className="shrink-0 self-start rounded-pill border-2 border-dashed border-info-line bg-info-bg px-2 py-0.5 text-caption font-semibold text-info-ink">
+    <>
+      {text.slice(0, cut + 1)}
+      <span className="whitespace-nowrap">{text.slice(cut + 1)}</span>
+    </>
+  );
+}
+
+function ExampleTag({ text, accent }: { text: string; accent: Accent }) {
+  const look = ACCENT[accent];
+  return (
+    <span className={`shrink-0 rounded-pill border-2 border-dashed bg-card px-2 py-0.5 text-caption font-semibold ${look.line} ${look.ink}`}>
       {text}
     </span>
   );
 }
 
-export function ConsolidationCard({ consolidation }: { consolidation: ConsolidationOut }) {
+export function ConsolidationCard({ view }: { view: ConsolidationView }) {
   const [interested, setInterested] = useState(false);
-  const e = consolidation.estimate;
-  return (
-    <Card className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lead font-bold text-ink">{ASSIST.consolidateTitle}</h2>
-        {e !== null && <ExampleTag text={ASSIST.exampleTag} />}
-      </div>
-      {e === null ? (
-        <div className="flex flex-col gap-1">
-          <p className="flex items-center gap-2 text-body font-semibold text-ink">
-            <Icon name="info" size={20} className="text-info-ink" />
-            {ASSIST.notWorth}
+  const [open, setOpen] = useState(false);
+  const reasonId = useId();
+  if (view.kind === "banner") {
+    // Nothing to act on: one slim line, the reason only on request.
+    const look = ACCENT[view.line.accent];
+    return (
+      <section className={`rounded-field ${look.tint} ${EDGE.quiet}`}>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={reasonId}
+          onClick={() => setOpen((o) => !o)}
+          className={`flex min-h-11 w-full cursor-pointer items-center gap-2 px-4 py-2 text-left text-body ${look.ink}`}
+        >
+          <Icon name={view.line.icon} size={20} />
+          <span className="flex-1">{view.line.text}</span>
+          <Icon name="down" size={18} className={open ? "rotate-180" : "-rotate-90"} />
+        </button>
+        {open && (
+          <p id={reasonId} className={`px-4 pb-3 text-body ${look.ink}`}>
+            {view.reason}
           </p>
-          <p className="text-body text-ink-muted">{ASSIST.reason[consolidation.reason]}</p>
+        )}
+      </section>
+    );
+  }
+  const e = view.estimate;
+  const bank = ACCENT[view.title.accent];
+  return (
+    // A white card framed in blue, with a solid blue header band: it stands out from
+    // the page, its edge at least 3:1 against it (UI-35). The card itself is the blue
+    // (the band shows it), so its rounded corners never show a pale hairline.
+    <section className={`overflow-hidden rounded-card ${SOLID.bank} ${EDGE.bank}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+        <h2 className="flex items-center gap-2 text-lead font-bold">
+          <Icon name={view.title.icon} size={24} />
+          {view.title.text}
+        </h2>
+        <ExampleTag text={ASSIST.exampleTag} accent="bank" />
+      </div>
+      <div className="flex flex-col gap-4 bg-card p-4 text-ink">
+        {/* Both rows on both sides, equally large: a lower payment can cost more in total.
+            The arrow sits on the gap, not in a column of its own, so each amount keeps
+            its "บาท" on one line in the 370px desktop frame (UI-38). */}
+        <div className="relative grid grid-cols-2 gap-3">
+          <Plan title={ASSIST.nowColumn} monthly={view.currentMonthly} total={e.current_remaining_total} />
+          <Plan title={ASSIST.ifConsolidated} monthly={e.monthly_payment} total={e.total_cost} />
+          <span
+            aria-hidden="true"
+            className={`absolute top-1/2 left-1/2 inline-flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-pill border-2 bg-card ${bank.line} ${bank.ink}`}
+          >
+            <Icon name="arrow" size={16} />
+          </span>
         </div>
-      ) : (
-        <>
-          <p className="text-body text-ink">{ASSIST.worth}</p>
-          {/* Both numbers, side by side: a lower payment can cost more in total. */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col rounded-field bg-leaf-50 p-3">
-              <span className="text-caption text-ink-muted">{ASSIST.newMonthly}</span>
-              <span className="text-lead font-bold text-ink">{formatBaht(e.monthly_payment)}</span>
-            </div>
-            <div className="flex flex-col rounded-field bg-warn-bg p-3">
-              <span className="text-caption text-ink-muted">{ASSIST.totalCost}</span>
-              <span className="text-lead font-bold text-ink">{formatBaht(e.total_cost)}</span>
+        {view.benefit !== null && (
+          <p className="text-body text-pretty text-ink">
+            <KeepLastPhrase text={view.benefit} />
+          </p>
+        )}
+        <p className="text-body text-ink-muted">
+          <KeepLastPhrase text={ASSIST.terms(e.term_months, ratePercent(e.annual_rate))} />
+        </p>
+        {interested ? (
+          <div role="status" className={`flex gap-3 rounded-field border-2 p-4 ${bank.tint} ${bank.line} ${bank.ink}`}>
+            <Icon name="check" className="mt-0.5" />
+            <div className="flex flex-col gap-1">
+              <p className="text-body font-bold">{ASSIST.bankWillCall}</p>
+              <p className="text-body">{ASSIST.bankDecides}</p>
             </div>
           </div>
-          <p className="text-body text-ink-muted">{ASSIST.terms(e.term_months, ratePercent(e.annual_rate))}</p>
-          <p className="text-body font-semibold text-warn-ink">
-            {ASSIST.extraCost(formatBaht(e.extra_cost), formatBaht(e.current_remaining_total))}
-          </p>
-          {interested ? (
-            <Alert tone="ok" title={ASSIST.bankWillCall}>
-              {ASSIST.bankDecides}
-            </Alert>
-          ) : (
-            <Button variant="secondary" onClick={() => setInterested(true)}>
-              {ASSIST.interested}
-            </Button>
-          )}
-        </>
-      )}
-    </Card>
+        ) : (
+          <Button variant="bank" onClick={() => setInterested(true)}>
+            {ASSIST.interested}
+          </Button>
+        )}
+      </div>
+    </section>
   );
 }
 
-type Summary = { state: "idle" } | { state: "loading" } | { state: "done"; out: AssistantSummaryOut } | { state: "failed" };
+/** The monthly amount and the total are the same size and weight: the total is never the small print (UI-38). */
+const PLAN_AMOUNT = "text-lead font-bold text-ink";
 
-export function AiSummaryCard() {
-  const [summary, setSummary] = useState<Summary>({ state: "idle" });
-  async function ask() {
-    setSummary({ state: "loading" });
-    try {
-      setSummary({ state: "done", out: await getAssistantSummary() });
-    } catch {
-      setSummary({ state: "failed" });
-    }
-  }
+function Plan({ title, monthly, total }: { title: string; monthly: Money; total: Money }) {
   return (
-    <Card className="flex flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-pill bg-leaf-50 text-leaf-700">
-          <Icon name="spark" size={28} />
-        </span>
-        <div className="flex flex-col">
-          <h2 className="text-lead font-bold text-ink">{ASSIST.aiTitle}</h2>
-          <p className="text-body text-ink-muted">{ASSIST.aiHelp}</p>
-        </div>
+    <div className={`flex h-full flex-col rounded-field p-3 ${ACCENT.bank.tint}`}>
+      {/* Two lines for every title, so both columns' numbers line up. */}
+      <span className="min-h-10 text-caption font-semibold text-ink-muted">{title}</span>
+      <span className={PLAN_AMOUNT}>{formatBaht(monthly)}</span>
+      <span className="text-caption text-ink-muted">{COMMON.perMonth}</span>
+      <span className="mt-2 text-caption text-ink-muted">{ASSIST.totalAll}</span>
+      <span className={PLAN_AMOUNT}>{formatBaht(total)}</span>
+    </div>
+  );
+}
+
+/** The assistant speaks: the mascot on the left, the summary's first line in a bubble. */
+export function AiBubbleCard() {
+  const [load, reload] = useLoad(getAssistantSummary);
+  const [open, setOpen] = useState(false);
+  const restId = useId();
+  const bubble = aiBubble(load);
+  const ai = ACCENT.ai;
+  return (
+    <section className={`flex items-start gap-3 rounded-card p-4 ${ai.tint} ${EDGE.ai}`}>
+      <span aria-hidden="true" className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-pill bg-card shadow-card">
+        <LogoBean size={34} />
+      </span>
+      <div className="relative flex min-w-0 flex-1 flex-col gap-2 rounded-card rounded-tl-md bg-card p-4 shadow-card">
+        <span aria-hidden="true" className="absolute top-4 -left-1.5 h-3 w-3 rotate-45 bg-card" />
+        <h2 className={`flex flex-wrap items-center gap-2 text-body font-bold ${ai.ink}`}>
+          <Icon name={ai.icon} size={20} />
+          {ai.label}
+          {bubble.state === "done" && bubble.example && <ExampleTag text={ASSIST.aiExample} accent="ai" />}
+        </h2>
+        {bubble.state === "loading" && (
+          <p role="status" aria-busy="true" className="min-h-12 text-body text-ink-muted">
+            {ASSIST.aiLoading}
+          </p>
+        )}
+        {bubble.state === "failed" && (
+          <>
+            <p role="status" className="text-body text-ink">
+              {ASSIST.aiFailed}
+            </p>
+            <Button variant="secondary" onClick={reload}>
+              {COMMON.retry}
+            </Button>
+          </>
+        )}
+        {bubble.state === "done" && (
+          <>
+            <p className="text-body text-ink">{bubble.first}</p>
+            {open && (
+              <div id={restId} className="flex flex-col gap-1">
+                {bubble.rest.map((line) => (
+                  <p key={line} className="text-body text-ink">
+                    {line}
+                  </p>
+                ))}
+              </div>
+            )}
+            {bubble.rest.length > 0 && (
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-controls={restId}
+                onClick={() => setOpen((o) => !o)}
+                className={`min-h-11 cursor-pointer self-start text-body font-semibold ${ai.ink}`}
+              >
+                {open ? ASSIST.aiLess : ASSIST.aiMore}
+              </button>
+            )}
+          </>
+        )}
       </div>
-      {summary.state === "done" ? (
-        <div className="flex flex-col gap-2 rounded-field border-2 border-dashed border-info-line bg-info-bg p-3">
-          {summary.out.is_example && <ExampleTag text={ASSIST.aiExample} />}
-          <p className="whitespace-pre-line text-body text-ink">{summary.out.text}</p>
-        </div>
-      ) : (
-        <Button variant="secondary" icon="spark" busy={summary.state === "loading"} onClick={() => void ask()}>
-          {summary.state === "loading" ? ASSIST.aiLoading : ASSIST.aiButton}
-        </Button>
-      )}
-      {summary.state === "failed" && <Alert tone="info" title={ASSIST.aiFailed} />}
-    </Card>
+    </section>
   );
 }

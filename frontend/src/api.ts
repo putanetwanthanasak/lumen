@@ -3,7 +3,8 @@
  *
  * USE_MOCK = true answers from src/mock/server.ts with the same status codes and
  * bodies as the backend. Set it to false to call the FastAPI app through the Vite
- * proxy (/api is stripped; to be confirmed when wiring).
+ * proxy (/api is stripped; to be confirmed when wiring). Fields the backend does not
+ * send yet are read by src/apiFields.ts, so a screen never crashes on one (UI-39).
  */
 import type {
   AssistantPlanOut,
@@ -23,6 +24,7 @@ import type {
   SettingsOut,
   SuggestedMonthlyOut,
 } from "./api-types.ts";
+import { readAssistantSummary, readMonths, readPlan, readSummary } from "./apiFields.ts";
 import { handle } from "./mock/server.ts";
 import { DEMO_USER } from "./mock/persona.ts";
 import type { Money } from "./money.ts";
@@ -57,6 +59,7 @@ async function call<T>(method: "GET" | "POST" | "PUT", path: string, body?: unkn
     await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY_MS));
     // Through JSON, so the mock cannot hand the screens anything the API could not.
     const answer = handle(method, path, body === undefined ? undefined : JSON.parse(JSON.stringify(body)), DEMO_USER);
+    if (answer.delayMs !== undefined) await new Promise((resolve) => setTimeout(resolve, answer.delayMs));
     status = answer.status;
     data = JSON.parse(JSON.stringify(answer.body));
   } else {
@@ -107,15 +110,16 @@ export async function saveSettings(data: SettingsIn, exists: boolean): Promise<S
 // ---- home (screen 2) --------------------------------------------------------
 
 export async function getDebtSummary(): Promise<DebtSummary> {
-  return (await call<DebtSummary>("GET", "/debts/summary")).body;
+  return readSummary((await call<DebtSummary>("GET", "/debts/summary")).body);
 }
 
 /**
- * TODO(backend): GET /debts/months is not built yet; answered by the mock only.
- * With `count`, that many months from now; without, up to the last month due.
+ * GET /debts/months, on main since #39 (backend/app/debts/months.py); the mock answers
+ * while USE_MOCK is true. With `count`, that many months from now; without, up to the
+ * last month due. Its rows lack only platform_name (TODO(backend), apiFields.ts).
  */
 export async function getMonths(count?: number): Promise<MonthsOut> {
-  return (await call<MonthsOut>("GET", count === undefined ? "/debts/months" : `/debts/months?count=${count}`)).body;
+  return readMonths((await call<MonthsOut>("GET", count === undefined ? "/debts/months" : `/debts/months?count=${count}`)).body);
 }
 
 export async function getBuffer(): Promise<BufferOut> {
@@ -166,12 +170,15 @@ export async function markNotificationsRead(): Promise<NotificationsOut> {
 
 /** GET /assistant/plan (merged backend): every number of the plan; 409 SETTINGS_REQUIRED. */
 export async function getAssistantPlan(): Promise<AssistantPlanOut> {
-  return (await call<AssistantPlanOut>("GET", "/assistant/plan")).body;
+  return readPlan((await call<AssistantPlanOut>("GET", "/assistant/plan")).body);
 }
 
-/** TODO(backend, tomorrow): POST /assistant/summary, the AI summary. The mock returns an example. */
+/**
+ * TODO(backend, tomorrow): POST /assistant/summary, the AI summary. Home asks for it
+ * when it opens (the assistant's bubble). The mock returns an example.
+ */
 export async function getAssistantSummary(): Promise<AssistantSummaryOut> {
-  return (await call<AssistantSummaryOut>("POST", "/assistant/summary")).body;
+  return readAssistantSummary((await call<AssistantSummaryOut>("POST", "/assistant/summary")).body);
 }
 
 // ---- Demo panel -----------------------------------------------------------------
@@ -182,7 +189,14 @@ export async function runPayday(month: string): Promise<{ created: boolean; out:
   return { created: answer.status === 201, out: answer.body };
 }
 
-export type DemoScene = "first_launch" | "persona" | "over_budget" | "over_budget_now";
+export type DemoScene =
+  | "first_launch"
+  | "persona"
+  | "over_budget"
+  | "over_budget_now"
+  | "over_budget_empty_buffer"
+  | "ai_slow"
+  | "ai_failing";
 
 /** Mock only: there is no backend endpoint for scenes. */
 export async function setDemoScene(scene: DemoScene): Promise<void> {

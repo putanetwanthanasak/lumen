@@ -12,6 +12,10 @@
  * the app's summary page says (UI-18). The monthly amount is prefilled with the
  * API's 0% suggestion until the user edits it, and an edited value is never
  * overwritten (UI-18).
+ *
+ * The four fields the preview needs come first; the item name and the app are
+ * optional (UI-37). The check stays disabled until all four are valid, and a field
+ * shows its error once the user leaves it with something typed.
  */
 import type { InstallmentKind, ManualEntryIn, PreviewOut } from "./api-types.ts";
 import { MONEY_ERRORS, THINK } from "./copy.ts";
@@ -29,7 +33,8 @@ export type Form = {
   monthlyEdited: boolean;
   firstDue: string; // "" until the user picks a month
 };
-export type Errors = Partial<Record<"price" | "months" | "monthly" | "firstDue" | "platform", string>>;
+export type FieldKey = "price" | "months" | "monthly" | "firstDue" | "platform";
+export type Errors = Partial<Record<FieldKey, string>>;
 
 const MONTHS = /^([1-9][0-9]{0,2})$/;
 export const PLATFORM_MAX = 60;
@@ -44,9 +49,33 @@ export function firstDueChoices(today: Date): { thisMonth: string; nextMonth: st
   return { thisMonth, nextMonth: addMonths(thisMonth, 1) };
 }
 
-/** "ประเมินภาระผ่อน" stays disabled until a first due month is chosen. */
+/** Quick picks under จำนวนเดือนที่ผ่อน: a tap fills the field, typing still works (UI-37). */
+export const MONTH_CHIPS = [3, 6, 10, 12] as const;
+
+/**
+ * "ประเมินภาระผ่อน" stays disabled until every required field is valid: the price
+ * (or the cash amount), the months, the monthly amount and the first due month,
+ * which has no default (UI-18, UI-37).
+ */
 export function canPreview(form: Form): boolean {
-  return form.firstDue !== "";
+  return toEntry(form, "").ok;
+}
+
+/**
+ * The errors to show: a field's own once the user has left it with something typed
+ * (an empty field is only not done yet; the bar's hint says so), or every error after
+ * a check that could not be sent (UI-37).
+ */
+export function shownErrors(form: Form, touched: ReadonlySet<FieldKey> | "all"): Errors {
+  const built = toEntry(form, "");
+  if (built.ok) return {};
+  if (touched === "all") return built.errors;
+  const shown: Errors = {};
+  for (const key of touched) {
+    const error = built.errors[key];
+    if (error !== undefined && form[key].trim() !== "") shown[key] = error;
+  }
+  return shown;
 }
 
 function monthCount(form: Form): number {

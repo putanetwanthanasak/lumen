@@ -1,10 +1,14 @@
 /**
- * Screen 3: เช็กก่อนผ่อน, the form (DESIGN.md section 7.3).
- * Kind, item, app, price, months, monthly amount (prefilled with the API's 0%
- * suggestion until the user edits it) and the first due month (no default). The
- * preview opens the result screen (screens/Result.tsx); the form survives the trip.
+ * Screen 3: เช็กก่อนผ่อน, the form (DESIGN.md section 7.3, UI-37).
+ * Every field in view, in this order: the item name and the app (both optional), the
+ * price (ยอดเงิน for a cash item), the months (with quick picks), the monthly amount
+ * (prefilled with the API's 0% suggestion until the user edits it) and the first due
+ * month (no default). The kind is ผ่อนสินค้า unless the user opens "เป็นรายการเงินสด?",
+ * just above the price whose label it changes. The check sits in the bar above the
+ * nav, always in view, disabled until the four required fields are valid. The preview
+ * opens the result screen (screens/Result.tsx); the form survives the trip.
  */
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { ApiError, getAssistantPlan, getSettings, previewInstallment, suggestMonthly } from "../api.ts";
 import { formHint } from "../assistantText.ts";
 import type { InstallmentKind } from "../api-types.ts";
@@ -23,16 +27,18 @@ import {
   emptyForm,
   firstDueChoices,
   getDraft,
+  MONTH_CHIPS,
   PLATFORM_MAX,
   setDraft,
+  shownErrors,
   startPreview,
   suggestionRequest,
   toEntry,
-  type Errors,
+  type FieldKey,
   type Form,
   type Stage,
 } from "../thinkFirstForm.ts";
-import { useLoad } from "../useLoad.ts";
+import { useLoad, type Load } from "../useLoad.ts";
 
 const KINDS: InstallmentKind[] = ["purchase", "cash_withdrawal", "cash_loan"];
 const SUGGEST_DELAY_MS = 300; // wait for the user to stop typing
@@ -46,13 +52,7 @@ async function loadForm() {
 
 export function ThinkFirstScreen() {
   const [load, reload] = useLoad(loadForm);
-  return (
-    <Screen route="think" title={THINK.title} back="home">
-      {load.state === "loading" && <Loading lines={3} />}
-      {load.state === "error" && <ErrorState onRetry={reload} />}
-      {load.state === "ready" && (load.data === null ? <SettingsMissing onSetUp={() => navigate("settings")} /> : <ThinkFirst hint={load.data.hint} />)}
-    </Screen>
-  );
+  return <ThinkFirst load={load} reload={reload} />;
 }
 
 /** Demo deep link: "?persona&scene=YELLOW#/think" opens with that example checked. */
@@ -77,17 +77,30 @@ function formFor(scenario: Scenario, base: Form): Form {
   };
 }
 
-function ThinkFirst({ hint }: { hint: string | null }) {
+/**
+ * The form with its screen around it in every state: one Screen from loading to ready,
+ * so the header (its bell) and the nav are never mounted twice; the check's bar joins
+ * it once the settings are in.
+ */
+export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typeof loadForm>>>; reload: () => void }) {
+  const loaded = load.state === "ready" && load.data !== null;
   const [form, setForm] = useState<Form>(() => {
     const kept = getDraft();
     if (kept !== null) return kept.form; // back from the result screen ("แก้ไข")
     const scene = sceneFromUrl();
     return scene === null ? emptyForm() : formFor(scene, emptyForm());
   });
-  const [errors, setErrors] = useState<Errors>({});
+  const [touched, setTouched] = useState<ReadonlySet<FieldKey> | "all">(() => new Set());
   const [stage, setStage] = useState<Stage>({ name: "form" });
   const [problem, setProblem] = useState<"failed" | "settings" | null>(null);
+  // A cash item is the exception: its kinds open on request, and stay open while one is chosen.
+  const [kindsOpen, setKindsOpen] = useState(() => form.kind !== "purchase");
   const pending = useRef<string | null>(null); // the preview request still waited for
+  const focusKind = useRef(false);
+  const deepLinked = useRef(false);
+  const formId = useId();
+  const kindsId = useId();
+  const needsId = useId();
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => {
     setForm((f) => ({ ...f, [key]: value, ...(key === "monthly" ? { monthlyEdited: true } : {}) }));
@@ -95,6 +108,8 @@ function ThinkFirst({ hint }: { hint: string | null }) {
     // A changed entry is a new entry: a pending verdict no longer applies.
     setStage((s) => (s.name === "checking" || s.name === "verdict" ? edit(s) : s));
   };
+  // Leaving a field: from then on it shows its error, if it has one.
+  const leave = (key: FieldKey) => setTouched((t) => (t === "all" ? t : new Set(t).add(key)));
 
   // The 0% suggestion, from the API, until the user edits the monthly amount.
   const ask = suggestionRequest(form);
@@ -111,17 +126,26 @@ function ThinkFirst({ hint }: { hint: string | null }) {
     // `ask` is rebuilt every render; its key says when it really changed.
   }, [askKey]);
 
+  // The link that opened the kinds is gone: the keyboard moves to the chosen kind.
+  useEffect(() => {
+    if (!focusKind.current) return;
+    focusKind.current = false;
+    document.getElementById(kindsId)?.querySelector<HTMLInputElement>("input:checked")?.focus();
+  }, [kindsOpen]);
+
   function fill(scenario: Scenario) {
     setForm((f) => formFor(scenario, f));
-    setErrors({});
+    setTouched(new Set());
     pending.current = null;
     setStage({ name: "form" });
   }
 
   useEffect(() => {
+    // Once, when the settings are in: the deep link's example.
+    if (!loaded || deepLinked.current) return;
+    deepLinked.current = true;
     if (getDraft() === null && sceneFromUrl() !== null) void preview();
-    // Once, on open: the deep link's example.
-  }, []);
+  }, [loaded]);
 
   async function check(event: FormEvent) {
     event.preventDefault();
@@ -131,10 +155,9 @@ function ThinkFirst({ hint }: { hint: string | null }) {
   async function preview() {
     const built = toEntry(form, crypto.randomUUID());
     if (!built.ok) {
-      setErrors(built.errors);
+      setTouched("all"); // cannot happen from the bar (disabled), but never sends a bad entry
       return;
     }
-    setErrors({});
     setProblem(null);
     const id = built.entry.client_request_id;
     pending.current = id;
@@ -154,12 +177,45 @@ function ThinkFirst({ hint }: { hint: string | null }) {
     }
   }
 
-  if (problem === "settings") return <SettingsMissing onSetUp={() => navigate("settings")} />;
+  if (load.state !== "ready" || load.data === null || problem === "settings") {
+    return (
+      <Screen route="think" title={THINK.title} back="home">
+        {load.state === "loading" && <Loading lines={3} />}
+        {load.state === "error" && <ErrorState onRetry={reload} />}
+        {load.state === "ready" && <SettingsMissing onSetUp={() => navigate("settings")} />}
+      </Screen>
+    );
+  }
 
+  const hint = load.data.hint;
   const checking = stage.name === "checking";
   const cash = form.kind !== "purchase";
+  const errors = shownErrors(form, touched);
+  const ready = canPreview(form);
+  // Always in view, above the nav; disabled until the four required fields are valid.
+  const actions = (
+    <div className="flex flex-col gap-2">
+      {problem === "failed" && <Alert tone="info" title={THINK.failed} />}
+      {!ready && (
+        <p id={needsId} className="text-center text-body text-ink-muted">
+          {THINK.checkNeeds}
+        </p>
+      )}
+      <Button
+        size="lg"
+        type="submit"
+        form={formId}
+        busy={checking}
+        disabled={!ready}
+        describedBy={ready ? undefined : needsId}
+        icon="think"
+      >
+        {checking ? THINK.checking : THINK.check}
+      </Button>
+    </div>
+  );
   return (
-    <>
+    <Screen route="think" title={THINK.title} back="home" actions={actions}>
       <p className="text-body text-ink-muted">{THINK.intro}</p>
       {hint !== null && (
         <p className="flex items-start gap-2 rounded-field bg-leaf-50 px-3 py-2 text-body text-leaf-800">
@@ -183,16 +239,8 @@ function ThinkFirst({ hint }: { hint: string | null }) {
         </div>
       </div>
 
-      <form noValidate onSubmit={check} className="flex flex-col gap-4">
+      <form id={formId} noValidate onSubmit={check}>
         <Card className="flex flex-col gap-5">
-          <Choice
-            legend={THINK.kindTitle}
-            name="kind"
-            value={form.kind}
-            options={KINDS.map((kind) => ({ value: kind, label: THINK.kinds[kind] }))}
-            onChange={(kind) => set("kind", kind)}
-          />
-          {cash && <p className="-mt-3 text-body text-ink-muted">{THINK.cashNoSaving}</p>}
           <Field
             label={THINK.itemName}
             value={form.name}
@@ -204,33 +252,64 @@ function ThinkFirst({ hint }: { hint: string | null }) {
             label={THINK.platform}
             value={form.platform}
             onChange={(v) => set("platform", v)}
+            onBlur={() => leave("platform")}
             placeholder={THINK.platformPlaceholder}
             maxLength={PLATFORM_MAX}
             error={errors.platform ?? null}
           />
+          {kindsOpen || cash ? (
+            <>
+              <Choice
+                id={kindsId}
+                legend={THINK.kindTitle}
+                name="kind"
+                value={form.kind}
+                options={KINDS.map((kind) => ({ value: kind, label: THINK.kinds[kind] }))}
+                onChange={(kind) => set("kind", kind)}
+              />
+              {cash && <p className="-mt-3 text-body text-ink-muted">{THINK.cashNoSaving}</p>}
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                focusKind.current = true;
+                setKindsOpen(true);
+              }}
+              className="-my-2 inline-flex min-h-11 cursor-pointer items-center self-start rounded-pill text-body font-semibold text-leaf-800 underline underline-offset-4 hover:bg-leaf-50"
+            >
+              {THINK.cashLink}
+            </button>
+          )}
           <Field
             label={cash ? THINK.cashAmount : THINK.price}
             value={form.price}
             onChange={(v) => set("price", v)}
+            onBlur={() => leave("price")}
             inputMode="decimal"
             suffix="บาท"
             placeholder="เช่น 12,000"
             error={errors.price ?? null}
           />
-          <Field
-            label={THINK.months}
-            value={form.months}
-            onChange={(v) => set("months", v)}
-            inputMode="numeric"
-            suffix="เดือน"
-            placeholder="เช่น 10"
-            maxLength={3}
-            error={errors.months ?? null}
-          />
+          <div className="flex flex-col gap-2">
+            <Field
+              label={THINK.months}
+              value={form.months}
+              onChange={(v) => set("months", v)}
+              onBlur={() => leave("months")}
+              inputMode="numeric"
+              suffix="เดือน"
+              placeholder="เช่น 10"
+              maxLength={3}
+              error={errors.months ?? null}
+            />
+            <MonthChips value={form.months} onPick={(months) => set("months", months)} />
+          </div>
           <Field
             label={THINK.monthly}
             value={form.monthly}
             onChange={(v) => set("monthly", v)}
+            onBlur={() => leave("monthly")}
             inputMode="decimal"
             suffix="บาท"
             placeholder="เช่น 1,200"
@@ -239,17 +318,37 @@ function ThinkFirst({ hint }: { hint: string | null }) {
           />
           <FirstDue value={form.firstDue} onChange={(v) => set("firstDue", v)} error={errors.firstDue ?? null} />
         </Card>
-        <Button size="lg" type="submit" busy={checking} disabled={!canPreview(form)} icon="think">
-          {checking ? THINK.checking : THINK.check}
-        </Button>
       </form>
+    </Screen>
+  );
+}
 
-      {problem === "failed" && <Alert tone="info" title={THINK.failed} />}
-    </>
+/** Quick picks under the months field: a tap fills it; the field still takes typing. */
+function MonthChips({ value, onPick }: { value: string; onPick: (months: string) => void }) {
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {MONTH_CHIPS.map((months) => {
+        const picked = value.trim() === String(months);
+        return (
+          <button
+            key={months}
+            type="button"
+            aria-pressed={picked}
+            onClick={() => onPick(String(months))}
+            className={`min-h-11 cursor-pointer rounded-pill border-2 px-1 text-body font-semibold whitespace-nowrap ${
+              picked ? "border-leaf-700 bg-leaf-50 text-leaf-800" : "border-line bg-card text-ink hover:bg-leaf-50"
+            }`}
+          >
+            {THINK.monthChip(months)}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
 type ChoiceProps<T extends string> = {
+  id?: string;
   legend: string;
   name: string;
   value: T | "";
@@ -261,15 +360,19 @@ type ChoiceProps<T extends string> = {
 };
 
 /** A row of large radio buttons (each at least 48px high). */
-function Choice<T extends string>({ legend, name, value, options, onChange, help, error }: ChoiceProps<T>) {
+function Choice<T extends string>({ id, legend, name, value, options, onChange, help, error }: ChoiceProps<T>) {
   return (
-    <fieldset className="flex flex-col gap-2">
+    <fieldset id={id} className="flex flex-col gap-2">
       <legend className="mb-2 text-body font-semibold text-ink">{legend}</legend>
-      <div className={`grid gap-2 ${options.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
-        {options.map((option) => (
+      {/* Two to a row. Three: the first (ผ่อนสินค้า) takes its own row, so the two cash
+          kinds never squeeze their labels, even in the 370px desktop frame (UI-37). */}
+      <div className="grid grid-cols-2 gap-2">
+        {options.map((option, i) => (
           <label
             key={option.value}
             className={`relative flex min-h-12 cursor-pointer flex-col items-center justify-center rounded-field border-2 px-1 py-1 text-center text-body leading-tight font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-leaf-600 ${
+              options.length % 2 === 1 && i === 0 ? "col-span-2" : ""
+            } ${
               value === option.value
                 ? "border-leaf-700 bg-leaf-50 text-leaf-800"
                 : `${error ? "border-risk-line" : "border-line"} bg-card text-ink-muted`

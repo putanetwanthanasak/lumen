@@ -21,7 +21,7 @@ import { NAV_TABS, navActive } from "../src/navStyle.ts";
 import { ROUTES } from "../src/router.ts";
 
 const TODAY = new Date(2026, 9, 27); // Oct 2026
-const call = (method: string, path: string, body?: unknown) => handle(method, path, body, "demo-mint");
+const call = (method: string, path: string, body?: unknown) => handle(method, path, body, "demo-mon");
 const plan = () => call("GET", "/assistant/plan").body as AssistantPlanOut;
 const scene = (name: string) => assert.equal(call("POST", "/demo/scene", { scene: name }).status, 200);
 const debt = (first_due_month: string, months: number, monthly_amount: string): PlanDebt => ({
@@ -88,6 +88,9 @@ test("UI_28_over_budget_now_pauses_is_still_short_and_can_consolidate", () => {
     total_cost: "80877.12",
     current_remaining_total: "67500.00",
     extra_cost: "13377.12",
+    // TODO(backend), mock only: 2,000.00 + 1,500.00 + 4,000.00 = 7,500.00 a month
+    // replaced, minus 3,369.88 (UI-38).
+    monthly_reduction: "4130.12",
   });
 });
 
@@ -165,6 +168,15 @@ test("UI_28_consolidation_payment_above_budget_and_too_large", () => {
   // A principal above Numeric(12,2) is never estimated.
   const big = build([debt("2026-10", 600, "9999999999.99")], "99999999999.99", "100.00").consolidation;
   assert.equal(big.reason, "ESTIMATE_TOO_LARGE");
+});
+
+test("UI_28_consolidation_payment_above_one_third_of_income", () => {
+  // As the backend's (b), round 1 review F3: the loan must not make a month L65 RED.
+  // 90,000.00 over 24 months is 4,493.17 a month (Python Decimal, backend formula),
+  // and 3 x 4,493.17 = 13,479.51. Exactly one third of income is not RED.
+  const debts = [debt("2026-10", 3, "30000.00")];
+  assert.equal(build(debts, "13479.51").consolidation.reason, "ELIGIBLE");
+  assert.deepEqual(build(debts, "13479.50").consolidation, { eligible: false, reason: "PAYMENT_ABOVE_ONE_THIRD_OF_INCOME", estimate: null });
 });
 
 test("UI_28_months_stop_at_600_and_say_so", () => {
@@ -265,8 +277,8 @@ test("UI_30_three_tabs_and_no_payoff_or_consolidation_screen", () => {
 
 test("UI_31_interest_in_consolidation_sends_nothing", () => {
   const src = readFileSync("src/components/AssistantCards.tsx", "utf8");
-  const card = src.slice(src.indexOf("export function ConsolidationCard"), src.indexOf("type Summary"));
-  assert.ok(card.includes("setInterested(true)"));
+  const card = src.slice(src.indexOf("export function ConsolidationCard"), src.indexOf("export function AiBubbleCard"));
+  assert.ok(card.length > 0 && card.includes("setInterested(true)"));
   for (const banned of ["await", "fetch(", "api.ts", "getAssistant", "post", "POST"]) {
     assert.ok(!card.includes(banned), `ConsolidationCard must not call anything: ${banned}`);
   }
@@ -293,6 +305,7 @@ test("UI_31_ai_summary_is_an_example_of_points_1_to_4", () => {
   }
   scene("persona");
   const calm = (call("POST", "/assistant/summary").body as AssistantSummaryOut).text;
-  assert.ok(calm.includes(ASSIST.notWorth));
+  // The same words as Home's banner: not needed, then why.
+  assert.ok(calm.includes(ASSIST.notNeeded));
   assert.ok(calm.includes(ASSIST.reason.NOT_NEEDED));
 });

@@ -3,7 +3,7 @@
  * Every month from this month to the last month with an installment: the total
  * against the budget, a bar, and the status as icon + text. Tap a month for its
  * installments ("งวดที่ x จาก y", "งวดสุดท้าย"). All numbers come from the API
- * (TODO(backend): GET /debts/months); nothing is added up here.
+ * (GET /debts/months); nothing is added up here.
  */
 import { useState } from "react";
 import { getAssistantPlan, getMonths, getSettings } from "../api.ts";

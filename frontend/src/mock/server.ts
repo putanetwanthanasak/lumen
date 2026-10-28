@@ -44,9 +44,11 @@ import { assistantPlan, exampleSummary } from "./assistant.ts";
 import { SCENARIOS } from "./persona.ts";
 import { fromSatang, sum, toSatang } from "./satang.ts";
 
-export type MockResponse = { status: number; body: unknown };
+/** `delayMs`: extra wait before the answer arrives (the Demo panel's slow assistant). */
+export type MockResponse = { status: number; body: unknown; delayMs?: number };
 
 const SAFETY_NET = toSatang("500.00");
+export const SLOW_SUMMARY_MS = 15000; // long enough to show and screenshot the loading state
 const PLATFORM_MAX = 60;
 const CONTROL = /[\u0000-\u001f]/; // L55: no control characters in text fields
 
@@ -62,6 +64,7 @@ type Store = {
   moves: Map<string, Moved>;
   paydays: Map<string, PaydayOut>;
   notifications: NotificationOut[];
+  summary: "ok" | "slow" | "failing"; // the Demo panel's assistant states
   today: Date;
 };
 
@@ -75,6 +78,7 @@ function freshStore(today: Date): Store {
     moves: new Map(),
     paydays: new Map(),
     notifications: [],
+    summary: "ok",
     today,
   };
 }
@@ -102,7 +106,7 @@ function seedNotifications(): void {
 let store = freshStore(new Date());
 seedNotifications();
 
-// Demo shortcut: "?persona" starts with มิ้นท์'s settings already saved, so a demo or a
+// Demo shortcut: "?persona" starts with ม่อน's settings already saved, so a demo or a
 // screenshot can open straight on Home (e.g. http://127.0.0.1:5173/?persona#/home).
 if (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("persona")) {
   store.settings = toSettingsOut(PERSONA_SETTINGS);
@@ -362,7 +366,7 @@ function debtSummary(): DebtSummary {
 }
 
 /**
- * TODO(backend): GET /debts/months. From this month, with no candidate: `count`
+ * GET /debts/months, as on main since #39. From this month, with no candidate: `count`
  * months, or up to the last month an owed installment is due.
  */
 function months(path: string): MockResponse {
@@ -538,6 +542,17 @@ function demoScene(body: unknown): MockResponse {
     // consolidation is worth asking about (L70).
     resetMock(store.today, PERSONA_SETTINGS);
     recordScenario("RED", monthOf(store.today));
+  } else if (scene === "over_budget_empty_buffer") {
+    // As over_budget, then the whole buffer moved back to the main account (L66), by
+    // the same path as the screen, so no money disappears (review F5).
+    resetMock(store.today, PERSONA_SETTINGS);
+    recordScenario("YELLOW", addMonths(monthOf(store.today), 1));
+    const moved = moveToMain({ client_request_id: "scene-empty-buffer", amount: store.bufferBalance });
+    if (moved.status !== 201) return moved;
+  } else if (scene === "ai_slow" || scene === "ai_failing") {
+    // The persona, with the assistant's summary slow (loading state) or failing.
+    resetMock(store.today, PERSONA_SETTINGS);
+    store.summary = scene === "ai_slow" ? "slow" : "failing";
   } else {
     return invalid("scene");
   }
@@ -594,8 +609,9 @@ export function handle(
     case "POST /assistant/summary": {
       // TODO(backend, tomorrow): the AI summary. The mock is a fixed example.
       if (store.settings === null) return SETTINGS_REQUIRED;
+      if (store.summary === "failing") return fail(503, "summary unavailable");
       const out: AssistantSummaryOut = { text: exampleSummary(planNow(store.settings)), is_example: true };
-      return ok(out);
+      return store.summary === "slow" ? { ...ok(out), delayMs: SLOW_SUMMARY_MS } : ok(out);
     }
     case "POST /demo/scene":
       return demoScene(body);

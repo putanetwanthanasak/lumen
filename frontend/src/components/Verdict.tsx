@@ -1,16 +1,20 @@
 /**
  * The verdict card and the month bars (DESIGN.md sections 5.3 and 5.4).
  *
- * The verdict is never colour only: icon + Thai label + a sentence. Over-budget bars
- * are also striped, and every month is listed in a table for screen readers.
- * Bar heights come from barPermille (exact, BigInt); no amount is computed here.
+ * The verdict is never colour only: icon + Thai label + a sentence. The bars are solid;
+ * a month above a third of income also has a ⚠ marker, the legend names only what the
+ * chart shows, a plain line says which months are over budget, and every month is listed
+ * in a table for screen readers. Bar heights come from barPermille (exact, BigInt); no
+ * amount is computed here.
  */
 import type { CSSProperties } from "react";
 import type { MonthRow, Verdict } from "../api-types.ts";
 import { ADVISORY_NOTE, THINK, VERDICT } from "../copy.ts";
-import { barPermille, formatBaht, largest, type Money } from "../money.ts";
+import { barPermille, formatBaht, largest, toSatang, type Money } from "../money.ts";
+import { overRange } from "../monthStatus.ts";
 import { thaiMonth, thaiMonthShort } from "../thaiMonth.ts";
 import { Icon } from "./Icon.tsx";
+import { KeepMonths } from "./ui.tsx";
 
 const VERDICT_STYLE: Record<Verdict, { box: string; badge: string }> = {
   GREEN: { box: "bg-ok-bg border-ok-line text-ok-ink", badge: "bg-leaf-700 text-white" },
@@ -56,83 +60,137 @@ function VerdictLabel({ label, hero }: { label: string; hero: boolean }) {
   );
 }
 
-const STRIPES: CSSProperties = {
-  backgroundImage:
-    "repeating-linear-gradient(135deg, rgb(255 255 255 / 0.45) 0 4px, transparent 4px 9px)",
+type Tone = "ok" | "over" | "risk";
+
+/** A bar's colours by the API's flags: the solid part, and the outline of the new item's share. */
+const BAR: Record<Tone, { solid: string; outline: string }> = {
+  ok: { solid: "bg-bar-ok", outline: "border-bar-ok" },
+  over: { solid: "bg-bar-over", outline: "border-bar-over" },
+  risk: { solid: "bg-bar-risk", outline: "border-bar-risk" },
 };
 
-function barClass(row: MonthRow): string {
-  if (row.over_one_third) return "bg-bar-risk";
-  if (row.over_budget) return "bg-bar-over";
-  return "bg-bar-ok";
+/** The new item's share has the same fill on every bar, whatever its status: only its outline takes the bar's colour. */
+const SHARE_FILL = "bg-card";
+
+const barTone = (row: MonthRow): Tone => (row.over_one_third ? "risk" : row.over_budget ? "over" : "ok");
+
+/** The status entries of the legend, in this order; each only when a month has it. */
+const STATUS_LEGEND: [Tone, string][] = [
+  ["ok", THINK.legendOk],
+  ["over", THINK.legendOver],
+  ["risk", THINK.legendRisk],
+];
+
+/** Whether a month of the term has installments besides the new item, so its bar has a solid part. */
+function hasExisting(months: readonly MonthRow[], candidate: Money): boolean {
+  return months.some((row) => toSatang(row.total) > toSatang(candidate));
 }
 
-type BarsProps = { months: MonthRow[]; budget: Money; caption?: string };
+// The widest Thai month label is about 29px at 14px (34px with other system fonts), and
+// the chart is 298px wide in the 370px frame: up to 7 months, every label fits with
+// room between; beyond that, every k-th month gets one, centred under its own bar.
+const LABELLED_MONTHS = 7;
 
-export function MonthBars({ months, budget, caption = THINK.monthsTitle }: BarsProps) {
+/** Every how many months a label shows, so no label clips or touches the next (UI-40). */
+export function labelStep(months: number): number {
+  return months <= LABELLED_MONTHS ? 1 : Math.ceil(months / LABELLED_MONTHS); // ui-06-allow: a count of months
+}
+
+type BarsProps = { months: MonthRow[]; budget: Money; candidate?: Money | null; caption?: string };
+
+/**
+ * Bars, labels and the budget line share one grid of equal columns, so each label sits
+ * under its own bar at any number of months, and nothing overflows the card (UI-40).
+ * `candidate` is the new item's monthly amount: the top of each bar, white and outlined
+ * in the bar's colour. Every row of the preview includes it (L65); its height is a
+ * share of the bar, never an amount.
+ */
+export function MonthBars({ months, budget, candidate = null, caption = THINK.monthsTitle }: BarsProps) {
   const scale = largest([budget, ...months.map((m) => m.total)]);
-  const budgetLine = barPermille(budget, scale) / 10;
+  const step = labelStep(months.length);
+  const over = overRange(months);
+  const tones = new Set(months.map(barTone));
+  const grid: CSSProperties = { gridTemplateColumns: `repeat(${months.length}, minmax(0, 1fr))` };
   return (
     <figure className="flex flex-col gap-3">
       <figcaption className="text-body font-semibold text-ink">{caption}</figcaption>
-      <div className="relative h-40" aria-hidden="true">
+      {/* pt-6: room for the marker above the tallest bar. */}
+      <div className="grid grid-rows-[10rem_auto] pt-6" style={grid} aria-hidden="true">
         <div
-          className="absolute inset-x-0 border-t-2 border-dashed border-ink-muted"
-          style={{ bottom: `${budgetLine}%` }}
+          className="col-span-full row-start-1 self-end border-t-2 border-dashed border-ink-muted"
+          style={{ height: `${barPermille(budget, scale) / 10}%` }}
         />
-        <div className="absolute inset-0 flex items-end gap-1.5">
-          {months.map((row) => (
+        {months.map((row, i) => {
+          const tone = BAR[barTone(row)];
+          return (
             <div
               key={row.month}
-              className={`flex h-full flex-1 flex-col justify-end rounded-t-md ${row.over_budget ? "bg-warn-bg" : ""}`}
+              className={`relative row-start-1 flex w-4/5 flex-col self-end justify-self-center rounded-t-md ${tone.solid}`}
+              style={{
+                gridColumn: i + 1,
+                height: `${Math.max(barPermille(row.total, scale) / 10, 2)}%`, // ui-06-allow: a drawing size
+              }}
             >
-              <div
-                className={`w-full rounded-t-md ${barClass(row)}`}
-                style={{
-                  height: `${Math.max(barPermille(row.total, scale) / 10, 2)}%`, // ui-06-allow: a drawing size
-                  ...(row.over_budget ? STRIPES : {}),
-                }}
-              />
+              {/* A closed outline: with nothing else due that month, the share is the whole bar and needs its base. */}
+              {candidate !== null && (
+                <div
+                  className={`shrink-0 rounded-t-md border-2 ${SHARE_FILL} ${tone.outline}`}
+                  style={{ height: `${barPermille(candidate, row.total) / 10}%` }}
+                />
+              )}
+              {/* At most 16px and never wider than its bar: the markers of a run of such months never overlap. */}
+              {row.over_one_third && (
+                <Icon name="alert" size={16} className="absolute bottom-full left-1/2 mb-1 h-auto w-full max-w-4 -translate-x-1/2 text-risk-ink" />
+              )}
             </div>
-          ))}
-        </div>
-      </div>
-      <div className="flex gap-1.5" aria-hidden="true">
-        {months.map((row) => (
-          <span
-            key={row.month}
-            className={`flex-1 text-center text-[0.75rem] leading-tight ${row.over_budget ? "font-bold text-warn-ink" : "text-ink-muted"}`}
-          >
-            {thaiMonthShort(row.month)}
-          </span>
-        ))}
+          );
+        })}
+        {months.map((row, i) =>
+          i % step === 0 ? (
+            <span
+              key={row.month}
+              className="row-start-2 justify-self-center pt-1.5 text-caption whitespace-nowrap text-ink-muted"
+              style={{ gridColumn: i + 1 }}
+            >
+              {thaiMonthShort(row.month)}
+            </span>
+          ) : null,
+        )}
       </div>
       <p className="text-body text-ink-muted">{THINK.budgetLine(formatBaht(budget))}</p>
-      {months.some((m) => m.over_budget) && (
-        <p className="flex items-start gap-1.5 text-body font-semibold text-warn-ink">
-          <Icon name="alert" size={20} className="mt-0.5" />
-          {THINK.overMonths(
-            months
-              .filter((m) => m.over_budget)
-              .map((m) => thaiMonth(m.month))
-              .join(", "),
-          )}
+      {/* Plain: the verdict card above holds the warning (UI-41). */}
+      {over !== null && (
+        <p className="text-body text-ink">
+          <KeepMonths text={THINK.overSummary(over.count, thaiMonth(over.first), thaiMonth(over.last), over.together)} />
         </p>
       )}
-      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-ink-muted" aria-hidden="true">
-        <li className="flex items-center gap-1.5">
-          <span className="inline-block h-3 w-3 rounded-sm bg-bar-ok" />
-          {THINK.legendOk}
-        </li>
-        <li className="flex items-center gap-1.5">
-          <span className="inline-block h-3 w-3 rounded-sm bg-bar-over" style={STRIPES} />
-          {THINK.legendOver}
-        </li>
-        <li className="flex items-center gap-1.5">
-          <span className="inline-block h-3 w-3 rounded-sm bg-bar-risk" style={STRIPES} />
-          {THINK.legendRisk}
-        </li>
-      </ul>
+      {/* Only what this chart shows: the statuses its months have, then the two parts of a bar. */}
+      <div className="flex flex-col gap-1 text-caption text-ink-muted" aria-hidden="true">
+        <ul className="flex flex-wrap gap-x-4 gap-y-1">
+          {STATUS_LEGEND.filter(([tone]) => tones.has(tone)).map(([tone, label]) => (
+            <li key={tone} className="flex items-center gap-1.5">
+              <span className={`inline-block h-3 w-3 rounded-sm ${BAR[tone].solid}`} />
+              {tone === "risk" && <Icon name="alert" size={14} className="text-risk-ink" />}
+              {label}
+            </li>
+          ))}
+        </ul>
+        {candidate !== null && (
+          // Neutral swatches: both parts take each month's colour on the bars.
+          <ul className="flex flex-wrap gap-x-4 gap-y-1">
+            {hasExisting(months, candidate) && (
+              <li className="flex items-center gap-1.5">
+                <span className="inline-block h-3 w-3 rounded-sm bg-ink-muted" />
+                {THINK.legendExisting}
+              </li>
+            )}
+            <li className="flex items-center gap-1.5">
+              <span className={`inline-block h-3 w-3 rounded-sm border-2 border-ink-muted ${SHARE_FILL}`} />
+              {THINK.legendCandidate}
+            </li>
+          </ul>
+        )}
+      </div>
       <table className="sr-only">
         <caption>{caption}</caption>
         <tbody>

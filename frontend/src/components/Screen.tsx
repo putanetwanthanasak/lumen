@@ -1,23 +1,22 @@
 /**
  * The screen shell inside the phone frame: header, scrolling body, the prototype
  * footer (every screen), and the bottom navigation.
+ *
+ * Layers (UI-27): the body, the action bar and the nav are each their own layer
+ * (`isolate`), drawn in that order, so the nav is always the top one. Nothing in the
+ * body can rise over the raised centre button, whatever lifts it (a `relative` bubble,
+ * an `opacity` list, a z-index): it stays inside the body's layer. Only the Demo
+ * panel, an overlay, sits above the nav.
  */
 import type { ReactNode } from "react";
+import { ACCENT, type Accent } from "../accent.ts";
 import { getNotifications } from "../api.ts";
 import { APP_NAME, APP_NAME_TH, FOOTER, NAV } from "../copy.ts";
 import { navigate, type Route } from "../router.ts";
 import { DemoButton } from "./DemoPanel.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { LogoBean } from "./Logo.tsx";
-import {
-  NAV_TABS,
-  navActive,
-  navIconClass,
-  navLabelClass,
-  SCROLL_PAD_WITH_NAV,
-  SCROLL_PAD_WITHOUT_NAV,
-  type NavTab,
-} from "../navStyle.ts";
+import { bottomPads, NAV_TABS, navActive, navIconClass, navLabelClass, type NavTab } from "../navStyle.ts";
 import { useLoad } from "../useLoad.ts";
 
 type ScreenProps = {
@@ -26,14 +25,20 @@ type ScreenProps = {
   route: Route;
   children: ReactNode;
   showNav?: boolean;
-  /** A bar fixed under the scrolling body, above the nav (the result screen's buttons). */
+  /** A bar fixed under the scrolling body, above the nav (the result's buttons, the form's check). */
   actions?: ReactNode;
+  /** The feature's colour on the header, with its icon before the title (the buffer). */
+  accent?: Accent;
 };
 
-export function Screen({ title, back, route, children, showNav = true, actions }: ScreenProps) {
+export function Screen({ title, back, route, children, showNav = true, actions, accent }: ScreenProps) {
+  const look = accent === undefined ? null : ACCENT[accent];
+  const pads = bottomPads(showNav, actions !== undefined);
   return (
     <div className="flex h-full flex-col bg-surface">
-      <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-line bg-card px-4">
+      <header
+        className={`flex min-h-16 shrink-0 items-center gap-2 border-b px-4 ${look === null ? "border-line bg-card" : `${look.line} ${look.tint}`}`}
+      >
         {back !== undefined ? (
           <button
             type="button"
@@ -46,7 +51,10 @@ export function Screen({ title, back, route, children, showNav = true, actions }
           <LogoBean size={36} />
         )}
         {title !== undefined ? (
-          <h1 className="flex-1 text-lead font-bold text-ink">{title}</h1>
+          <h1 className={`flex flex-1 items-center gap-2 text-lead font-bold ${look === null ? "text-ink" : look.ink}`}>
+            {look !== null && <Icon name={look.icon} size={22} />}
+            {title}
+          </h1>
         ) : (
           <p className="flex flex-1 items-baseline gap-2">
             <span className="text-lead font-bold text-leaf-800">{APP_NAME}</span>
@@ -59,12 +67,12 @@ export function Screen({ title, back, route, children, showNav = true, actions }
           still scrolls by wheel, touchpad, touch and keyboard (it takes focus). */}
       <main
         tabIndex={0}
-        className={`phone-scroll min-h-0 flex-1 overflow-y-auto px-4 pt-4 ${showNav ? SCROLL_PAD_WITH_NAV : SCROLL_PAD_WITHOUT_NAV} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-leaf-600`}
+        className={`phone-scroll isolate min-h-0 flex-1 overflow-y-auto px-4 pt-4 ${pads.main} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-leaf-600`}
       >
         <div className="flex flex-col gap-4">{children}</div>
         <Footer />
       </main>
-      {actions !== undefined && <div className="shrink-0 border-t border-line bg-card px-4 py-3 shadow-card">{actions}</div>}
+      {actions !== undefined && <div className={`isolate shrink-0 border-t border-line bg-card px-4 pt-3 shadow-card ${pads.actions}`}>{actions}</div>}
       {showNav && <BottomNav current={route} />}
     </div>
   );
@@ -120,7 +128,7 @@ const NAV_LOOK: Record<NavTab, { label: string; icon: IconName }> = {
 
 function BottomNav({ current }: { current: Route }) {
   return (
-    <nav aria-label={NAV.menu} className="shrink-0 border-t border-line bg-card">
+    <nav aria-label={NAV.menu} className="isolate shrink-0 border-t border-line bg-card">
       <ul className="flex">
         {NAV_TABS.map((tab) => {
           const item = { ...tab, ...NAV_LOOK[tab.route] };
@@ -133,10 +141,10 @@ function BottomNav({ current }: { current: Route }) {
                 aria-current={active ? "page" : undefined}
                 className="group flex min-h-16 flex-col items-center justify-center gap-0.5 text-center text-caption leading-tight"
               >
-                <span className={`${navIconClass(primary, active)} ${active ? "" : "group-hover:text-leaf-700"}`}>
+                <span className={navIconClass(item.route, active)}>
                   <Icon name={item.icon} size={primary ? 28 : 22} />
                 </span>
-                <span className={navLabelClass(active)}>{item.label}</span>
+                <span className={navLabelClass(item.route, active)}>{item.label}</span>
               </a>
             </li>
           );

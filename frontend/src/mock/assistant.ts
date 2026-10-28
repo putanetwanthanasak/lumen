@@ -5,7 +5,7 @@
  * or disputed, so the backend's OVERDUE_DEBT and DISPUTED_DEBT checks never apply here.
  */
 import type { AssistantPlanOut, ConsolidationOut, PlanMonth } from "../api-types.ts";
-import { bufferPlanLines, planLines } from "../assistantText.ts";
+import { bufferPlanLines, notConsolidatingLine, planLines } from "../assistantText.ts";
 import { ASSIST } from "../copy.ts";
 import { formatBaht, type Money } from "../money.ts";
 import { addMonths } from "../thaiMonth.ts";
@@ -64,6 +64,7 @@ function consolidation(
   overRun: boolean,
   now: number,
   budget: bigint,
+  income: bigint,
   annualRate: string,
   term: number,
 ): ConsolidationOut {
@@ -77,9 +78,15 @@ function consolidation(
   if (principal > MONEY_MAX) return no("ESTIMATE_TOO_LARGE");
   const payment = amortisedPayment(principal, annualRate, term);
   const total = payment * BigInt(term);
+  // What the loan replaces each month: every counted installment's monthly amount, the
+  // L43 monthly total ("ตอนนี้" on Home's card). TODO(backend): monthly_reduction.
+  const replaced = debts.reduce((acc, d) => acc + toSatang(d.monthly_amount), 0n);
   if (total > MONEY_MAX) return no("ESTIMATE_TOO_LARGE");
   // The loan replaces every counted installment, so it is the only plan due (b).
   if (payment > budget) return no("PAYMENT_ABOVE_BUDGET");
+  // Nor RED in any month (L65): the loan alone is each month's total. Exactly one third
+  // is not RED; compared without division, as the backend does (review F3).
+  if (payment * 3n > income) return no("PAYMENT_ABOVE_ONE_THIRD_OF_INCOME");
   const first = addMonths(monthOfIndex(now), 1);
   return {
     eligible: true,
@@ -95,6 +102,7 @@ function consolidation(
       total_cost: fromSatang(total),
       current_remaining_total: fromSatang(principal),
       extra_cost: fromSatang(total - principal),
+      monthly_reduction: fromSatang(max0(replaced - payment)),
     },
   };
 }
@@ -164,7 +172,7 @@ export function assistantPlan(
       covered: balance >= shortfall,
       still_short: fromSatang(max0(shortfall - balance)),
     },
-    consolidation: consolidation(debts, longest >= CONSOLIDATION_RUN, start, cap, annualRate, term),
+    consolidation: consolidation(debts, longest >= CONSOLIDATION_RUN, start, cap, third, annualRate, term),
   };
 }
 
@@ -178,7 +186,7 @@ export function exampleSummary(plan: AssistantPlanOut): string {
   const c = plan.consolidation;
   const consolidate =
     c.estimate === null
-      ? `${ASSIST.notWorth} ${ASSIST.reason[c.reason]}`
+      ? `${notConsolidatingLine(c.reason)} ${ASSIST.reason[c.reason]}`
       : `${ASSIST.worth} ${ASSIST.newMonthly} ${formatBaht(c.estimate.monthly_payment)} ${ASSIST.totalCost} ${formatBaht(c.estimate.total_cost)} (${ASSIST.exampleTag})`;
   // The buffer line already says every month is in budget: say it once.
   const back = plan.back_in_budget_month === null ? [] : [lines.back];

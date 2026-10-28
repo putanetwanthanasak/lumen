@@ -32,6 +32,7 @@ test("UI_02_format_baht_refuses_anything_that_is_not_an_api_money_string", () =>
 
 test("UI_03_typed_money_is_kept_as_typed_and_never_rounded", () => {
   assert.deepEqual(parseMoneyInput("12000"), { ok: true, value: "12000" });
+  assert.deepEqual(parseMoneyInput("12,000"), { ok: true, value: "12000" }); // the placeholder's own form
   assert.deepEqual(parseMoneyInput("12,000.50"), { ok: true, value: "12000.50" });
   assert.deepEqual(parseMoneyInput("1,234,567.89"), { ok: true, value: "1234567.89" });
   assert.deepEqual(parseMoneyInput("  1200.5 "), { ok: true, value: "1200.5" });

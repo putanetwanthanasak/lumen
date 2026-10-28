@@ -12,7 +12,7 @@ import { addMonths, thaiMonth } from "../src/thaiMonth.ts";
 
 // The demo runs "today" = 27 Oct 2026, so the candidate starts in Nov 2026.
 const TODAY = new Date(2026, 9, 27);
-const USER = "demo-mint";
+const USER = "demo-mon";
 
 beforeEach(() => resetMock(TODAY, PERSONA_SETTINGS));
 

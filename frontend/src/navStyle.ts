@@ -1,13 +1,13 @@
 /**
  * The bottom nav's look, kept apart from React so it can be tested (UI-25).
- * Selected is the same for every tab: a filled green icon background and a bold
- * label. The centre tab (เช็กก่อนผ่อน) is larger and raised, but unselected it is an
+ * Selected has the same shape for every tab: a filled icon background and a bold
+ * label, in the tab's feature colour (green; teal for กันชน, whose icon is teal too).
+ * The centre tab (เช็กก่อนผ่อน) is larger and raised, but unselected it is an
  * outline only, never filled, so it never looks selected on another screen.
  * Labels never wrap (`whitespace-nowrap`); copy.ts keeps them short.
  */
+import { ACCENT, SOLID } from "./accent.ts";
 import type { Route } from "./router.ts";
-
-const SELECTED_FILL = "bg-leaf-700 text-white";
 
 /**
  * The three tabs (UI-30): feature 1 ภาพรวมหนี้ (Home), the check in the centre,
@@ -36,20 +36,43 @@ export const NAV_RAISE = "-mt-5";
 export const SCROLL_PAD_WITH_NAV = "pb-14";
 export const SCROLL_PAD_WITHOUT_NAV = "pb-6";
 
-export function navIconClass(primary: boolean, active: boolean): string {
+/**
+ * Bottom padding of a screen's action bar while the nav shows under it (the check on
+ * เช็กก่อนผ่อน): the raise plus at least 12px, so its button is never behind the raised
+ * button (UI-27). The bar then takes the raise, so the scrolling body needs only `pb-6`.
+ */
+export const ACTIONS_PAD_WITH_NAV = "pb-8";
+export const ACTIONS_PAD_WITHOUT_NAV = "pb-3";
+
+/** The bottom padding of the scrolling body and of the action bar (UI-27). */
+export function bottomPads(showNav: boolean, hasActions: boolean): { main: string; actions: string } {
+  return {
+    main: showNav && !hasActions ? SCROLL_PAD_WITH_NAV : SCROLL_PAD_WITHOUT_NAV,
+    actions: showNav ? ACTIONS_PAD_WITH_NAV : ACTIONS_PAD_WITHOUT_NAV,
+  };
+}
+
+/** The filled look of a selected tab: green, or teal for the buffer (accent.ts). */
+export function navFill(tab: NavTab): string {
+  return tab === "buffer" ? SOLID.buffer : SOLID.debt;
+}
+
+export function navIconClass(tab: NavTab, active: boolean): string {
+  const primary = tab === "think";
   const shape = primary
     ? `${NAV_RAISE} mb-0.5 h-14 w-14 border-2 shadow-card ring-4 ring-card`
     : "h-8 w-14 border-2 border-transparent";
   const look = active
-    ? `${SELECTED_FILL} border-leaf-700`
+    ? navFill(tab)
     : primary
       ? "border-leaf-700 bg-card text-leaf-800"
-      : "text-ink-muted";
+      : tab === "buffer"
+        ? ACCENT.buffer.ink
+        : "text-ink-muted group-hover:text-leaf-700";
   return `inline-flex items-center justify-center rounded-pill ${shape} ${look}`;
 }
 
-export function navLabelClass(active: boolean): string {
-  return `whitespace-nowrap ${active ? "font-bold text-leaf-800" : "font-semibold text-ink-muted"}`;
+export function navLabelClass(tab: NavTab, active: boolean): string {
+  const ink = tab === "buffer" ? ACCENT.buffer.ink : "text-leaf-800";
+  return `whitespace-nowrap ${active ? `font-bold ${ink}` : "font-semibold text-ink-muted"}`;
 }
-
-export const NAV_SELECTED_FILL = SELECTED_FILL;

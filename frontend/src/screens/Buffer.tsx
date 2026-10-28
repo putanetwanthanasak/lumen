@@ -8,18 +8,20 @@ import { useState, type FormEvent } from "react";
 import { ApiError, getAssistantPlan, getBuffer, moveToMain } from "../api.ts";
 import { bufferPlanLines } from "../assistantText.ts";
 import type { BufferOut, MovedOut } from "../api-types.ts";
+import { ACCENT, BUFFER_METER, EDGE, SOLID } from "../accent.ts";
 import { ASSIST, BUFFER, MONEY_ERRORS } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Alert, Button, Card, ErrorState, Field, Loading } from "../components/ui.tsx";
 import { afterMoveError, moveRequest, type MoveRequest } from "../bufferMove.ts";
+import { walletFor, WALLET_SEGMENTS } from "../homeLayout.ts";
 import { formatBaht, parseMoneyInput } from "../money.ts";
 import { useLoad } from "../useLoad.ts";
 
 export function BufferScreen() {
   const [load, reload] = useLoad(getBuffer);
   return (
-    <Screen route="buffer" title={BUFFER.title}>
+    <Screen route="buffer" title={BUFFER.title} accent="buffer">
       {load.state === "loading" && <Loading lines={2} />}
       {load.state === "error" && <ErrorState onRetry={reload} />}
       {load.state === "ready" && <BufferBody buffer={load.data} onMoved={reload} />}
@@ -27,7 +29,7 @@ export function BufferScreen() {
   );
 }
 
-function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => void }) {
+export function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => void }) {
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -36,6 +38,9 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
   // One id per amount: a retry of the same move (lost answer) moves the money once.
   const [request, setRequest] = useState<MoveRequest | null>(null);
   const [balance, setBalance] = useState(buffer.balance);
+  // The last GET /buffer answer: the months covered and the monthly total are the API's.
+  const [current, setCurrent] = useState(buffer);
+  const cover = walletFor(current, balance); // null between a move and the next GET /buffer
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -53,6 +58,8 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
       const out = await moveToMain({ client_request_id: next.id, amount: parsed.value });
       setMoved(out);
       setBalance(out.balance);
+      // The months covered for the new balance come from the API (review F4).
+      getBuffer().then(setCurrent, () => undefined);
       setRequest(null);
       setAmount("");
     } catch (e) {
@@ -64,7 +71,10 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
         // Unknown outcome: the money may already have moved. Say so, and read the
         // balance again instead of showing the old one (review B1 F4).
         setFailed(true);
-        getBuffer().then((b) => setBalance(b.balance), () => undefined);
+        getBuffer().then((b) => {
+          setBalance(b.balance);
+          setCurrent(b);
+        }, () => undefined);
       }
     } finally {
       setBusy(false);
@@ -74,23 +84,33 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
   return (
     <>
       <p className="text-body text-ink-muted">{BUFFER.intro}</p>
-      <Card className="flex flex-col gap-2">
+      {/* The same wallet as on Home, larger, with its edge: teal is the buffer on every screen. */}
+      <section className={`flex flex-col gap-2 rounded-card p-5 ${ACCENT.buffer.tint} ${EDGE.buffer}`}>
         <div className="flex items-center gap-3">
-          <span className="inline-flex h-12 w-12 items-center justify-center rounded-pill bg-leaf-50 text-leaf-700">
-            <Icon name="shield" size={28} />
+          <span className={`inline-flex h-12 w-12 items-center justify-center rounded-pill ${SOLID.buffer}`}>
+            <Icon name={ACCENT.buffer.icon} size={28} />
           </span>
-          <h2 className="text-body text-ink-muted">{BUFFER.balance}</h2>
+          <h2 className={`flex-1 text-body font-semibold ${ACCENT.buffer.ink}`}>{BUFFER.balance}</h2>
+          {cover !== null && (
+            <span aria-hidden="true" className="flex gap-1">
+              {Array.from({ length: WALLET_SEGMENTS }, (_, i) => (
+                <span key={i} className={`h-5 w-2.5 rounded-sm ${i < cover.filled ? BUFFER_METER.on : BUFFER_METER.off}`} />
+              ))}
+            </span>
+          )}
         </div>
         <p className="text-display font-bold text-ink">{formatBaht(balance)}</p>
-        <p className="text-body text-ink-muted">
-          {buffer.months_covered === null
-            ? BUFFER.nothingOwed
-            : buffer.months_covered === 0
-              ? BUFFER.coversNone
-              : BUFFER.covers(buffer.months_covered)}
-        </p>
-        <p className="text-body text-ink-muted">{BUFFER.monthlyTotal(formatBaht(buffer.monthly_total))}</p>
-      </Card>
+        {cover !== null && (
+          <p className={`text-body font-semibold ${ACCENT.buffer.ink}`}>
+            {current.months_covered === null
+              ? BUFFER.nothingOwed
+              : current.months_covered === 0
+                ? BUFFER.coversNone
+                : BUFFER.covers(current.months_covered)}
+          </p>
+        )}
+        <p className="text-body text-ink-muted">{BUFFER.monthlyTotal(formatBaht(current.monthly_total))}</p>
+      </section>
 
       {/* Reloads after a move, so "covered" or "still short" matches the balance above. */}
       <BufferPlanCard key={balance} />
@@ -149,7 +169,8 @@ function BufferPlanCard() {
   return (
     <Card className="flex flex-col gap-2">
       <h2 className="text-lead font-bold text-ink">{ASSIST.bufferTitle}</h2>
-      <Alert tone={tone} title={head}>
+      {/* About the buffer: teal when it covers or is not needed, amber when still short. */}
+      <Alert tone={tone === "ok" ? "buffer" : "warn"} title={head}>
         {rest.join(" ")}
       </Alert>
     </Card>

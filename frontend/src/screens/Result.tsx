@@ -1,8 +1,9 @@
 /**
  * Screen 3b: the result of ประเมินภาระผ่อน (DESIGN.md section 7.3b), a screen of its
  * own. A one-line summary with "แก้ไข" (back to the form, every value kept), a large
- * verdict card, the month bars against the budget, what would be saved, then
- * "บันทึก" and "ยังไม่ซื้อ". Recording is always allowed, whatever the verdict.
+ * verdict card (the one warning), the month bars against the budget with this item's
+ * share on top, what would be saved, then "บันทึก" and "ยังไม่ซื้อ". Each fact is said
+ * once (UI-41). Recording is always allowed, whatever the verdict.
  */
 import { useState } from "react";
 import { ApiError, getSettings, recordInstallment } from "../api.ts";
@@ -96,7 +97,7 @@ export function ResultScreen() {
   );
 }
 
-function Result({ entry, verdict, budget }: { entry: ManualEntryIn; verdict: PreviewOut; budget: Money }) {
+export function Result({ entry, verdict, budget }: { entry: ManualEntryIn; verdict: PreviewOut; budget: Money }) {
   const what = entry.item_name || (entry.kind === "purchase" ? THINK.summaryItem : THINK.summaryCash);
   const saves = toSatang(verdict.saving_if_recorded) > 0n;
   return (
@@ -119,7 +120,7 @@ function Result({ entry, verdict, budget }: { entry: ManualEntryIn; verdict: Pre
       <VerdictCard verdict={verdict.verdict} size="hero" />
 
       <Card>
-        <MonthBars months={verdict.months} budget={budget} />
+        <MonthBars months={verdict.months} budget={budget} candidate={entry.monthly_amount} />
       </Card>
 
       <Card className="flex items-center gap-4">

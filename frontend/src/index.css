@@ -20,10 +20,6 @@
   --color-leaf-800: #0b5735;
   --color-leaf-900: #0a3f28;
 
-  /* Friendly accent for the logo and highlights, never for text. */
-  --color-sun-300: #ffd977;
-  --color-sun-400: #ffc94d;
-
   /* Neutrals. ink on white is about 15:1, ink-muted about 7:1. */
   --color-ink: #10231a;
   --color-ink-muted: #4a5b52;
@@ -50,6 +46,34 @@
   --color-bar-ok: #138a52;
   --color-bar-over: #c27c00;
   --color-bar-risk: #9b1c1c;
+
+  /* Feature accents (DESIGN.md section 4): one colour per feature, used only through
+     src/accent.ts, which pairs each with an icon and text (UI-34). Green (leaf) is the
+     debt overview and main actions; amber is the warn-* family above. Contrast is
+     checked by UI-35. */
+  /* Teal: the buffer (กันชน). */
+  --color-teal-50: #e8f7f7;
+  --color-teal-100: #c4ebec;
+  --color-teal-200: #94d9dc;
+  --color-teal-700: #0c6a72;
+  --color-teal-800: #0a535a;
+  --color-teal-edge: #358b92; /* the wallet's edge against the page, at least 3:1 */
+  /* Blue: the bank's consolidation offer. */
+  --color-bank-50: #eef3fd;
+  --color-bank-200: #b3c9f2;
+  --color-bank-700: #2a4fa0;
+  --color-bank-800: #1f3d7d;
+  /* Soft tint: the AI assistant only. */
+  --color-ai-from: #f3effe;
+  --color-ai-to: #e8f4fd;
+  --color-ai-line: #d6ccf6;
+  --color-ai-ink: #4b3699;
+  --color-ai-edge: #8a76d6; /* the panel's edge against the page, at least 3:1 */
+  /* Grey-blue: a low-emphasis note with nothing to act on. */
+  --color-quiet-bg: #eef2f6;
+  --color-quiet-line: #d3dce6;
+  --color-quiet-ink: #3f5166;
+  --color-quiet-edge: #7a8a9d; /* the banner's edge against the page, at least 3:1 */
 
   /* Type scale. Body is 16px and every sentence uses it. Caption (14px) is only for
      short labels: the footer, nav labels, chart legend, "Demo" tags, list meta. */
