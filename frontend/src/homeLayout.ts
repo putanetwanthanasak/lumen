@@ -22,7 +22,8 @@ import type { Route } from "./router.ts";
 import { thaiMonth } from "./thaiMonth.ts";
 import type { Load } from "./useLoad.ts";
 
-export type OverChip = Marked & { month: string; amount: string; spoken: string };
+// `amount` is null when the answer did not carry the row's over_by (UI-39).
+export type OverChip = Marked & { month: string; amount: string | null; spoken: string };
 
 export type OverStrip = {
   title: Marked;
@@ -73,13 +74,14 @@ function overStrip(over: readonly MonthDetail[], lastShown: string, plan: Assist
   const after = plan === null ? 0 : plan.months.filter((m) => m.over_budget && m.month > lastShown).length;
   return {
     title: { accent: "warn", icon: "alert", text: HOME.overMonthsTitle },
+    // No over_by in the answer (src/apiFields.ts): the month only, never a guessed amount.
     chips: over.map((m) => ({
       accent: "warn",
       icon: "alert",
       text: thaiMonth(m.month),
       month: m.month,
-      amount: HOME.overBy(formatBaht(m.over_by)),
-      spoken: HOME.overBySpoken(formatBaht(m.over_by)),
+      amount: m.over_by === null ? null : HOME.overBy(formatBaht(m.over_by)),
+      spoken: m.over_by === null ? HOME.overSpoken : HOME.overBySpoken(formatBaht(m.over_by)),
     })),
     more: after === 0 ? null : HOME.overMoreMonths(after),
     shortfall: plan === null ? null : ASSIST.shortfall(formatBaht(plan.buffer_plan.shortfall)),
@@ -130,8 +132,9 @@ export type ConsolidationView =
 /**
  * Not offered (L70): a one-line banner whose reason expands. Offered: the bank's card,
  * with one benefit line from the API's `monthly_reduction` (never worked out here),
- * left out unless it is above zero. "ทุกเดือนกลับมาอยู่ในงบ" holds for every offer:
- * the plan offers only a loan that brings every month back within budget (L70 b).
+ * left out unless it is above zero, and when the answer did not carry it (null, from
+ * src/apiFields.ts, UI-39). "ทุกเดือนกลับมาอยู่ในงบ" holds for every offer: the plan
+ * offers only a loan that brings every month back within budget (L70 b).
  */
 export function consolidationView(c: ConsolidationOut, currentMonthly: Money): ConsolidationView {
   if (c.estimate === null) {
@@ -143,7 +146,7 @@ export function consolidationView(c: ConsolidationOut, currentMonthly: Money): C
     title: { accent: "bank", icon: ACCENT.bank.icon, text: ACCENT.bank.label },
     estimate: c.estimate,
     currentMonthly,
-    benefit: toSatang(reduction) > 0n ? ASSIST.benefit(formatBaht(reduction)) : null,
+    benefit: reduction !== null && toSatang(reduction) > 0n ? ASSIST.benefit(formatBaht(reduction)) : null,
   };
 }
 

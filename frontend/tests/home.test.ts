@@ -325,8 +325,10 @@ test("UI_36_over_by_is_never_negative_and_positive_exactly_when_over_budget", ()
   for (const name of ["persona", "over_budget", "over_budget_now", "over_budget_empty_buffer"]) {
     scene(name);
     for (const m of months()) {
-      assert.match(m.over_by, /^(0|[1-9][0-9]*)\.[0-9]{2}$/, `${name} ${m.month}`); // no sign
-      assert.equal(toSatang(m.over_by) > 0n, m.over_budget, `${name} ${m.month}`);
+      const overBy = m.over_by; // null only when an answer lacks it (UI-39); the mock always sends it
+      assert.ok(overBy !== null, `${name} ${m.month}`);
+      assert.match(overBy, /^(0|[1-9][0-9]*)\.[0-9]{2}$/, `${name} ${m.month}`); // no sign
+      assert.equal(toSatang(overBy) > 0n, m.over_budget, `${name} ${m.month}`);
     }
   }
 });

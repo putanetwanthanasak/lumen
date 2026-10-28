@@ -3,7 +3,8 @@
  *
  * USE_MOCK = true answers from src/mock/server.ts with the same status codes and
  * bodies as the backend. Set it to false to call the FastAPI app through the Vite
- * proxy (/api is stripped; to be confirmed when wiring).
+ * proxy (/api is stripped; to be confirmed when wiring). Fields the backend does not
+ * send yet are read by src/apiFields.ts, so a screen never crashes on one (UI-39).
  */
 import type {
   AssistantPlanOut,
@@ -23,6 +24,7 @@ import type {
   SettingsOut,
   SuggestedMonthlyOut,
 } from "./api-types.ts";
+import { readAssistantSummary, readMonths, readPlan, readSummary } from "./apiFields.ts";
 import { handle } from "./mock/server.ts";
 import { DEMO_USER } from "./mock/persona.ts";
 import type { Money } from "./money.ts";
@@ -108,7 +110,7 @@ export async function saveSettings(data: SettingsIn, exists: boolean): Promise<S
 // ---- home (screen 2) --------------------------------------------------------
 
 export async function getDebtSummary(): Promise<DebtSummary> {
-  return (await call<DebtSummary>("GET", "/debts/summary")).body;
+  return readSummary((await call<DebtSummary>("GET", "/debts/summary")).body);
 }
 
 /**
@@ -116,7 +118,7 @@ export async function getDebtSummary(): Promise<DebtSummary> {
  * With `count`, that many months from now; without, up to the last month due.
  */
 export async function getMonths(count?: number): Promise<MonthsOut> {
-  return (await call<MonthsOut>("GET", count === undefined ? "/debts/months" : `/debts/months?count=${count}`)).body;
+  return readMonths((await call<MonthsOut>("GET", count === undefined ? "/debts/months" : `/debts/months?count=${count}`)).body);
 }
 
 export async function getBuffer(): Promise<BufferOut> {
@@ -167,7 +169,7 @@ export async function markNotificationsRead(): Promise<NotificationsOut> {
 
 /** GET /assistant/plan (merged backend): every number of the plan; 409 SETTINGS_REQUIRED. */
 export async function getAssistantPlan(): Promise<AssistantPlanOut> {
-  return (await call<AssistantPlanOut>("GET", "/assistant/plan")).body;
+  return readPlan((await call<AssistantPlanOut>("GET", "/assistant/plan")).body);
 }
 
 /**
@@ -175,7 +177,7 @@ export async function getAssistantPlan(): Promise<AssistantPlanOut> {
  * when it opens (the assistant's bubble). The mock returns an example.
  */
 export async function getAssistantSummary(): Promise<AssistantSummaryOut> {
-  return (await call<AssistantSummaryOut>("POST", "/assistant/summary")).body;
+  return readAssistantSummary((await call<AssistantSummaryOut>("POST", "/assistant/summary")).body);
 }
 
 // ---- Demo panel -----------------------------------------------------------------

@@ -85,9 +85,9 @@ test("UI_35_bars_meters_and_icons_are_at_least_3_to_1", () => {
 const borderToken = (cls: string) => cls.split(/\s+/).flatMap((c) => /^border-(?!\d)([a-z0-9-]+)$/.exec(c)?.slice(1) ?? []);
 
 test("UI_35_every_tinted_card_edge_stands_out_from_the_page_at_least_3_to_1", () => {
-  // The offer card, the assistant's panel, the consolidation banner and the amber strip
-  // meet the page (surface) at their edge; the light tints alone blend into it.
-  assert.deepEqual(Object.keys(EDGE).sort(), ["ai", "bank", "quiet", "warn"]);
+  // The offer card, the assistant's panel, the consolidation banner, the amber strip and
+  // the buffer's wallet meet the page (surface) at their edge; the light tints alone blend into it.
+  assert.deepEqual(Object.keys(EDGE).sort(), ["ai", "bank", "buffer", "quiet", "warn"]);
   const low = Object.entries(EDGE).flatMap(([accent, cls]) => {
     const [token] = borderToken(cls);
     if (token === undefined) return [`${accent}: no border colour in "${cls}"`];
@@ -100,11 +100,12 @@ test("UI_35_every_tinted_card_edge_stands_out_from_the_page_at_least_3_to_1", ()
 
 test("UI_35_the_edge_check_catches_the_light_lines_it_replaced", () => {
   // Guard the guard: the borders these cards had before blend into the page.
-  for (const old of ["bank-200", "ai-line", "quiet-line", "warn-line"]) {
+  for (const old of ["bank-200", "ai-line", "quiet-line", "warn-line", "teal-100"]) {
     assert.ok(ratio(old, "surface") < 3, `${old}: ${ratio(old, "surface").toFixed(2)}`);
   }
   assert.deepEqual(borderToken("border-2 border-bank-700"), ["bank-700"]);
   assert.deepEqual(borderToken("border border-ai-edge"), ["ai-edge"]);
+  assert.deepEqual(borderToken(EDGE.buffer), ["teal-edge"]);
 });
 
 test("UI_35_the_measure_matches_known_values", () => {

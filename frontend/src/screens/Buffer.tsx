@@ -8,7 +8,7 @@ import { useState, type FormEvent } from "react";
 import { ApiError, getAssistantPlan, getBuffer, moveToMain } from "../api.ts";
 import { bufferPlanLines } from "../assistantText.ts";
 import type { BufferOut, MovedOut } from "../api-types.ts";
-import { ACCENT, BUFFER_METER, SOLID } from "../accent.ts";
+import { ACCENT, BUFFER_METER, EDGE, SOLID } from "../accent.ts";
 import { ASSIST, BUFFER, MONEY_ERRORS } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
@@ -29,7 +29,7 @@ export function BufferScreen() {
   );
 }
 
-function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => void }) {
+export function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => void }) {
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -84,8 +84,8 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
   return (
     <>
       <p className="text-body text-ink-muted">{BUFFER.intro}</p>
-      {/* The same wallet as on Home, larger: teal is the buffer on every screen. */}
-      <section className={`flex flex-col gap-2 rounded-card border-2 p-5 ${ACCENT.buffer.tint} ${ACCENT.buffer.line}`}>
+      {/* The same wallet as on Home, larger, with its edge: teal is the buffer on every screen. */}
+      <section className={`flex flex-col gap-2 rounded-card p-5 ${ACCENT.buffer.tint} ${EDGE.buffer}`}>
         <div className="flex items-center gap-3">
           <span className={`inline-flex h-12 w-12 items-center justify-center rounded-pill ${SOLID.buffer}`}>
             <Icon name={ACCENT.buffer.icon} size={28} />

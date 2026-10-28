@@ -176,7 +176,7 @@ function Strip({ strip }: { strip: OverStrip }) {
               {chip.text}
             </span>
             <span className="text-body font-bold text-ink">
-              <span aria-hidden="true">{chip.amount}</span>
+              {chip.amount !== null && <span aria-hidden="true">{chip.amount}</span>}
               <span className="sr-only">{chip.spoken}</span>
             </span>
           </li>
@@ -197,13 +197,16 @@ function Strip({ strip }: { strip: OverStrip }) {
   );
 }
 
-/** The buffer as a wallet: shield, label and balance on the left, months covered on the right. */
+/**
+ * The buffer as a wallet: shield, label and balance on the left, months covered on the
+ * right. Framed in `EDGE.buffer` (at least 3:1, UI-35), like the buffer screen's card.
+ */
 function Wallet({ wallet }: { wallet: WalletView }) {
   return (
     <button
       type="button"
       onClick={() => navigate("buffer")}
-      className={`flex w-full cursor-pointer items-center gap-3 rounded-card border-2 p-4 text-left hover:shadow-card active:opacity-90 focus-visible:outline-2 focus-visible:outline-leaf-600 ${ACCENT.buffer.tint} ${ACCENT.buffer.line}`}
+      className={`flex w-full cursor-pointer items-center gap-3 rounded-card p-4 text-left hover:shadow-card active:opacity-90 focus-visible:outline-2 focus-visible:outline-leaf-600 ${ACCENT.buffer.tint} ${EDGE.buffer}`}
     >
       <span className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-pill ${SOLID.buffer}`}>
         <Icon name={wallet.title.icon} size={26} />

@@ -45,9 +45,11 @@ export const SOLID = {
 /**
  * The edge of a tinted card where it meets the page, at least 3:1 against the page
  * (WCAG 1.4.11; UI-35 measures each): without it the light tints blend into the
- * page. The bank's offer is a white card framed in its own blue.
+ * page. The bank's offer is a white card framed in its own blue; the buffer's wallet
+ * (Home and the buffer screen) in a mid teal.
  */
 export const EDGE = {
+  buffer: "border-2 border-teal-edge",
   warn: "border-2 border-warn-edge",
   bank: "border-2 border-bank-700",
   ai: "border border-ai-edge",

@@ -5,7 +5,8 @@
  *   worked out on screen and left out at 0.00; each total as large as its monthly
  *   amount; the extra-cost line and the old top line gone.
  * UI-35 (markup): every tinted card that meets the page carries its EDGE, so it stands
- *   out from the page at least 3:1 (contrast.test.ts measures the colours).
+ *   out from the page at least 3:1 (contrast.test.ts measures the colours): on Home,
+ *   and the buffer screen's balance card, the same wallet.
  */
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
@@ -19,6 +20,7 @@ import { consolidationView } from "../src/homeLayout.ts";
 import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
 import { handle, resetMock } from "../src/mock/server.ts";
 import { MoneyFormatError } from "../src/money.ts";
+import { BufferBody } from "../src/screens/Buffer.tsx";
 import { HomeBody } from "../src/screens/Home.tsx";
 
 const TODAY = new Date(2026, 9, 27); // Oct 2026
@@ -154,14 +156,16 @@ function homeIn(name: string): string {
 test("UI_35_every_tinted_card_on_home_carries_its_edge", () => {
   // The tint of each card that meets the page, and the edge it must have.
   const cards = [
+    { name: "buffer", tint: ACCENT.buffer.tint, edge: EDGE.buffer }, // the wallet, in every scene
     { name: "ai", tint: ACCENT.ai.tint, edge: EDGE.ai },
     { name: "quiet", tint: ACCENT.quiet.tint, edge: EDGE.quiet },
     { name: "warn", tint: ACCENT.warn.tint, edge: EDGE.warn },
   ];
   const expected: Record<string, string[]> = {
-    persona: ["ai", "quiet"], // in budget: the banner, no strip
-    over_budget: ["ai", "quiet", "warn"], // upcoming months over: the strip, still the banner
-    over_budget_now: ["ai", "warn", "offer"], // the offer card instead of the banner
+    persona: ["buffer", "ai", "quiet"], // in budget: the banner, no strip
+    over_budget: ["buffer", "ai", "quiet", "warn"], // upcoming months over: the strip, still the banner
+    over_budget_now: ["buffer", "ai", "warn", "offer"], // the offer card instead of the banner
+    over_budget_empty_buffer: ["buffer", "ai", "quiet", "warn"], // as over_budget, the wallet empty: it keeps its edge
   };
   for (const [name, wanted] of Object.entries(expected)) {
     const all = elements(homeIn(name));
@@ -172,5 +176,17 @@ test("UI_35_every_tinted_card_on_home_carries_its_edge", () => {
     });
     const offers = all.filter((e) => hasAll(e.classes, SOLID.bank) && hasAll(e.classes, EDGE.bank));
     assert.deepEqual([...seen, ...(offers.length > 0 ? ["offer"] : [])], wanted, name);
+  }
+});
+
+test("UI_35_the_buffer_screens_balance_card_carries_the_wallets_edge", () => {
+  for (const name of ["persona", "over_budget_empty_buffer"]) {
+    scene(name);
+    const html = renderToStaticMarkup(createElement(BufferBody, { buffer: call("GET", "/buffer").body as BufferOut, onMoved: () => undefined }));
+    // The balance card is the screen's tinted section; its edge is the wallet's on Home.
+    const cards = [...html.matchAll(/<section class="([^"]*)">/g)].map((m) => new Set(tokens(m[1] ?? ""))).filter((c) => hasAll(c, ACCENT.buffer.tint));
+    assert.equal(cards.length, 1, name);
+    assert.ok(hasAll(cards[0] ?? new Set(), EDGE.buffer), `${name}: ${[...(cards[0] ?? [])].join(" ")}`);
+    assert.ok(!cards[0]?.has(tokens(ACCENT.buffer.line)[0] ?? ""), "not the old light line");
   }
 });

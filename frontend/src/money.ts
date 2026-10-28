@@ -64,6 +64,11 @@ export function parseMoneyInput(raw: string): MoneyInput {
   return { ok: true, value: decimals === undefined ? trimmed : `${trimmed}.${decimals}` };
 }
 
+/** Whether an answer's field is an API money string, before anything formats it (UI-39). */
+export function isApiMoney(value: unknown): value is Money {
+  return typeof value === "string" && API_MONEY.test(value);
+}
+
 /** "1500.5" -> 150050n. Exact; for comparisons and bar heights only. */
 export function toSatang(value: Money): bigint {
   const match = API_MONEY.exec(value);

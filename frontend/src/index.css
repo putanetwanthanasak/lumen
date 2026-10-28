@@ -64,6 +64,7 @@
   --color-teal-200: #94d9dc;
   --color-teal-700: #0c6a72;
   --color-teal-800: #0a535a;
+  --color-teal-edge: #358b92; /* the wallet's edge against the page, at least 3:1 */
   /* Blue: the bank's consolidation offer. */
   --color-bank-50: #eef3fd;
   --color-bank-200: #b3c9f2;

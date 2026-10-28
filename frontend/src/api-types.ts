@@ -134,7 +134,7 @@ export type InstallmentLine = {
   status: InstallmentStatus;
   disputed_at: string | null;
   owed: boolean;
-  platform_name: string | null; // TODO(backend, Session 15): see ManualEntryIn
+  platform_name: string | null; // TODO(backend, Session 15): see ManualEntryIn; absent reads as null (apiFields.ts)
 };
 
 /** GET /debts/summary. */
@@ -149,7 +149,7 @@ export type DebtSummary = {
 export type MonthInstallment = {
   installment_id: string;
   item_name: string;
-  platform_name: string | null;
+  platform_name: string | null; // TODO(backend): not in these rows yet; absent reads as null (apiFields.ts)
   monthly_amount: Money;
   installment_no: number; // "งวดที่ x": 1 in the first due month
   installments_total: number; // "จาก y": the installment's months
@@ -159,9 +159,10 @@ export type MonthInstallment = {
 /**
  * `over_by` (TODO(backend), being added to these rows only, not to the preview's
  * MonthRow): total - budget when over_budget, else "0.00". Never negative. Home's
- * over-budget chips show it ("+2,500.00 บาท").
+ * over-budget chips show it ("+2,500.00 บาท"). Null when the answer did not carry it
+ * (src/apiFields.ts): the chip then shows its month only (UI-39).
  */
-export type MonthDetail = MonthRow & { over_by: Money; installments: MonthInstallment[] };
+export type MonthDetail = MonthRow & { over_by: Money | null; installments: MonthInstallment[] };
 
 /**
  * TODO(backend, Session 15): GET /debts/months[?count=N]. Not built yet.
@@ -289,8 +290,9 @@ export type EstimateOut = {
   extra_cost: Money; // total_cost - current_remaining_total
   // TODO(backend): not in GET /assistant/plan yet, mock only. The monthly amounts of the
   // plans the loan pays off (every counted installment, so DebtSummary.monthly_total,
-  // L43) minus monthly_payment; "0.00" if that is not above zero.
-  monthly_reduction: Money;
+  // L43) minus monthly_payment; "0.00" if that is not above zero. Null when the answer
+  // did not carry it (src/apiFields.ts): the offer shows without its benefit line (UI-39).
+  monthly_reduction: Money | null;
 };
 
 export type ConsolidationOut = {

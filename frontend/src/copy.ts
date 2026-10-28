@@ -144,6 +144,7 @@ export const HOME = {
   overMonthsTitle: "เดือนที่ค่างวดรวมเกินงบ",
   overBy: (amount: string) => `+${amount}`,
   overBySpoken: (amount: string) => `เกินงบ ${amount}`,
+  overSpoken: "เกินงบ", // a chip whose amount the answer did not carry (UI-39)
   overMoreMonths: (months: number) => `และอีก ${months} เดือนหลังจากนั้น`,
   useBuffer: "ใช้กันชนช่วยจ่าย ›",
   toMonths: "ดูภาระผ่อนรายเดือน ›",
