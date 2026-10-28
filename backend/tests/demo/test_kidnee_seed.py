@@ -84,8 +84,10 @@ def test_KD_04_seed_records_every_persona_with_its_savings(
         for user in PERSONAS:
             reconcile.assert_user_invariants(session, user)
         # One alert per recorded installment (L58), as POST /installments stores it.
-        assert session.scalar(select(func.count()).select_from(Notification)) == 10
-        assert session.scalar(select(func.sum(SavingsTransaction.amount))) == Decimal("16200.00")
+        assert session.scalar(select(func.count()).select_from(Notification)) == 8
+        assert session.scalar(select(func.sum(SavingsTransaction.amount))) == Decimal(
+            "15900.00"
+        )  # 3 x 1,200 + 3 x 1,500 + 3,000 + 4,800
 
 
 def test_KD_04_mint_is_in_budget_every_month(kidnee: Engine, first_seed: Any) -> None:
@@ -137,5 +139,5 @@ def test_KD_04_a_seed_in_another_month_never_overwrites(kidnee: Engine, first_se
     # Only the audit rows of the refused requests are new (as POST /installments' 409).
     after = counts(kidnee)
     assert {k: v for k, v in after.items() if v != before[k]} == {
-        "audit_log": before["audit_log"] + 10
+        "audit_log": before["audit_log"] + 8  # one per installment (8)
     }
