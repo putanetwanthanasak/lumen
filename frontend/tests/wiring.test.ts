@@ -409,3 +409,15 @@ test("UI_47_a_retry_after_a_lost_answer_resends_the_same_id_and_a_422_starts_ane
   assert.equal(ids.length, 4);
   assert.ok(ids[2] !== "id-1" && ids[3] !== "id-1" && ids[2] !== ids[3], ids.join(","));
 });
+
+test("UI_47_the_months_button_moves_for_its_month_and_the_free_move_for_none", () => {
+  // Break test B-UI-190 found no test for this: the month's button must label its move,
+  // or the month never turns prepared. Each form has its own mover.
+  const screen = readFileSync("src/screens/Buffer.tsx", "utf8");
+  const card = screen.slice(screen.indexOf("function PrepareCard("));
+  assert.match(card, /const forMonth = useMover\(\);/);
+  assert.match(card, /forMonth\.press\(p\.amount, p\.month\)/);
+  const free = screen.slice(screen.indexOf("async function submit("), screen.indexOf("function PrepareCard("));
+  assert.match(free, /free\.press\(parsed\.value\);/);
+  assert.equal(screen.split(".press(").length - 1, 2, "two moves, no other");
+});
