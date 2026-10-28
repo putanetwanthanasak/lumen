@@ -2,12 +2,14 @@
 `lumen_kidnee_test`, rebuilt by Alembic. Same code path as the command: reset, then
 seed through the app's services as lumen_app. "Today" is fixed at 2026-11-10."""
 
+import contextlib
 from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import Engine, func, select, text
 from sqlalchemy.orm import Session
 
@@ -17,13 +19,19 @@ from app.db import Base, make_engine
 from app.ledger import reconcile
 from app.models import Notification, SavingsTransaction
 from app.providers.mock_bank import MockBankAccountProvider
-from demo.kidnee import KIDNEE_DB_NAME, PERSONAS, KidneeConfig, seed
+from app.providers.mock_push import MockPushProvider
+from demo.kidnee import KIDNEE_DB_NAME, PERSONAS, KidneeConfig, build, seed
 from demo.script import reset_database
 
 pytestmark = pytest.mark.db
 
 DB_NAME = "lumen_kidnee_test"
 DAY = date(2026, 11, 10)
+
+
+@pytest.fixture(scope="module")
+def config(test_db_url: str, test_migration_db_url: str) -> KidneeConfig:
+    return KidneeConfig(test_db_url, test_migration_db_url, db_name=DB_NAME)
 
 
 @pytest.fixture(scope="module")
@@ -42,7 +50,7 @@ def kidnee(migration_engine: Any, test_db_url: str, test_migration_db_url: str) 
 @pytest.fixture(scope="module")
 def first_seed(kidnee: Engine) -> dict[str, list[str]]:
     with Session(kidnee) as session:
-        return seed(session, day=DAY, bank=MockBankAccountProvider())
+        return seed(session, day=DAY, bank=MockBankAccountProvider(), push=MockPushProvider())
 
 
 def plan(kidnee: Engine, user: str) -> Any:
@@ -85,6 +93,9 @@ def test_KD_04_seed_records_every_persona_with_its_savings(
             reconcile.assert_user_invariants(session, user)
         # One alert per recorded installment (L58), as POST /installments stores it.
         assert session.scalar(select(func.count()).select_from(Notification)) == 8
+        # Delivered as POST /installments does after commit (review F4): none left pending.
+        statuses = set(session.scalars(select(Notification.delivery_status)))
+        assert statuses == {"pushed"}
         assert session.scalar(select(func.sum(SavingsTransaction.amount))) == Decimal(
             "15900.00"
         )  # 3 x 1,200 + 3 x 1,500 + 3,000 + 4,800
@@ -122,7 +133,7 @@ def test_KD_04_consolidate_persona_is_eligible(kidnee: Engine, first_seed: Any) 
 def test_KD_04_a_second_seed_changes_nothing(kidnee: Engine, first_seed: Any) -> None:
     before = counts(kidnee)
     with Session(kidnee) as session:
-        again = seed(session, day=DAY, bank=MockBankAccountProvider())
+        again = seed(session, day=DAY, bank=MockBankAccountProvider(), push=MockPushProvider())
     assert again["demo-mint"] == [
         "settings kept",
         "earbuds: duplicate, saved 1200.00",
@@ -134,10 +145,26 @@ def test_KD_04_a_second_seed_changes_nothing(kidnee: Engine, first_seed: Any) ->
 def test_KD_04_a_seed_in_another_month_never_overwrites(kidnee: Engine, first_seed: Any) -> None:
     before = counts(kidnee)
     with Session(kidnee) as session:
-        later = seed(session, day=date(2026, 12, 1), bank=MockBankAccountProvider())
+        later = seed(
+            session, day=date(2026, 12, 1), bank=MockBankAccountProvider(), push=MockPushProvider()
+        )
     assert later["demo-mint"][1] == "earbuds: seeded in another month, run reset to refresh"
     # Only the audit rows of the refused requests are new (as POST /installments' 409).
     after = counts(kidnee)
     assert {k: v for k, v in after.items() if v != before[k]} == {
         "audit_log": before["audit_log"] + 8  # one per installment (8)
     }
+
+
+def test_KD_04_the_served_api_reads_the_kidnee_database(
+    kidnee: Engine, first_seed: Any, config: KidneeConfig
+) -> None:
+    served = build(config, kidnee, dist=None)
+    api = served.routes[0].app  # type: ignore[attr-defined]
+    # Checked before any request, so a broken override never reaches another database.
+    [override] = [api.dependency_overrides[k] for k in api.dependency_overrides]
+    with contextlib.closing(override()) as sessions:
+        assert next(sessions).get_bind().url.database == DB_NAME
+    with TestClient(served) as client:
+        response = client.get("/api/debts/summary", headers={"X-Demo-User": "demo-mint"})
+    assert (response.status_code, response.json()["monthly_total"]) == (200, "3500.00")

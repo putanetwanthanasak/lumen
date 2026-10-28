@@ -24,10 +24,12 @@ import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 import uvicorn
 from sqlalchemy import Engine, make_url, select, text
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.applications import Starlette
 
 from app.affordability.months import Month
 from app.clock import today
@@ -37,9 +39,10 @@ from app.installments.schemas import ManualEntryIn
 from app.installments.service import Outcome, record
 from app.main import create_app
 from app.models import UserSettings
-from app.providers import get_bank_provider
-from app.providers.base import BankAccountProvider
-from app.serve import create_serving_app
+from app.notifications import service as notifications
+from app.providers import get_bank_provider, get_push_provider
+from app.providers.base import BankAccountProvider, PushProvider
+from app.serve import FRONTEND_DIST, create_serving_app
 from app.user_settings import service as user_settings
 from app.user_settings.schemas import SettingsIn
 from demo.script import migrate, reset_database
@@ -141,9 +144,12 @@ def entry(user: str, item: Item, now: Month) -> ManualEntryIn:
     return ManualEntryIn.model_validate_json(json.dumps(body))
 
 
-def seed(session: Session, *, day: date, bank: BankAccountProvider) -> dict[str, list[str]]:
-    """Each persona's settings and installments, one commit per write, as the API
-    does it. Returns what happened per persona, for the console and the tests."""
+def seed(
+    session: Session, *, day: date, bank: BankAccountProvider, push: PushProvider
+) -> dict[str, list[str]]:
+    """Each persona's settings and installments, one commit per write, then the alert
+    delivered, as POST /installments does it. Returns what happened per persona, for
+    the console and the tests."""
     now = Month.of(day)
     settings = SettingsIn.model_validate_json(json.dumps(SETTINGS))
     report: dict[str, list[str]] = {}
@@ -155,6 +161,8 @@ def seed(session: Session, *, day: date, bank: BankAccountProvider) -> dict[str,
         for item in items:
             result = record(session, user_id=user, entry=entry(user, item, now), bank=bank)
             session.commit()
+            if result.notification_id is not None:
+                notifications.deliver(session, result.notification_id, push)
             if result.outcome is Outcome.CONFLICT:
                 # Seeded in another month: the dates differ. Never overwrite; say so.
                 lines.append(f"{item.key}: seeded in another month, run reset to refresh")
@@ -168,7 +176,7 @@ def seed_database(config: KidneeConfig, *, day: date) -> dict[str, list[str]]:
     engine = make_engine(config.url(config.app_url))
     try:
         with Session(engine) as session:
-            return seed(session, day=day, bank=get_bank_provider())
+            return seed(session, day=day, bank=get_bank_provider(), push=get_push_provider())
     finally:
         engine.dispose()
 
@@ -180,11 +188,10 @@ def personas_present(engine: Engine) -> list[str]:
         )
 
 
-def serve(config: KidneeConfig, *, port: int = PORT) -> None:
-    """The screens and the API on 127.0.0.1 only, against lumen_kidnee, with the
-    demo payday endpoint on for the Demo panel."""
+def build(config: KidneeConfig, engine: Engine, dist: Path | None = FRONTEND_DIST) -> Starlette:
+    """The serving app: the API with every session on `engine` (lumen_kidnee, never
+    the DATABASE_URL database) and the demo payday endpoint on, plus the build."""
     _allowed(config)
-    engine = make_engine(config.url(config.app_url))
     sessions = sessionmaker(bind=engine, expire_on_commit=False)
 
     def kidnee_session() -> Iterator[Session]:
@@ -193,12 +200,20 @@ def serve(config: KidneeConfig, *, port: int = PORT) -> None:
 
     api = create_app(get_settings().model_copy(update={"demo_endpoints_enabled": True}))
     api.dependency_overrides[get_session] = kidnee_session
+    return create_serving_app(api, dist)
+
+
+def serve(config: KidneeConfig, *, port: int = PORT) -> None:
+    """The screens and the API on 127.0.0.1 only, against lumen_kidnee."""
+    _allowed(config)
+    engine = make_engine(config.url(config.app_url))
+    served = build(config, engine)
     missing = [u for u in PERSONAS if u not in personas_present(engine)]
     if missing:
         print(f"Not seeded yet: {', '.join(missing)}. Run: python -m demo.kidnee seed")
     print(f"KidNee on http://{HOST}:{port} (API at /api). Ctrl+C stops it.")
     try:
-        uvicorn.run(create_serving_app(api), host="127.0.0.1", port=port, log_level="warning")
+        uvicorn.run(served, host="127.0.0.1", port=port, log_level="warning")
     finally:
         engine.dispose()
 
