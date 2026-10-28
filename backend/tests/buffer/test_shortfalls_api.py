@@ -9,6 +9,8 @@ from decimal import Decimal
 
 import pytest
 
+from app.affordability.months import Month
+from app.buffer.service import prepared_by_month
 from app.clock import today
 from app.main import app
 from app.models import UserSettings
@@ -255,3 +257,19 @@ def test_BS_05_a_move_through_the_api_prepares_its_month_once(plan_api: Api) -> 
         ("2026-11", "1500.00", "1500.00", "0.00", "prepared"),
         ("2026-12", "1500.00", "0.00", "1500.00", "not_prepared"),
     ]
+
+
+def test_BS_06_prepared_by_month_reads_this_month_on_only(plan_api: Api) -> None:
+    # Its own month bound, not only the plan's: the plan also ignores past months, so
+    # without this test a query that reads every month would go unseen (B139).
+    api = plan_api
+    moved(api, "100.00", date(2026, 10, 1))  # last month
+    moved(api, "200.00", date(2026, 11, 1))
+    moved(api, "300.00", date(2026, 11, 1))
+    moved(api, "400.00", date(2027, 1, 1))
+    moved(api, "500.00", None)  # a free move
+    moved(api, "600.00", date(2026, 11, 1), user="user_b")
+    assert prepared_by_month(api.session, USER, since=Month.of(date(2026, 11, 10))) == {
+        Month.of(date(2026, 11, 1)): Decimal("500.00"),
+        Month.of(date(2027, 1, 1)): Decimal("400.00"),
+    }
