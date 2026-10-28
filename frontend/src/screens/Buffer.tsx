@@ -14,7 +14,7 @@ import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Alert, Button, Card, ErrorState, Field, Loading } from "../components/ui.tsx";
 import { afterMoveError, moveRequest, type MoveRequest } from "../bufferMove.ts";
-import { walletView, WALLET_SEGMENTS } from "../homeLayout.ts";
+import { walletFor, WALLET_SEGMENTS } from "../homeLayout.ts";
 import { formatBaht, parseMoneyInput } from "../money.ts";
 import { useLoad } from "../useLoad.ts";
 
@@ -38,7 +38,9 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
   // One id per amount: a retry of the same move (lost answer) moves the money once.
   const [request, setRequest] = useState<MoveRequest | null>(null);
   const [balance, setBalance] = useState(buffer.balance);
-  const filled = walletView(buffer).filled; // months covered, at most the 6 segments
+  // The last GET /buffer answer: the months covered and the monthly total are the API's.
+  const [current, setCurrent] = useState(buffer);
+  const cover = walletFor(current, balance); // null between a move and the next GET /buffer
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -56,6 +58,8 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
       const out = await moveToMain({ client_request_id: next.id, amount: parsed.value });
       setMoved(out);
       setBalance(out.balance);
+      // The months covered for the new balance come from the API (review F4).
+      getBuffer().then(setCurrent, () => undefined);
       setRequest(null);
       setAmount("");
     } catch (e) {
@@ -67,7 +71,10 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
         // Unknown outcome: the money may already have moved. Say so, and read the
         // balance again instead of showing the old one (review B1 F4).
         setFailed(true);
-        getBuffer().then((b) => setBalance(b.balance), () => undefined);
+        getBuffer().then((b) => {
+          setBalance(b.balance);
+          setCurrent(b);
+        }, () => undefined);
       }
     } finally {
       setBusy(false);
@@ -84,21 +91,25 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
             <Icon name={ACCENT.buffer.icon} size={28} />
           </span>
           <h2 className={`flex-1 text-body font-semibold ${ACCENT.buffer.ink}`}>{BUFFER.balance}</h2>
-          <span aria-hidden="true" className="flex gap-1">
-            {Array.from({ length: WALLET_SEGMENTS }, (_, i) => (
-              <span key={i} className={`h-5 w-2.5 rounded-sm ${i < filled ? BUFFER_METER.on : BUFFER_METER.off}`} />
-            ))}
-          </span>
+          {cover !== null && (
+            <span aria-hidden="true" className="flex gap-1">
+              {Array.from({ length: WALLET_SEGMENTS }, (_, i) => (
+                <span key={i} className={`h-5 w-2.5 rounded-sm ${i < cover.filled ? BUFFER_METER.on : BUFFER_METER.off}`} />
+              ))}
+            </span>
+          )}
         </div>
         <p className="text-display font-bold text-ink">{formatBaht(balance)}</p>
-        <p className={`text-body font-semibold ${ACCENT.buffer.ink}`}>
-          {buffer.months_covered === null
-            ? BUFFER.nothingOwed
-            : buffer.months_covered === 0
-              ? BUFFER.coversNone
-              : BUFFER.covers(buffer.months_covered)}
-        </p>
-        <p className="text-body text-ink-muted">{BUFFER.monthlyTotal(formatBaht(buffer.monthly_total))}</p>
+        {cover !== null && (
+          <p className={`text-body font-semibold ${ACCENT.buffer.ink}`}>
+            {current.months_covered === null
+              ? BUFFER.nothingOwed
+              : current.months_covered === 0
+                ? BUFFER.coversNone
+                : BUFFER.covers(current.months_covered)}
+          </p>
+        )}
+        <p className="text-body text-ink-muted">{BUFFER.monthlyTotal(formatBaht(current.monthly_total))}</p>
       </section>
 
       {/* Reloads after a move, so "covered" or "still short" matches the balance above. */}

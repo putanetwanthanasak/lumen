@@ -27,7 +27,12 @@ export type OverChip = Marked & { month: string; amount: string; spoken: string 
 export type OverStrip = {
   title: Marked;
   chips: OverChip[];
-  buffer: Marked | null; // null when the plan did not load
+  // The rest come from the plan, null when it did not load. Its buffer line counts
+  // every month over budget, not only the six shown, so the strip also says how many
+  // more there are and the total it is about: the amounts on the card agree (review F1).
+  more: string | null; // also null when no month after the ones shown is over
+  shortfall: string | null;
+  buffer: Marked | null;
   link: Marked & { route: Route };
 };
 
@@ -41,7 +46,7 @@ export type HeroView = {
 };
 
 /** This month's card, from GET /debts/months?count=6 (this month first). */
-export function heroView(months: readonly MonthDetail[], plan: BufferPlanOut | null, bufferBalance: Money): HeroView | null {
+export function heroView(months: readonly MonthDetail[], plan: AssistantPlanOut | null, bufferBalance: Money): HeroView | null {
   const [now, ...later] = months;
   if (now === undefined) return null;
   const over = months.filter((m) => m.over_budget);
@@ -59,11 +64,13 @@ export function heroView(months: readonly MonthDetail[], plan: BufferPlanOut | n
     total: now.total,
     barOver: now.over_budget,
     line,
-    strip: over.length === 0 ? null : overStrip(over, plan, bufferBalance),
+    strip: over.length === 0 ? null : overStrip(over, months.at(-1)?.month ?? now.month, plan, bufferBalance),
   };
 }
 
-function overStrip(over: readonly MonthDetail[], plan: BufferPlanOut | null, bufferBalance: Money): OverStrip {
+function overStrip(over: readonly MonthDetail[], lastShown: string, plan: AssistantPlanOut | null, bufferBalance: Money): OverStrip {
+  // A count of the plan's months over budget after the last one shown, not money.
+  const after = plan === null ? 0 : plan.months.filter((m) => m.over_budget && m.month > lastShown).length;
   return {
     title: { accent: "warn", icon: "alert", text: HOME.overMonthsTitle },
     chips: over.map((m) => ({
@@ -74,7 +81,9 @@ function overStrip(over: readonly MonthDetail[], plan: BufferPlanOut | null, buf
       amount: HOME.overBy(formatBaht(m.over_by)),
       spoken: HOME.overBySpoken(formatBaht(m.over_by)),
     })),
-    buffer: plan === null ? null : bufferLine(plan),
+    more: after === 0 ? null : HOME.overMoreMonths(after),
+    shortfall: plan === null ? null : ASSIST.shortfall(formatBaht(plan.buffer_plan.shortfall)),
+    buffer: plan === null ? null : bufferLine(plan.buffer_plan),
     // As on the payday alert (UI-17): the buffer while it holds money, else the months.
     link:
       toSatang(bufferBalance) > 0n
@@ -103,6 +112,15 @@ export function walletView(buffer: BufferOut): WalletView {
     filled: covered === null ? 0 : covered > WALLET_SEGMENTS ? WALLET_SEGMENTS : covered,
     caption: covered === null ? HOME.walletNothingOwed : covered === 0 ? HOME.walletCoversNone : HOME.walletCovers(covered),
   };
+}
+
+/**
+ * The buffer screen's months covered, only for the balance they were worked out for:
+ * after a move the balance shows at once, and the months wait for the next GET /buffer
+ * (review F4). Null: not known yet.
+ */
+export function walletFor(buffer: BufferOut, balance: Money): WalletView | null {
+  return toSatang(buffer.balance) === toSatang(balance) ? walletView(buffer) : null;
 }
 
 export type ConsolidationView =
@@ -144,7 +162,7 @@ export function homeView(data: {
 }): HomeView {
   const { months, plan, buffer, monthlyTotal } = data;
   return {
-    hero: heroView(months, plan?.buffer_plan ?? null, buffer.balance),
+    hero: heroView(months, plan, buffer.balance),
     wallet: walletView(buffer),
     assistant: plan !== null,
     consolidation: plan === null ? null : consolidationView(plan.consolidation, monthlyTotal),

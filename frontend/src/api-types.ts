@@ -272,6 +272,7 @@ export type ConsolidationReason =
   | "DISPUTED_DEBT"
   | "ESTIMATE_TOO_LARGE"
   | "PAYMENT_ABOVE_BUDGET"
+  | "PAYMENT_ABOVE_ONE_THIRD_OF_INCOME" // the loan would make a month L65 RED
   | "ELIGIBLE";
 
 /** One loan replacing every counted installment. The rate and term are EXAMPLE values. */

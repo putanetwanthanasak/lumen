@@ -546,10 +546,12 @@ function demoScene(body: unknown): MockResponse {
     resetMock(store.today, PERSONA_SETTINGS);
     recordScenario("RED", monthOf(store.today));
   } else if (scene === "over_budget_empty_buffer") {
-    // As over_budget, but the buffer was moved out: it covers nothing.
+    // As over_budget, then the whole buffer moved back to the main account (L66), by
+    // the same path as the screen, so no money disappears (review F5).
     resetMock(store.today, PERSONA_SETTINGS);
     recordScenario("YELLOW", addMonths(monthOf(store.today), 1));
-    store.bufferBalance = "0.00";
+    const moved = moveToMain({ client_request_id: "scene-empty-buffer", amount: store.bufferBalance });
+    if (moved.status !== 201) return moved;
   } else if (scene === "ai_slow" || scene === "ai_failing") {
     // The persona, with the assistant's summary slow (loading state) or failing.
     resetMock(store.today, PERSONA_SETTINGS);

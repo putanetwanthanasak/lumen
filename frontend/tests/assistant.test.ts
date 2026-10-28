@@ -167,6 +167,15 @@ test("UI_28_consolidation_payment_above_budget_and_too_large", () => {
   assert.equal(big.reason, "ESTIMATE_TOO_LARGE");
 });
 
+test("UI_28_consolidation_payment_above_one_third_of_income", () => {
+  // As the backend's (b), round 1 review F3: the loan must not make a month L65 RED.
+  // 90,000.00 over 24 months is 4,493.17 a month (Python Decimal, backend formula),
+  // and 3 x 4,493.17 = 13,479.51. Exactly one third of income is not RED.
+  const debts = [debt("2026-10", 3, "30000.00")];
+  assert.equal(build(debts, "13479.51").consolidation.reason, "ELIGIBLE");
+  assert.deepEqual(build(debts, "13479.50").consolidation, { eligible: false, reason: "PAYMENT_ABOVE_ONE_THIRD_OF_INCOME", estimate: null });
+});
+
 test("UI_28_months_stop_at_600_and_say_so", () => {
   const p = build([debt("2026-11", 600, "100.00")]);
   assert.equal(p.months.length, 600);

@@ -64,6 +64,7 @@ function consolidation(
   overRun: boolean,
   now: number,
   budget: bigint,
+  income: bigint,
   annualRate: string,
   term: number,
 ): ConsolidationOut {
@@ -80,6 +81,9 @@ function consolidation(
   if (total > MONEY_MAX) return no("ESTIMATE_TOO_LARGE");
   // The loan replaces every counted installment, so it is the only plan due (b).
   if (payment > budget) return no("PAYMENT_ABOVE_BUDGET");
+  // Nor RED in any month (L65): the loan alone is each month's total. Exactly one third
+  // is not RED; compared without division, as the backend does (review F3).
+  if (payment * 3n > income) return no("PAYMENT_ABOVE_ONE_THIRD_OF_INCOME");
   const first = addMonths(monthOfIndex(now), 1);
   return {
     eligible: true,
@@ -164,7 +168,7 @@ export function assistantPlan(
       covered: balance >= shortfall,
       still_short: fromSatang(max0(shortfall - balance)),
     },
-    consolidation: consolidation(debts, longest >= CONSOLIDATION_RUN, start, cap, annualRate, term),
+    consolidation: consolidation(debts, longest >= CONSOLIDATION_RUN, start, cap, third, annualRate, term),
   };
 }
 

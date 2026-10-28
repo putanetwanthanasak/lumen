@@ -179,6 +179,8 @@ function Strip({ strip }: { strip: OverStrip }) {
           </li>
         ))}
       </ul>
+      {strip.more !== null && <p className={`text-body font-semibold ${ACCENT.warn.ink}`}>{strip.more}</p>}
+      {strip.shortfall !== null && <p className="text-body font-semibold text-ink">{strip.shortfall}</p>}
       {strip.buffer !== null && <MarkedText item={strip.buffer} />}
       <Button
         variant={strip.link.accent === "buffer" ? "buffer" : "secondary"}

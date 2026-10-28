@@ -5,17 +5,24 @@ import { SOLID } from "../src/accent.ts";
 import { NAV, THINK } from "../src/copy.ts";
 import { NAV_RAISE, NAV_TABS, navFill, navIconClass, navLabelClass, SCROLL_PAD_WITH_NAV } from "../src/navStyle.ts";
 
+// Class by class, never a substring of a whole look (round 1 review F6): the bg- of
+// each filled look in accent.ts.
+const classes = (cls: string) => cls.split(/\s+/);
+const FILLS = [SOLID.debt, SOLID.buffer].flatMap((look) => classes(look).filter((c) => c.startsWith("bg-")));
+
 test("UI_25_every_tab_looks_selected_only_when_it_is_selected", () => {
+  assert.deepEqual(FILLS, ["bg-leaf-700", "bg-teal-700"]);
   for (const { route } of NAV_TABS) {
     // Selected: the filled icon background and a bold label, the same shape on every tab.
     assert.ok(navIconClass(route, true).includes(navFill(route)), `${route} selected`);
-    assert.ok(navLabelClass(route, true).includes("font-bold"), `${route} label selected`);
-    // Not selected: no fill of either colour, never bold.
-    for (const fill of [SOLID.debt, SOLID.buffer]) assert.ok(!navIconClass(route, false).includes(fill), `${route} not selected`);
-    assert.ok(!navLabelClass(route, false).includes("font-bold"), `${route} label not selected`);
+    assert.ok(classes(navLabelClass(route, true)).includes("font-bold"), `${route} label selected`);
+    // Not selected: no fill of either colour, no white icon, never bold.
+    const off = classes(navIconClass(route, false));
+    for (const cls of [...FILLS, "text-white"]) assert.ok(!off.includes(cls), `${route} not selected has ${cls}`);
+    assert.ok(!classes(navLabelClass(route, false)).includes("font-bold"), `${route} label not selected`);
   }
   // The centre tab, not selected, is an outline on white.
-  assert.ok(navIconClass("think", false).includes("bg-card"));
+  assert.ok(classes(navIconClass("think", false)).includes("bg-card"));
 });
 
 test("UI_25_the_buffer_tab_is_teal_and_the_others_green", () => {
