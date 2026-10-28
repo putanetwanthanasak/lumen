@@ -8,11 +8,16 @@ S2: two roles, as in production. ``engine`` / ``db_session`` connect as the app 
 ``migration_engine`` / ``owner_session`` connect as the schema owner
 (TEST_MIGRATION_DATABASE_URL): migrations, clean-up, and tests that must drop a
 guard to show the next layer catches the bad state.
+
+AI-14: no test may build the real Anthropic client (it would reach the network, with
+a real key if one is in .env; CI has none). The summary tests use a fake writer.
 """
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
+import anthropic
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -91,3 +96,16 @@ def db_session(engine: Engine) -> Iterator[Session]:
 @pytest.fixture
 def owner_session(migration_engine: Engine) -> Iterator[Session]:
     yield from _rolled_back_session(migration_engine)
+
+
+@pytest.fixture(autouse=True)
+def no_real_model_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AI-14: building the real Anthropic client fails the test loudly. pytest.fail
+    raises a BaseException, so the app's `except Exception` around the model call
+    cannot swallow it."""
+
+    def refuse(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("a test built the real Anthropic client; use a fake writer", pytrace=False)
+
+    monkeypatch.setattr(anthropic.Anthropic, "__init__", refuse)
+    monkeypatch.setattr(anthropic.AsyncAnthropic, "__init__", refuse)

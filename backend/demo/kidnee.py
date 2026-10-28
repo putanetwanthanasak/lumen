@@ -9,6 +9,7 @@ gets the savings, alerts and audit rows a real user would.
     uv run python -m demo.kidnee reset --yes   # drop, migrate and seed lumen_kidnee
     uv run python -m demo.kidnee seed          # migrate and seed; safe to run again
     uv run python -m demo.kidnee serve         # http://127.0.0.1:8000 (build frontend first)
+    uv run python -m demo.kidnee ai-check      # the real model once per persona (needs a key)
 
 Personas (X-Demo-User). All three have income 20,000.00, payday 25, budget 5,000.00,
 auto-save with consent, and leftover saving on. The buffer is what their real
@@ -38,8 +39,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.applications import Starlette
 
 from app.affordability.months import Month
+from app.affordability.service import SettingsRequiredError
+from app.ai.provider import DEFAULT_MODEL, Writer, summary_writer
+from app.assistant import summary
 from app.clock import today
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.db import get_session, make_engine
 from app.installments.schemas import ManualEntryIn
 from app.installments.service import Outcome, record
@@ -235,6 +239,41 @@ def serve(config: KidneeConfig, *, port: int = PORT) -> None:
         engine.dispose()
 
 
+def ai_check(engine: Engine, *, day: date, writer: Writer | None) -> dict[str, list[str]]:
+    """Home's AI summary for each persona, one model call each (a fresh cache), as
+    GET /assistant/summary makes it: source, reason and text. When the check refused
+    the model's text, also why and that text, to tune the prompt. Never the key."""
+    report: dict[str, list[str]] = {}
+    for user in PERSONAS:
+        try:
+            with Session(engine) as session:
+                facts = summary.load_facts(session, user, today=day, settings=get_settings())
+        except SettingsRequiredError:
+            report[user] = ["not seeded: run python -m demo.kidnee seed"]
+            continue
+        result = summary.summarize(facts, user_id=user, writer=writer, cache=summary.SummaryCache())
+        lines = [f"source: {result.source}", f"reason: {result.reason.value}", "text:"]
+        lines += [f"  {line}" for line in result.text.split("\n")]
+        if result.failure is not None and result.rejected is not None:
+            lines.append(f"check: {result.failure.check.value} ({result.failure.token})")
+            lines.append("model text (refused):")
+            lines += [f"  {line}" for line in result.rejected.split("\n")]
+        report[user] = lines
+    return report
+
+
+def model_config_lines(settings: Settings) -> list[str]:
+    """Which env names the summary reads, and whether the key is set: never its value."""
+    key = settings.llm_api_key
+    is_set = key is not None and key.get_secret_value().strip() != ""
+    model = (settings.llm_model_planner or "").strip() or f"{DEFAULT_MODEL} (default)"
+    return [
+        f"LLM_API_KEY: {'set' if is_set else 'not set'}",
+        f"LLM_MODEL_PLANNER: {model}",
+        f"LLM_PROVIDER: {settings.llm_provider or '(empty)'}",
+    ]
+
+
 def _print(report: dict[str, list[str]]) -> None:
     for user, lines in report.items():
         print(f"{user}:")
@@ -252,6 +291,7 @@ def main(argv: list[str] | None = None) -> None:
     reset.add_argument("--yes", action="store_true", help=f"really drop {DB_NAME}")
     run = commands.add_parser("serve", help=f"screens and API on {HOST}")
     run.add_argument("--port", type=int, default=PORT)
+    commands.add_parser("ai-check", help=f"the AI summary per persona on {DB_NAME} (real model)")
     args = parser.parse_args(argv)
 
     if args.command == "reset" and not args.yes:
@@ -259,6 +299,16 @@ def main(argv: list[str] | None = None) -> None:
     config = KidneeConfig.from_env()
     if args.command == "serve":
         serve(config, port=args.port)
+        return
+    if args.command == "ai-check":
+        _allowed(config)
+        settings = get_settings()
+        print("\n".join(model_config_lines(settings)))
+        engine = make_engine(config.url(config.app_url))
+        try:
+            _print(ai_check(engine, day=today(), writer=summary_writer(settings)))
+        finally:
+            engine.dispose()
         return
     if args.command == "reset":
         reset_database(config, KIDNEE_DB_NAME)

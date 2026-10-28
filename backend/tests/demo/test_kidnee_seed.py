@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import Engine, func, select, text
 from sqlalchemy.orm import Session
 
@@ -21,8 +22,17 @@ from app.ledger import reconcile
 from app.models import Installment, Notification, SavingsTransaction
 from app.providers.mock_bank import MockBankAccountProvider
 from app.providers.mock_push import MockPushProvider
-from demo.kidnee import KIDNEE_DB_NAME, PERSONAS, KidneeConfig, build, seed
+from demo.kidnee import (
+    KIDNEE_DB_NAME,
+    PERSONAS,
+    KidneeConfig,
+    ai_check,
+    build,
+    model_config_lines,
+    seed,
+)
 from demo.script import reset_database
+from tests.ai.fakes import FakeWriter
 
 pytestmark = pytest.mark.db
 
@@ -234,3 +244,54 @@ def test_KD_05_platform_names_are_fictional_and_one_item_is_unnamed(
         "โน้ตบุ๊ก": "ShopDemo",
         "มอเตอร์ไซค์": "RideDemo",
     }
+
+
+# --- AI-16: python -m demo.kidnee ai-check, with a fake model ----------------------------
+
+
+def test_AI_16_ai_check_asks_once_per_persona_and_prints_source_reason_and_text(
+    kidnee: Engine, first_seed: dict[str, list[str]]
+) -> None:
+    writer = FakeWriter(text="ทุกเดือนอยู่ในงบ\nกันชนช่วยได้")
+    report = ai_check(kidnee, day=DAY, writer=writer)
+    assert list(report) == list(PERSONAS)
+    assert len(writer.calls) == 3  # one call per persona, never cached across them
+    for lines in report.values():
+        assert lines == [
+            "source: ai",
+            "reason: ok",
+            "text:",
+            "  ทุกเดือนอยู่ในงบ",
+            "  กันชนช่วยได้",
+        ]
+
+
+def test_AI_16_ai_check_shows_why_the_check_refused_the_model_text(
+    kidnee: Engine, first_seed: dict[str, list[str]]
+) -> None:
+    report = ai_check(kidnee, day=DAY, writer=FakeWriter(text="ค่างวดรวม 123.45 บาท"))
+    lines = report["demo-mon"]
+    assert lines[:3] == ["source: fallback", "reason: grounding_failed", "text:"]
+    assert lines[3] == "  เดือน พ.ย. 2569 ค่างวดรวม 3,500.00 บาท อยู่ในงบ 5,000.00 บาท"
+    assert lines[-3:] == [
+        "check: number_not_in_input (123.45)",
+        "model text (refused):",
+        "  ค่างวดรวม 123.45 บาท",
+    ]
+
+
+def test_AI_16_ai_check_without_a_key_says_so_and_never_prints_a_key(
+    kidnee: Engine, first_seed: dict[str, list[str]]
+) -> None:
+    report = ai_check(kidnee, day=DAY, writer=None)
+    assert {lines[1] for lines in report.values()} == {"reason: no_key"}
+    unset = get_settings().model_copy(update={"llm_api_key": None, "llm_model_planner": None})
+    assert model_config_lines(unset)[:2] == [
+        "LLM_API_KEY: not set",
+        "LLM_MODEL_PLANNER: claude-haiku-5-5 (default)",
+    ]
+    key = "sk-test-NOT-A-REAL-KEY"
+    with_key = get_settings().model_copy(update={"llm_api_key": SecretStr(key)})
+    lines = model_config_lines(with_key)
+    assert lines[0] == "LLM_API_KEY: set"
+    assert all(key not in line for line in lines)

@@ -1,5 +1,5 @@
-"""GET /assistant/plan body. Money serialises as JSON strings (L49); months as
-"YYYY-MM"."""
+"""GET /assistant/plan and GET /assistant/summary bodies. Money serialises as JSON
+strings (L49); months as "YYYY-MM"."""
 
 from decimal import Decimal
 from typing import Literal, Self
@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.affordability.months import Month
 from app.assistant.plan import SAFE_NEW_TERM, Estimate, Plan, Reason
+from app.assistant.summary import Reason as SummaryReason
 
 
 def month_str(month: Month | None) -> str | None:
@@ -131,3 +132,16 @@ class PlanOut(_Out):
                 estimate=None if c.estimate is None else EstimateOut.of(c.estimate),
             ),
         )
+
+
+class SummaryOut(_Out):
+    text: str = Field(
+        description="2 to 4 short Thai lines. Shown the same way whatever the source."
+    )
+    source: Literal["ai", "fallback"] = Field(
+        description="ai: the model's wording, grounded; fallback: the fixed template."
+    )
+    reason: SummaryReason = Field(
+        description="ok (ai), or why the template was used: no_key, timeout, api_error, "
+        "grounding_failed."
+    )
