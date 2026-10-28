@@ -6,6 +6,7 @@
 import { useId, type ReactNode } from "react";
 import { ACCENT, OUTLINE, type Marked } from "../accent.ts";
 import { COMMON } from "../copy.ts";
+import { THAI_MONTHS } from "../thaiMonth.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 
 // ---- Button -----------------------------------------------------------------
@@ -13,7 +14,7 @@ import { Icon, type IconName } from "./Icon.tsx";
 type ButtonProps = {
   children: ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "secondary" | "ghost" | "buffer" | "bank";
+  variant?: "primary" | "secondary" | "ghost" | "bank";
   type?: "button" | "submit";
   disabled?: boolean;
   busy?: boolean;
@@ -30,8 +31,7 @@ const BUTTON_VARIANTS = {
   secondary:
     "bg-card text-leaf-800 border-2 border-leaf-700 hover:bg-leaf-50 active:bg-leaf-100 disabled:border-line disabled:text-ink-muted",
   ghost: "bg-transparent text-leaf-800 hover:bg-leaf-50 active:bg-leaf-100 disabled:text-ink-muted",
-  // A feature's own action, in its accent (accent.ts): the buffer, the bank's offer.
-  buffer: `${OUTLINE.buffer} disabled:border-line disabled:text-ink-muted`,
+  // A feature's own action, in its accent (accent.ts): the bank's offer.
   bank: `${OUTLINE.bank} disabled:border-line disabled:text-ink-muted`,
 };
 
@@ -237,8 +237,30 @@ export function MarkedText({ item, className = "" }: { item: Marked; className?:
   return (
     <span className={`flex items-start gap-2 text-body ${ACCENT[item.accent].ink} ${className}`}>
       <Icon name={item.icon} size={20} className="mt-0.5" />
-      {item.text}
+      <span>
+        <KeepMonths text={item.text} />
+      </span>
     </span>
+  );
+}
+
+// "พ.ย. 2569": a short Thai month and its Buddhist-era year (thaiMonth.ts).
+const MONTH_YEAR = new RegExp(`((?:${THAI_MONTHS.map((m) => m.replaceAll(".", "\\.")).join("|")}) [0-9]{4})`);
+
+/**
+ * Text in which a month never splits from its year at a line break ("มิ.ย." on one
+ * line, "2570" on the next); the rest wraps as usual, so a line still breaks at "ถึง".
+ */
+export function KeepMonths({ text }: { text: string }) {
+  const parts = text.split(MONTH_YEAR); // the months land at the odd places
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <span key={i} className="whitespace-nowrap">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
   );
 }
 

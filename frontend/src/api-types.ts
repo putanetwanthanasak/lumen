@@ -156,18 +156,13 @@ export type MonthInstallment = {
   is_last: boolean; // its last due month
 };
 
-/**
- * `over_by` (TODO(backend), being added to these rows only, not to the preview's
- * MonthRow): total - budget when over_budget, else "0.00". Never negative. Home's
- * over-budget chips show it ("+2,500.00 บาท"). Null when the answer did not carry it
- * (src/apiFields.ts): the chip then shows its month only (UI-39).
- */
-export type MonthDetail = MonthRow & { over_by: Money | null; installments: MonthInstallment[] };
+/** A month row with the installments due that month. */
+export type MonthDetail = MonthRow & { installments: MonthInstallment[] };
 
 /**
  * TODO(backend, Session 15): GET /debts/months[?count=N]. Not built yet.
- * From this month: N months when `count` is given (Home asks for 6), otherwise up
- * to the last month with an installment due. Each row is the preview's MonthRow
+ * From this month: N months when `count` is given, otherwise up to the last month
+ * with an installment due (Home and ภาระผ่อนรายเดือน ask for that). Each row is the preview's MonthRow
  * with no candidate (the L43 owed set, full monthly amount in every scheduled
  * month, L65 flags) plus the installments due that month, in the order recorded.
  * 409 SETTINGS_REQUIRED without settings. Mocked until then.

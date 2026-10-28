@@ -4,8 +4,9 @@
  * history is kept after a cancel (L59(3)), so a cancelled line with `disputed_at`
  * says so.
  */
-import type { InstallmentLine } from "./api-types.ts";
+import type { InstallmentLine, MonthDetail } from "./api-types.ts";
 import { HOME } from "./copy.ts";
+import { thaiMonth } from "./thaiMonth.ts";
 
 export type LineStatus = { label: string | null; counted: boolean };
 
@@ -42,4 +43,24 @@ export function groupByPlatform(lines: readonly InstallmentLine[]): PlatformGrou
     ...named.map(([platform, list]) => ({ platform, label: platform ?? HOME.noPlatform, lines: list })),
     ...(none === undefined ? [] : [{ platform: null, label: HOME.noPlatform, lines: none }]),
   ];
+}
+
+/**
+ * Where an installment is in its plan, from GET /debts/months (this month first, up to
+ * the last month due; TODO(backend), mock only): the instalment number in the first
+ * row that lists it, its total, and the month marked `is_last` (UI-43). Looked up in
+ * the API's rows, never counted out here. An installment that starts after this month
+ * says when it starts instead, so "งวดที่ 1" never reads as due now. Null when no row
+ * lists it: the row then keeps "ผ่อน {months} เดือน".
+ */
+export function scheduleText(id: string, months: readonly MonthDetail[]): string | null {
+  const thisMonth = months[0]?.month;
+  const rows = months.flatMap((row) => row.installments.filter((item) => item.installment_id === id).map((item) => ({ row, item })));
+  const first = rows[0];
+  if (first === undefined) return null;
+  const lastRow = rows.find(({ item }) => item.is_last)?.row;
+  const last = lastRow === undefined ? null : thaiMonth(lastRow.month);
+  return first.row.month === thisMonth
+    ? HOME.schedule(first.item.installment_no, first.item.installments_total, last)
+    : HOME.scheduleLater(thaiMonth(first.row.month), last);
 }

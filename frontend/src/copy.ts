@@ -122,9 +122,8 @@ export const HOME = {
   greeting: (name: string) => `สวัสดี ${name}`,
   greetingPlain: "สวัสดี",
   thisMonthTitle: (month: string) => `ค่างวดรวมเดือน ${month}`,
-  seeAllMonths: "ดูทุกเดือน ›",
+  seeAllMonths: "ดูทุกเดือน", // read aloud with the hero's chevron
   ofBudget: (budget: string) => `จากงบ ${budget}`,
-  overBudgetNow: "เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้",
   withinBudgetNow: "เดือนนี้ยังอยู่ในงบ",
   installments: "รายการผ่อนของคุณ",
   totalPerMonth: (total: string) => `รวม ${total} ต่อเดือน`,
@@ -134,20 +133,28 @@ export const HOME = {
   perMonth: (amount: string) => `${amount}/เดือน`,
   remaining: (amount: string) => `คงเหลือ ${amount}`,
   monthsLeft: (months: number) => `ผ่อน ${months} เดือน`,
+  // From GET /debts/months (UI-43): where an installment is in its plan.
+  schedule: (no: number, total: number, last: string | null) =>
+    last === null ? `งวดที่ ${no} จาก ${total}` : `งวดที่ ${no} จาก ${total} · หมด ${last}`,
+  scheduleLater: (first: string, last: string | null) => (last === null ? `เริ่ม ${first}` : `เริ่ม ${first} · หมด ${last}`),
   manual: "บันทึกเอง",
   statusPaidOff: "ผ่อนครบแล้ว",
   statusCancelled: "ยกเลิกแล้ว",
   statusCancelledAfterReport: "ยกเลิกแล้ว หลังจากคุณแจ้งว่าไม่ใช่รายการของคุณ",
   statusDisputed: "คุณแจ้งว่าไม่ใช่รายการของคุณ",
-  notCounted: "ไม่นับในยอดต่อเดือน",
+  notCounted: "ไม่นับในยอดต่อเดือน", // cancelled, or reported "not me": never under "ผ่อนครบแล้ว"
+  finished: (count: number) => `ผ่อนครบแล้ว ${count} รายการ`,
   allInBudget: (later: number) => `เดือนนี้และอีก ${later} เดือนอยู่ในงบ`,
-  overMonthsTitle: "เดือนที่ค่างวดรวมเกินงบ",
-  overBy: (amount: string) => `+${amount}`,
-  overBySpoken: (amount: string) => `เกินงบ ${amount}`,
-  overSpoken: "เกินงบ", // a chip whose amount the answer did not carry (UI-39)
-  overMoreMonths: (months: number) => `และอีก ${months} เดือนหลังจากนั้น`,
-  useBuffer: "ใช้กันชนช่วยจ่าย ›",
-  toMonths: "ดูภาระผ่อนรายเดือน ›",
+  // The hero's one warning line (UI-41, UI-42), months already in Thai.
+  overWarning: (count: number, first: string, last: string, together: boolean) =>
+    count === 1
+      ? `เกินงบ 1 เดือน (${first})`
+      : together
+        ? `เกินงบ ${count} เดือน (${first} ถึง ${last})`
+        : `เกินงบ ${count} เดือน (ในช่วง ${first} ถึง ${last})`,
+  bufferCovers: "กันชนพอจ่ายส่วนที่เกิน",
+  bufferHelpsSome: "กันชนช่วยได้บางส่วน",
+  useBuffer: "ใช้กันชน ›",
   bufferTitle: "กันชนของคุณ ›",
   walletCovers: (months: number) => `พอ ${months} เดือน`,
   walletCoversNone: "ยังไม่พอ 1 เดือน",
@@ -185,10 +192,17 @@ export const THINK = {
   checking: "กำลังประเมิน...",
   monthsTitle: "ค่างวดรวมแต่ละเดือน ถ้าผ่อนชิ้นนี้",
   budgetLine: (budget: string) => `เส้นประ คืองบ ${budget}`,
-  overMonths: (months: string) => `เดือนที่เกินงบ: ${months}`,
+  // The plain line under the chart (UI-41), months already in Thai.
+  overSummary: (count: number, first: string, last: string, together: boolean) =>
+    count === 1
+      ? `เกินงบ 1 เดือน: ${first}`
+      : together
+        ? `เกินงบ ${count} เดือน: ${first} ถึง ${last}`
+        : `เกินงบ ${count} เดือน ในช่วง ${first} ถึง ${last}`,
   legendOk: "อยู่ในงบ",
   legendOver: "เกินงบ",
   legendRisk: "เกินเกณฑ์ที่ ธปท. แนะนำ",
+  legendCandidate: "ส่วนของชิ้นนี้",
   nowTotal: (total: string) => `ตอนนี้ค่างวดรวมเดือนละ ${total}`,
   record: "บันทึก",
   recording: "กำลังบันทึก...",

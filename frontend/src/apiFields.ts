@@ -1,8 +1,8 @@
 /**
  * Fields the screens read that the backend does not send yet (TODO(backend)), checked
- * against its schemas on main: `monthly_reduction` on the plan's estimate, `over_by` on
- * the month rows, `platform_name` on installment lines, and the assistant summary,
- * which has no endpoint yet. The mock sends them all.
+ * against its schemas on main: `monthly_reduction` on the plan's estimate,
+ * `platform_name` on installment lines, and the assistant summary, which has no
+ * endpoint yet. The mock sends them all.
  *
  * Each reader takes an answer as it came. Such a field that is absent, or not what the
  * contract says, is read as null, with one console warning per answer and field, and
@@ -33,21 +33,17 @@ export function readPlan(plan: AssistantPlanOut): AssistantPlanOut {
   return { ...plan, consolidation: { ...plan.consolidation, estimate: { ...estimate, monthly_reduction: reduction } } };
 }
 
-/** GET /debts/months: without a row's `over_by`, Home's chip for that month shows no amount. */
+/** GET /debts/months: without an installment's `platform_name`, it shows no app name. */
 export function readMonths(out: MonthsOut): MonthsOut {
-  let noOverBy = 0;
   let noName = 0;
   const months = out.months.map((row) => {
-    const overBy = moneyOrNull(row.over_by);
-    if (overBy === null) noOverBy += 1;
     const installments = row.installments.map((item) => {
       if (isName(item.platform_name)) return item;
       noName += 1;
       return { ...item, platform_name: null };
     });
-    return { ...row, over_by: overBy, installments };
+    return { ...row, installments };
   });
-  if (noOverBy > 0) warnMissing("GET /debts/months", "over_by", noOverBy, "Home's over-budget chips show without their amounts");
   if (noName > 0) warnMissing("GET /debts/months", "installments[].platform_name", noName, "those installments show no app name");
   return { ...out, months };
 }

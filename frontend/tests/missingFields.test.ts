@@ -1,8 +1,8 @@
 /**
  * UI-39: a field the backend does not send yet never crashes a screen (src/apiFields.ts).
- * main's backend leaves out monthly_reduction (the plan's estimate), over_by (the month
- * rows) and platform_name (installment lines), and has no assistant summary yet; the
- * mock sends them all. A reader gives null for such a field, with one console warning
+ * main's backend leaves out monthly_reduction (the plan's estimate) and platform_name
+ * (installment lines), and has no assistant summary yet; the mock sends them all.
+ * Home no longer needs a month row's over_by (UI-42), so the mock no longer sends it. A reader gives null for such a field, with one console warning
  * per answer and field. It never guesses a value and never changes the answer it was
  * given, and Home, drawn from such answers, leaves out only what needs the field.
  */
@@ -74,6 +74,8 @@ test("UI_39_complete_answers_pass_unchanged_and_warn_nothing", () => {
     assert.deepEqual(readAssistantSummary(summary), summary);
   });
   assert.ok(estimates > 0, "the estimate path ran");
+  // The rows as main shapes them: no over_by, and nothing asks for it.
+  assert.ok(answer<MonthsOut>("/debts/months").months.every((row) => !("over_by" in row)));
   assert.deepEqual(warned, [], "the demo's console stays clean");
 });
 
@@ -110,32 +112,6 @@ test("UI_39_null_or_unreadable_money_reads_as_missing_never_as_a_guess", () => {
     }
   });
   assert.equal(warned.length, unreadable.length);
-  // The same for a month row's over_by.
-  scene("over_budget_now");
-  const months = answer<MonthsOut>("/debts/months?count=6");
-  const [rows] = withWarnings(() => {
-    const sent = copy(months);
-    sent.months.forEach((row, i) => put(row, "over_by", ["2500.00", 2500, null, "-1.00", "1,500.00", undefined][i]));
-    return readMonths(sent).months.map((row) => row.over_by);
-  });
-  assert.deepEqual(rows, ["2500.00", null, null, null, null, null]);
-});
-
-test("UI_39_months_without_over_by_read_it_as_null_with_one_warning_per_answer", () => {
-  scene("over_budget_now");
-  const months = answer<MonthsOut>("/debts/months?count=6");
-  const sent = copy(months);
-  for (const row of sent.months) put(row, "over_by", undefined);
-  const [read, warned] = withWarnings(() => readMonths(sent));
-  assert.deepEqual(
-    read.months.map((row) => row.over_by),
-    months.months.map(() => null),
-  );
-  // Everything else as sent.
-  assert.deepEqual(read, { ...months, months: months.months.map((row) => ({ ...row, over_by: null })) });
-  assert.deepEqual(warned, [
-    "GET /debts/months: no readable over_by (6 times), so Home's over-budget chips show without their amounts. TODO(backend): send it.",
-  ]);
 });
 
 test("UI_39_platform_name_absent_reads_as_null_and_text_or_null_is_kept", () => {
@@ -204,7 +180,7 @@ function drop(value: unknown, field: string): void {
   }
 }
 
-const MAIN_LACKS = ["monthly_reduction", "over_by", "platform_name"];
+const MAIN_LACKS = ["monthly_reduction", "platform_name"];
 
 /**
  * Home in a scene, from its answers without `fields`, each read as api.ts reads it
@@ -221,11 +197,11 @@ function home(name: string, fields: readonly string[], change?: (summary: DebtSu
   change?.(summary);
   const settings = sent<SettingsOut>("/settings");
   const buffer = sent<BufferOut>("/buffer");
-  const upcoming = sent<MonthsOut>("/debts/months?count=6");
+  const months = sent<MonthsOut>("/debts/months");
   const plan = sent<AssistantPlanOut>("/assistant/plan");
   return withWarnings(() =>
     renderToStaticMarkup(
-      createElement(HomeBody, { settings, buffer, summary: readSummary(summary), upcoming: readMonths(upcoming), plan: readPlan(plan) }),
+      createElement(HomeBody, { settings, buffer, summary: readSummary(summary), months: readMonths(months), plan: readPlan(plan) }),
     ),
   );
 }
@@ -255,13 +231,9 @@ test("UI_39_home_never_crashes_on_the_fields_main_does_not_send_in_any_scene", (
   for (const name of scenes) {
     const [html, warned] = home(name, MAIN_LACKS); // throws if any part of Home cannot be drawn
     assert.doesNotMatch(textOf(html), /undefined|NaN|null/, name);
-    // A month over budget keeps its chip, with its month and "เกินงบ" for screen readers, and no amount.
-    const shown = answer<MonthsOut>("/debts/months?count=6").months;
-    const over = shown.filter((m) => m.over_budget).length;
-    assert.equal(html.split('<span class="sr-only">เกินงบ</span>').length - 1, over, name);
-    assert.doesNotMatch(html, /<span aria-hidden="true">\+/, `${name}: no chip amount`);
-    // The rest of the strip comes from the plan, which main sends: still there.
-    if (over > 0) assert.ok(textOf(html).includes("ค่างวดส่วนที่เกินงบรวมทุกเดือน"), name);
+    // The hero's warning needs only the rows' flags, which main sends: still there.
+    const over = answer<MonthsOut>("/debts/months").months.filter((m) => m.over_budget).length;
+    assert.equal(textOf(html).includes(`เกินงบ ${over} เดือน (`), over > 0, name);
     // One warning per answer and field, each naming what Home leaves out.
     const offered = answer<AssistantPlanOut>("/assistant/plan").consolidation.estimate !== null;
     const heads = warned.map((w) => w.split(",")[0]?.replace(/ \(\d+ times\)$/, ""));
@@ -269,7 +241,6 @@ test("UI_39_home_never_crashes_on_the_fields_main_does_not_send_in_any_scene", (
       heads.sort(),
       [
         "GET /debts/months: no readable installments[].platform_name",
-        "GET /debts/months: no readable over_by",
         "GET /debts/summary: no readable installments[].platform_name",
         ...(offered ? ["GET /assistant/plan: no readable consolidation.estimate.monthly_reduction"] : []),
       ].sort(),
@@ -282,16 +253,17 @@ test("UI_39_an_installment_without_platform_name_never_shows_undefined_on_home",
   scene("persona");
   const first = answer<DebtSummary>("/debts/summary").installments[0];
   assert.equal(first?.platform_name, "ShopDemo");
-  // Paid off, so it shows under "ไม่นับในยอดต่อเดือน", where a row names its app.
-  const paidOff = (summary: DebtSummary) => {
+  // Cancelled, so it shows under "ไม่นับในยอดต่อเดือน", where a row names its app.
+  const cancelled = (summary: DebtSummary) => {
     const line = summary.installments[0];
     assert.ok(line !== undefined);
-    Object.assign(line, { status: "paid_off", owed: false, remaining: "0.00" });
+    Object.assign(line, { status: "cancelled", owed: false });
   };
-  const [html] = home("persona", ["platform_name"], paidOff);
+  const [html] = home("persona", ["platform_name"], cancelled);
   assert.ok(html.includes(HOME.notCounted));
   assert.ok(!textOf(html).includes("undefined"), "no app name, never \"undefined\"");
-  assert.ok(html.includes(`>${HOME.monthsLeft(first?.months ?? 0)}</span>`), "the row without its app");
-  const [named] = home("persona", [], paidOff);
-  assert.ok(named.includes(`ShopDemo · ${HOME.monthsLeft(first?.months ?? 0)}`), "with the name sent, the row says which app");
+  const left = `<span class="whitespace-nowrap">${HOME.monthsLeft(first?.months ?? 0)}</span>`;
+  assert.ok(html.includes(`<span class="text-caption text-ink-muted">${left}</span>`), "the row without its app");
+  const [named] = home("persona", [], cancelled);
+  assert.ok(named.includes(`<span class="text-caption text-ink-muted">ShopDemo · ${left}</span>`), "with the name sent, the row says which app");
 });

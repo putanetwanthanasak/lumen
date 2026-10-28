@@ -35,9 +35,6 @@
   --color-warn-bg: #fff6db;
   --color-warn-line: #f5c451;
   --color-warn-ink: #6e4500;
-  /* The edge of an amber region that meets the page (the over-budget strip): at
-     least 3:1 against surface and card (WCAG 1.4.11, UI-35). */
-  --color-warn-edge: #b07400;
   --color-risk-bg: #fdecec;
   --color-risk-line: #f3a3a3;
   --color-risk-ink: #9b1c1c;

@@ -7,6 +7,10 @@
  * UI-35 (markup): every tinted card that meets the page carries its EDGE, so it stands
  *   out from the page at least 3:1 (contrast.test.ts measures the colours): on Home,
  *   and the buffer screen's balance card, the same wallet.
+ * UI-42 (markup): the hero is one card: a chevron, a bar with the budget marked, one
+ *   warning line and one buffer line with its link; no inner box, no month chips, no total.
+ * UI-43: the installments list: where each one is in its plan, from GET /debts/months
+ *   (TODO(backend), mock only), and the paid-off ones folded into one line.
  */
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
@@ -15,7 +19,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ACCENT, EDGE, SOLID } from "../src/accent.ts";
 import type { AssistantPlanOut, BufferOut, ConsolidationOut, DebtSummary, MonthsOut, SettingsOut } from "../src/api-types.ts";
 import { ConsolidationCard } from "../src/components/AssistantCards.tsx";
-import { ASSIST } from "../src/copy.ts";
+import { ASSIST, HOME } from "../src/copy.ts";
 import { consolidationView } from "../src/homeLayout.ts";
 import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
 import { handle, resetMock } from "../src/mock/server.ts";
@@ -139,15 +143,17 @@ test("UI_38_the_offer_is_a_white_card_with_a_solid_blue_header_band", () => {
   assert.equal(boxes.length, 2);
 });
 
-/** Home as drawn in a scene, from the mock's answers (the screen's own loads). */
-function homeIn(name: string): string {
+/** Home as drawn in a scene, from the mock's answers (the screen's own loads; `change` edits the summary). */
+function homeIn(name: string, change?: (summary: DebtSummary) => void): string {
   scene(name);
+  const summary = call("GET", "/debts/summary").body as DebtSummary;
+  change?.(summary);
   return renderToStaticMarkup(
     createElement(HomeBody, {
       settings: call("GET", "/settings").body as SettingsOut,
-      summary: call("GET", "/debts/summary").body as DebtSummary,
+      summary,
       buffer: call("GET", "/buffer").body as BufferOut,
-      upcoming: call("GET", "/debts/months?count=6").body as MonthsOut,
+      months: call("GET", "/debts/months").body as MonthsOut,
       plan: call("GET", "/assistant/plan").body as AssistantPlanOut,
     }),
   );
@@ -159,13 +165,12 @@ test("UI_35_every_tinted_card_on_home_carries_its_edge", () => {
     { name: "buffer", tint: ACCENT.buffer.tint, edge: EDGE.buffer }, // the wallet, in every scene
     { name: "ai", tint: ACCENT.ai.tint, edge: EDGE.ai },
     { name: "quiet", tint: ACCENT.quiet.tint, edge: EDGE.quiet },
-    { name: "warn", tint: ACCENT.warn.tint, edge: EDGE.warn },
   ];
   const expected: Record<string, string[]> = {
-    persona: ["buffer", "ai", "quiet"], // in budget: the banner, no strip
-    over_budget: ["buffer", "ai", "quiet", "warn"], // upcoming months over: the strip, still the banner
-    over_budget_now: ["buffer", "ai", "warn", "offer"], // the offer card instead of the banner
-    over_budget_empty_buffer: ["buffer", "ai", "quiet", "warn"], // as over_budget, the wallet empty: it keeps its edge
+    persona: ["buffer", "ai", "quiet"], // in budget: the banner
+    over_budget: ["buffer", "ai", "quiet"], // upcoming months over: the hero says so, still the banner
+    over_budget_now: ["buffer", "ai", "offer"], // the offer card instead of the banner
+    over_budget_empty_buffer: ["buffer", "ai", "quiet"], // as over_budget, the wallet empty: it keeps its edge
   };
   for (const [name, wanted] of Object.entries(expected)) {
     const all = elements(homeIn(name));
@@ -189,4 +194,127 @@ test("UI_35_the_buffer_screens_balance_card_carries_the_wallets_edge", () => {
     assert.ok(hasAll(cards[0] ?? new Set(), EDGE.buffer), `${name}: ${[...(cards[0] ?? [])].join(" ")}`);
     assert.ok(!cards[0]?.has(tokens(ACCENT.buffer.line)[0] ?? ""), "not the old light line");
   }
+});
+
+// ---- UI-42 (markup): the hero, one card -------------------------------------------------
+
+/** The hero's markup: the first card on Home, the one that is `relative` for its stretched button. */
+function heroOf(html: string): string {
+  const found = /<section class="relative [^"]*">[\s\S]*?<\/section>/.exec(html)?.[0];
+  assert.ok(found !== undefined, "the hero card");
+  return found;
+}
+
+const NEXT = 'd="m9 18 6-6-6-6"'; // the chevron's path (Icon.tsx "next")
+
+test("UI_42_the_hero_is_one_card_with_a_chevron_and_the_whole_card_opens_the_months", () => {
+  for (const name of ["persona", "over_budget", "over_budget_now", "over_budget_empty_buffer"]) {
+    const hero = heroOf(homeIn(name));
+    // One card: nothing inside it has a border, a shadow or a tint of its own (the old strip had all three).
+    const inside = elements(hero.replace(/^<section[^>]*>/, ""));
+    const boxed = inside.filter((e) => [...e.classes].some((c) => /^(border|rounded-field|shadow)|^bg-warn-bg$/.test(c)));
+    assert.deepEqual(boxed, [], name);
+    // The chevron at the top right replaces "ดูทุกเดือน ›"; its words stay for screen readers.
+    assert.ok(hero.includes(NEXT), `${name}: the chevron`);
+    assert.ok(hero.includes(`<span class="sr-only">${HOME.seeAllMonths}</span>`), name);
+    assert.ok(!hero.includes("ดูทุกเดือน ›"), name);
+    // The whole card is the button: its ::after covers the card, which it is positioned in.
+    const main = /^<section class="([^"]*)"><button type="button" class="([^"]*)"/.exec(hero);
+    assert.ok(main !== null, `${name}: the card opens with its button`);
+    assert.ok(tokens(main[1] ?? "").includes("relative"), name);
+    assert.ok(hasAll(new Set(tokens(main[2] ?? "")), "after:absolute after:inset-0"), name);
+  }
+});
+
+/** The bar's parts: the green, the amber (if any), the budget mark, with their style. */
+function barOf(hero: string): { green: string; amber: string | null; mark: string } {
+  const bar = /<span class="relative my-1 block h-3 [^"]*" role="presentation">(.*?)<\/span><\/span>(?:<\/span>)?/.exec(hero)?.[1] ?? "";
+  const style = (cls: string) => new RegExp(`<span class="[^"]*\\b${cls}\\b[^"]*" style="([^"]*)"`).exec(bar)?.[1] ?? null;
+  return { green: style("bg-bar-ok") ?? "", amber: style("bg-bar-over"), mark: style("bg-ink") ?? "" };
+}
+
+test("UI_42_the_bar_marks_the_budget_amber_only_above_it_and_never_all_amber", () => {
+  // In budget: 3,500.00 of 5,000.00, on the budget's scale: green to 70%, the mark at the end.
+  assert.deepEqual(barOf(heroOf(homeIn("persona"))), { green: "width:70%", amber: null, mark: "left:100%" });
+  // Over: 7,500.00 against 5,000.00, on the total's scale: green to the budget (5,000 / 7,500
+  // is 666 per mille, rounded down), amber only from there on.
+  assert.deepEqual(barOf(heroOf(homeIn("over_budget_now"))), { green: "width:66.6%", amber: "left:66.6%", mark: "left:66.6%" });
+});
+
+test("UI_42_one_warning_line_and_one_buffer_line_with_its_link_and_no_chips_or_total", () => {
+  const html = homeIn("over_budget_now");
+  const hero = heroOf(html);
+  const text = hero.replace(/<[^>]+>/g, "|");
+  // The one warning line, once on all of Home, each month held to its year; the old lines and the strip are gone.
+  const warning = '<span>เกินงบ 9 เดือน (<span class="whitespace-nowrap">ต.ค. 2569</span> ถึง <span class="whitespace-nowrap">มิ.ย. 2570</span>)</span>';
+  assert.equal(html.split(warning).length - 1, 1);
+  assert.equal(html.replace(/<[^>]+>/g, "").split("เกินงบ 9 เดือน (ต.ค. 2569 ถึง มิ.ย. 2570)").length - 1, 1);
+  for (const gone of ["เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้", "เดือนที่ค่างวดรวมเกินงบ", "รวมทุกเดือน", "+2,500.00", "หลังจากนั้น", "ดูภาระผ่อนรายเดือน"]) {
+    assert.ok(!html.includes(gone), gone);
+  }
+  // One buffer line, then its text link in the buffer's colour, above the card's cover.
+  assert.ok(text.includes("|กันชนช่วยได้บางส่วน|"));
+  const link = /<button type="button" class="([^"]*)">ใช้กันชน ›<\/button>/.exec(hero);
+  assert.ok(link !== null, "the link");
+  const cls = new Set(tokens(link[1] ?? ""));
+  assert.ok(cls.has("relative") && hasAll(cls, ACCENT.buffer.ink) && cls.has("min-h-11"), link[1]);
+  // It comes after the card's own button, so it is drawn above that button's cover.
+  assert.ok(hero.indexOf("ใช้กันชน ›") > hero.indexOf("</button>"));
+  // Every number in the card is an API string, formatted: this month's total and the budget.
+  assert.ok(text.includes("|7,500.00 บาท|") && text.includes("|จากงบ 5,000.00 บาท|"));
+  // Covered: the other wording, and an empty buffer gets no line or link at all.
+  assert.ok(heroOf(homeIn("over_budget")).includes("กันชนพอจ่ายส่วนที่เกิน"));
+  const empty = heroOf(homeIn("over_budget_empty_buffer"));
+  assert.ok(!empty.includes("ใช้กันชน") && !empty.includes("กันชน"), "no buffer line");
+  // In budget: the status line only.
+  const calm = heroOf(homeIn("persona")).replace(/<[^>]+>/g, "|");
+  assert.ok(calm.includes("|เดือนนี้และอีก 8 เดือนอยู่ในงบ|") && !calm.includes("เกินงบ"));
+});
+
+// ---- UI-43: the installments list ----------------------------------------------------------
+
+/** The installments section: the last card on Home. */
+const installmentsOf = (html: string) => /<section class="[^"]*border border-line[^"]*">[\s\S]*<\/section>$/.exec(html)?.[0] ?? "";
+
+/** A row's line as drawn: each part whole, a line breaking only at the dot. */
+const parts = (...text: string[]) => text.map((t) => `<span class="whitespace-nowrap">${t}</span>`).join(" · ");
+
+test("UI_43_each_counted_row_says_which_instalment_of_how_many_and_when_it_ends", () => {
+  const list = installmentsOf(homeIn("persona"));
+  // หูฟังไร้สาย: 6 months from Jul 2026, so Oct is the 4th and Dec the last. ตู้เย็น: 10 from Sep 2026.
+  assert.ok(list.includes(`>${parts("งวดที่ 4 จาก 6", "หมด ธ.ค. 2569")}</span>`), list);
+  assert.ok(list.includes(`>${parts("งวดที่ 2 จาก 10", "หมด มิ.ย. 2570")}</span>`), list);
+  assert.ok(!list.includes("ผ่อน 6 เดือน") && !list.includes("ผ่อน 10 เดือน"), "the old line");
+  // One that starts after this month says when it starts, never "งวดที่ 1" as if due now.
+  const later = installmentsOf(homeIn("over_budget"));
+  assert.ok(later.includes(`>${parts("เริ่ม พ.ย. 2569", "หมด ส.ค. 2570")}</span>`), later);
+});
+
+test("UI_43_paid_off_installments_fold_into_one_line_that_opens_to_their_names", () => {
+  const list = installmentsOf(homeIn("persona"));
+  // The heading is gone; one button with the count and the chevron, closed.
+  assert.ok(!list.includes(HOME.notCounted));
+  const toggle = /<button type="button" aria-expanded="false" aria-controls="([^"]+)" class="[^"]*\bmin-h-11\b[^"]*">ผ่อนครบแล้ว 1 รายการ<svg[^>]*>(.*?)<\/svg><\/button>/.exec(list);
+  assert.ok(toggle !== null, "the folded line");
+  assert.ok((toggle[2] ?? "").includes(NEXT), "its chevron");
+  // What it opens: the names only, each with a check, no amounts.
+  const opened = new RegExp(`<ul id="${toggle[1]}" hidden="" class="[^"]*">(.*?)</ul>`).exec(list)?.[1] ?? "";
+  assert.ok(opened.includes(">กระเป๋าเป้</span>"), opened);
+  assert.equal(opened.split('d="M20 6 9 17l-5-5"').length - 1, 1, "a check"); // Icon.tsx "check"
+  assert.ok(!opened.includes("บาท") && !opened.includes("งวด"), "the name only");
+  // Paid off rows no longer show under the counted ones.
+  assert.equal(list.split("กระเป๋าเป้").length - 1, 1);
+});
+
+test("UI_43_a_cancelled_line_stays_apart_never_under_paid_off", () => {
+  // Cancelled is not finished: it keeps its own group and its label (L59(3)).
+  const html = homeIn("persona", (summary) => {
+    const line = summary.installments[0];
+    assert.ok(line !== undefined);
+    Object.assign(line, { status: "cancelled", owed: false });
+  });
+  const list = installmentsOf(html);
+  assert.ok(list.includes(`>${HOME.notCounted}</h3>`));
+  assert.ok(list.includes("ยกเลิกแล้ว"));
+  assert.ok(list.includes(">ผ่อนครบแล้ว 1 รายการ<"), "only the paid-off one is folded");
 });

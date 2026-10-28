@@ -5,57 +5,43 @@
  * comes from the API layer (src/api.ts) and is only formatted here; nothing is added
  * up. Every coloured part is a Marked item: an icon and text with its accent (UI-34).
  */
-import type {
-  AssistantPlanOut,
-  AssistantSummaryOut,
-  BufferOut,
-  BufferPlanOut,
-  ConsolidationOut,
-  EstimateOut,
-  MonthDetail,
-} from "./api-types.ts";
+import type { AssistantPlanOut, AssistantSummaryOut, BufferOut, ConsolidationOut, EstimateOut, MonthDetail } from "./api-types.ts";
 import { ACCENT, type Marked } from "./accent.ts";
 import { notConsolidatingLine } from "./assistantText.ts";
 import { ASSIST, HOME } from "./copy.ts";
 import { formatBaht, toSatang, type Money } from "./money.ts";
+import { overRange } from "./monthStatus.ts";
 import type { Route } from "./router.ts";
 import { thaiMonth } from "./thaiMonth.ts";
 import type { Load } from "./useLoad.ts";
 
-// `amount` is null when the answer did not carry the row's over_by (UI-39).
-export type OverChip = Marked & { month: string; amount: string | null; spoken: string };
-
-export type OverStrip = {
-  title: Marked;
-  chips: OverChip[];
-  // The rest come from the plan, null when it did not load. Its buffer line counts
-  // every month over budget, not only the six shown, so the strip also says how many
-  // more there are and the total it is about: the amounts on the card agree (review F1).
-  more: string | null; // also null when no month after the ones shown is over
-  shortfall: string | null;
-  buffer: Marked | null;
-  link: Marked & { route: Route };
-};
+/** The hero's one buffer line, and its link to the buffer screen (UI-42). */
+export type BufferNote = { line: Marked; link: string; route: Route };
 
 export type HeroView = {
   status: "all_in" | "later_over" | "now_over";
   month: string;
   total: Money;
   barOver: boolean;
-  line: Marked;
-  strip: OverStrip | null; // only when some month shown is over budget
+  line: Marked | null; // this month in budget; null when this month is over (the warning covers it)
+  warning: Marked | null; // the one warning line: how many months over, from when to when
+  buffer: BufferNote | null;
 };
 
-/** This month's card, from GET /debts/months?count=6 (this month first). */
+/**
+ * This month's card, from GET /debts/months (this month first, up to the last month
+ * due), one card with one warning line (UI-42). The months over budget are counted
+ * from the rows (UI-41); the buffer line is the plan's `covered`, never worked out here.
+ */
 export function heroView(months: readonly MonthDetail[], plan: AssistantPlanOut | null, bufferBalance: Money): HeroView | null {
   const [now, ...later] = months;
   if (now === undefined) return null;
-  const over = months.filter((m) => m.over_budget);
-  const status = now.over_budget ? "now_over" : over.length > 0 ? "later_over" : "all_in";
+  const over = overRange(months);
+  const status = now.over_budget ? "now_over" : over !== null ? "later_over" : "all_in";
   const inBudget = (text: string): Marked => ({ accent: "debt", icon: "check", text });
-  const line: Marked =
+  const line: Marked | null =
     status === "now_over"
-      ? { accent: "warn", icon: "alert", text: HOME.overBudgetNow }
+      ? null
       : status === "later_over" || later.length === 0
         ? inBudget(HOME.withinBudgetNow)
         : inBudget(HOME.allInBudget(later.length)); // the rows the API sent after this month
@@ -65,40 +51,25 @@ export function heroView(months: readonly MonthDetail[], plan: AssistantPlanOut 
     total: now.total,
     barOver: now.over_budget,
     line,
-    strip: over.length === 0 ? null : overStrip(over, months.at(-1)?.month ?? now.month, plan, bufferBalance),
+    warning:
+      over === null
+        ? null
+        : { accent: "warn", icon: "alert", text: HOME.overWarning(over.count, thaiMonth(over.first), thaiMonth(over.last), over.together) },
+    buffer: over === null ? null : bufferNote(plan, bufferBalance),
   };
 }
 
-function overStrip(over: readonly MonthDetail[], lastShown: string, plan: AssistantPlanOut | null, bufferBalance: Money): OverStrip {
-  // A count of the plan's months over budget after the last one shown, not money.
-  const after = plan === null ? 0 : plan.months.filter((m) => m.over_budget && m.month > lastShown).length;
-  return {
-    title: { accent: "warn", icon: "alert", text: HOME.overMonthsTitle },
-    // No over_by in the answer (src/apiFields.ts): the month only, never a guessed amount.
-    chips: over.map((m) => ({
-      accent: "warn",
-      icon: "alert",
-      text: thaiMonth(m.month),
-      month: m.month,
-      amount: m.over_by === null ? null : HOME.overBy(formatBaht(m.over_by)),
-      spoken: m.over_by === null ? HOME.overSpoken : HOME.overBySpoken(formatBaht(m.over_by)),
-    })),
-    more: after === 0 ? null : HOME.overMoreMonths(after),
-    shortfall: plan === null ? null : ASSIST.shortfall(formatBaht(plan.buffer_plan.shortfall)),
-    buffer: plan === null ? null : bufferLine(plan.buffer_plan),
-    // As on the payday alert (UI-17): the buffer while it holds money, else the months.
-    link:
-      toSatang(bufferBalance) > 0n
-        ? { accent: "buffer", icon: ACCENT.buffer.icon, text: HOME.useBuffer, route: "buffer" }
-        : { accent: "debt", icon: "calendar", text: HOME.toMonths, route: "months" },
-  };
-}
-
-/** The plan's buffer line: covers every month over budget, or still short by how much. */
-function bufferLine(plan: BufferPlanOut): Marked {
-  return plan.covered
-    ? { accent: "buffer", icon: ACCENT.buffer.icon, text: ASSIST.covered(formatBaht(plan.balance)) }
-    : { accent: "warn", icon: "alert", text: ASSIST.stillShort(formatBaht(plan.balance), formatBaht(plan.still_short)) };
+/**
+ * Only while the buffer holds money and the plan loaded: whether it covers what is over
+ * budget in every month (the plan's `covered`), or helps with part of it. An empty buffer
+ * gets no line (the wallet below shows it), and the card itself opens the months.
+ */
+function bufferNote(plan: AssistantPlanOut | null, bufferBalance: Money): BufferNote | null {
+  if (plan === null || toSatang(bufferBalance) === 0n) return null;
+  const line: Marked = plan.buffer_plan.covered
+    ? { accent: "buffer", icon: "check", text: HOME.bufferCovers }
+    : { accent: "buffer", icon: ACCENT.buffer.icon, text: HOME.bufferHelpsSome };
+  return { line, link: HOME.useBuffer, route: "buffer" };
 }
 
 export const WALLET_SEGMENTS = 6;

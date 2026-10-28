@@ -3,9 +3,10 @@
  * UI-33: the state rules, which card shows and which shrinks (homeLayout.ts).
  * UI-34: no colour-only meaning: every accent has an icon and text, the new accent
  *   classes live in accent.ts only, and every coloured item on Home has both.
- * UI-36 (critical, money): the mock's over_by on GET /debts/months rows. Expected
- *   amounts are worked out by hand from the persona (DESIGN.md section 10), not by
- *   the mock.
+ * UI-41: the months over budget, counted from the API's rows into one line that says
+ *   how many and from when to when (monthStatus.ts), on Home and under the result's bars.
+ * UI-42 (rules): the hero's one warning line and one buffer line. Expected months are
+ *   worked out by hand from the persona (DESIGN.md section 10), not by the mock.
  */
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -13,40 +14,55 @@ import { join } from "node:path";
 import { beforeEach, test } from "node:test";
 import { ACCENT, type Marked } from "../src/accent.ts";
 import type { AssistantPlanOut, BufferOut, DebtSummary, MonthsOut, PreviewOut } from "../src/api-types.ts";
-import { ASSIST, HOME } from "../src/copy.ts";
+import { ASSIST, HOME, THINK } from "../src/copy.ts";
 import { aiBubble, consolidationView, heroView, homeView, walletView, type HomeView } from "../src/homeLayout.ts";
 import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
 import { handle, resetMock, SLOW_SUMMARY_MS } from "../src/mock/server.ts";
-import { toSatang } from "../src/money.ts";
+import { overRange } from "../src/monthStatus.ts";
 
 const TODAY = new Date(2026, 9, 27); // Oct 2026
 const call = (method: string, path: string, body?: unknown) => handle(method, path, body, "demo-mon");
 const scene = (name: string) => assert.equal(call("POST", "/demo/scene", { scene: name }).status, 200);
 const months = (path = "/debts/months") => (call("GET", path).body as MonthsOut).months;
+const plan = () => call("GET", "/assistant/plan").body as AssistantPlanOut;
 
-/** Home as the screen builds it, from the mock's answers. */
-function home(plan: "with plan" | "no plan" = "with plan"): HomeView {
+/** Home as the screen builds it, from the mock's answers: every month, as Home loads them. */
+function home(withPlan: "with plan" | "no plan" = "with plan"): HomeView {
   return homeView({
-    months: months("/debts/months?count=6"),
-    plan: plan === "no plan" ? null : (call("GET", "/assistant/plan").body as AssistantPlanOut),
+    months: months(),
+    plan: withPlan === "no plan" ? null : plan(),
     buffer: call("GET", "/buffer").body as BufferOut,
     monthlyTotal: (call("GET", "/debts/summary").body as DebtSummary).monthly_total,
   });
 }
 
-const chips = (view: HomeView) => view.hero?.strip?.chips.map((c) => [c.text, c.amount]) ?? [];
+/** Records a one-month installment of `monthly` due in `month`. */
+function recordOne(id: string, month: string, monthly: string): void {
+  const out = call("POST", "/installments", {
+    client_request_id: id,
+    kind: "purchase",
+    item_name: "",
+    item_price: monthly,
+    months: 1,
+    monthly_amount: monthly,
+    first_due_month: month,
+    platform_name: null,
+  });
+  assert.equal(out.status, 201);
+}
 
 beforeEach(() => resetMock(TODAY, PERSONA_SETTINGS));
 
 // ---- UI-33: which card shows, which shrinks -----------------------------------------
 
 test("UI_33_all_in_budget_the_hero_is_one_status_line_and_consolidation_a_banner", () => {
-  // 3,500.00 to Dec, then 1,500.00: the six months shown are all within 5,000.00.
+  // 3,500.00 to Dec, then 1,500.00 to Jun 2027 (ตู้เย็น's last month): nine months, all within 5,000.00.
   const view = home();
   assert.equal(view.hero?.status, "all_in");
   assert.equal(view.hero?.barOver, false);
-  assert.deepEqual(view.hero?.line, { accent: "debt", icon: "check", text: "เดือนนี้และอีก 5 เดือนอยู่ในงบ" });
-  assert.equal(view.hero?.strip, null); // nothing to act on: no strip
+  assert.deepEqual(view.hero?.line, { accent: "debt", icon: "check", text: "เดือนนี้และอีก 8 เดือนอยู่ในงบ" });
+  // Nothing to act on: no warning, no buffer line.
+  assert.deepEqual([view.hero?.warning, view.hero?.buffer], [null, null]);
   assert.deepEqual(view.consolidation, {
     kind: "banner",
     line: { accent: "quiet", icon: "info", text: "ตอนนี้ยังไม่จำเป็นต้องรวมหนี้" },
@@ -58,47 +74,39 @@ test("UI_33_all_in_budget_the_hero_is_one_status_line_and_consolidation_a_banner
 });
 
 test("UI_33_upcoming_months_over_only_and_the_buffer_covers", () => {
-  // The laptop from Nov (3,000.00): Nov and Dec are 6,500.00, 1,500.00 over each.
+  // The laptop from Nov (3,000.00): Nov and Dec are 6,500.00, over 5,000.00; Jan on 4,500.00.
   scene("over_budget");
   const view = home();
   assert.equal(view.hero?.status, "later_over");
   assert.equal(view.hero?.barOver, false); // this month is 3,500.00
   assert.deepEqual(view.hero?.line, { accent: "debt", icon: "check", text: HOME.withinBudgetNow });
-  assert.deepEqual(chips(view), [
-    ["พ.ย. 2569", "+1,500.00 บาท"],
-    ["ธ.ค. 2569", "+1,500.00 บาท"],
-  ]);
-  // Buffer 4,800.00 + 3,000.00 saved = 7,800.00 covers the 3,000.00 over in all.
-  assert.equal(view.hero?.strip?.more, null); // no month after Dec is over
-  assert.equal(view.hero?.strip?.shortfall, "ค่างวดส่วนที่เกินงบรวมทุกเดือน 3,000.00 บาท");
-  assert.deepEqual(view.hero?.strip?.buffer, { accent: "buffer", icon: "shield", text: "กันชน 7,800.00 บาท พอจ่ายส่วนที่เกินได้ทั้งหมด" });
-  assert.deepEqual(view.hero?.strip?.link, { accent: "buffer", icon: "shield", text: HOME.useBuffer, route: "buffer" });
+  assert.deepEqual(view.hero?.warning, { accent: "warn", icon: "alert", text: "เกินงบ 2 เดือน (พ.ย. 2569 ถึง ธ.ค. 2569)" });
+  // Buffer 4,800.00 + 3,000.00 saved = 7,800.00 covers the 3,000.00 over in all: the plan's `covered`.
+  assert.equal(plan().buffer_plan.covered, true);
+  assert.deepEqual(view.hero?.buffer, {
+    line: { accent: "buffer", icon: "check", text: "กันชนพอจ่ายส่วนที่เกิน" },
+    link: "ใช้กันชน ›",
+    route: "buffer",
+  });
   assert.equal(view.consolidation?.kind, "banner"); // 2 months in a row, not 3
 });
 
 test("UI_33_this_month_over_budget_the_buffer_falls_short_and_the_offer_card_shows", () => {
-  // The motorbike from Oct (4,000.00): Oct to Dec 7,500.00, Jan to Mar 5,500.00.
+  // The motorbike from Oct (4,000.00): Oct to Dec 7,500.00, Jan to Jun 5,500.00, then 4,000.00.
   scene("over_budget_now");
   const view = home();
   assert.equal(view.hero?.status, "now_over");
   assert.equal(view.hero?.barOver, true);
-  assert.deepEqual(view.hero?.line, { accent: "warn", icon: "alert", text: HOME.overBudgetNow });
-  assert.deepEqual(chips(view), [
-    ["ต.ค. 2569", "+2,500.00 บาท"],
-    ["พ.ย. 2569", "+2,500.00 บาท"],
-    ["ธ.ค. 2569", "+2,500.00 บาท"],
-    ["ม.ค. 2570", "+500.00 บาท"],
-    ["ก.พ. 2570", "+500.00 บาท"],
-    ["มี.ค. 2570", "+500.00 บาท"],
-  ]);
-  // The chips add up to 9,000.00, but Apr to Jun 2027 are 500.00 over too, after the
-  // six months shown. The buffer line counts all nine months, so the strip says so and
-  // shows the total it is about; otherwise 9,600.00 "still short" reads wrong (review F1).
-  assert.equal(view.hero?.strip?.more, "และอีก 3 เดือนหลังจากนั้น");
-  // 3 x 2,500.00 + 6 x 500.00 = 10,500.00 over; buffer 4,800.00 + 4,800.00 = 9,600.00.
-  assert.equal(view.hero?.strip?.shortfall, "ค่างวดส่วนที่เกินงบรวมทุกเดือน 10,500.00 บาท");
-  assert.deepEqual(view.hero?.strip?.buffer, { accent: "warn", icon: "alert", text: "กันชน 9,600.00 บาท ยังขาดอีก 900.00 บาท" });
-  assert.equal(view.hero?.strip?.link.route, "buffer");
+  // One warning line covers this month too: no second line saying this month is over.
+  assert.equal(view.hero?.line, null);
+  assert.deepEqual(view.hero?.warning, { accent: "warn", icon: "alert", text: "เกินงบ 9 เดือน (ต.ค. 2569 ถึง มิ.ย. 2570)" });
+  // 3 x 2,500.00 + 6 x 500.00 = 10,500.00 over; buffer 4,800.00 + 4,800.00 = 9,600.00: part of it.
+  assert.equal(plan().buffer_plan.covered, false);
+  assert.deepEqual(view.hero?.buffer, {
+    line: { accent: "buffer", icon: "shield", text: "กันชนช่วยได้บางส่วน" },
+    link: "ใช้กันชน ›",
+    route: "buffer",
+  });
   const offer = view.consolidation;
   assert.equal(offer?.kind, "offer");
   if (offer?.kind !== "offer") return;
@@ -112,13 +120,13 @@ test("UI_33_this_month_over_budget_the_buffer_falls_short_and_the_offer_card_sho
   assert.equal(offer.benefit, "ค่างวดลดลงเดือนละ 4,130.12 บาท ทุกเดือนกลับมาอยู่ในงบ");
 });
 
-test("UI_33_an_empty_buffer_does_not_cover_and_the_link_goes_to_the_months", () => {
+test("UI_33_an_empty_buffer_gets_no_buffer_line_and_the_wallet_shows_it_empty", () => {
   scene("over_budget_empty_buffer");
   const view = home();
   assert.equal(view.hero?.status, "later_over");
-  assert.deepEqual(view.hero?.strip?.buffer, { accent: "warn", icon: "alert", text: "กันชน 0.00 บาท ยังขาดอีก 3,000.00 บาท" });
-  assert.deepEqual(view.hero?.strip?.link, { accent: "debt", icon: "calendar", text: HOME.toMonths, route: "months" });
-  assert.deepEqual([view.wallet.filled, view.wallet.caption], [0, "ยังไม่พอ 1 เดือน"]);
+  assert.deepEqual(view.hero?.warning?.text, "เกินงบ 2 เดือน (พ.ย. 2569 ถึง ธ.ค. 2569)");
+  assert.equal(view.hero?.buffer, null); // nothing in it to use; the card itself opens the months
+  assert.deepEqual([view.wallet.balance, view.wallet.filled, view.wallet.caption], ["0.00", 0, "ยังไม่พอ 1 เดือน"]);
 });
 
 test("UI_33_the_empty_buffer_scene_moves_the_buffer_to_the_main_account", () => {
@@ -146,22 +154,9 @@ test("UI_33_without_the_plan_the_assistant_and_consolidation_cards_are_left_out"
   const view = home("no plan");
   assert.equal(view.assistant, false);
   assert.equal(view.consolidation, null);
-  // The hero still shows the months over; only the plan's lines are missing.
-  assert.equal(view.hero?.strip?.chips.length, 2);
-  assert.deepEqual([view.hero?.strip?.more, view.hero?.strip?.shortfall, view.hero?.strip?.buffer], [null, null, null]);
-});
-
-test("UI_33_the_strip_accounts_for_every_month_the_plan_counts_over_budget", () => {
-  // The chips plus "และอีก N เดือน" are exactly the plan's months over budget, the
-  // months its shortfall and buffer line are about (review F1).
-  for (const name of ["over_budget", "over_budget_now", "over_budget_empty_buffer"]) {
-    scene(name);
-    const overInPlan = (call("GET", "/assistant/plan").body as AssistantPlanOut).months.filter((m) => m.over_budget).length;
-    const strip = home().hero?.strip;
-    assert.ok(strip != null, name);
-    const after = overInPlan - strip.chips.length; // a count of months, not money
-    assert.equal(strip.more, after === 0 ? null : HOME.overMoreMonths(after), name);
-  }
+  // The hero still says which months are over (from the months); only the plan's buffer line is missing.
+  assert.equal(view.hero?.warning?.text, "เกินงบ 2 เดือน (พ.ย. 2569 ถึง ธ.ค. 2569)");
+  assert.equal(view.hero?.buffer, null);
 });
 
 test("UI_33_hero_edges_no_rows_and_a_single_month", () => {
@@ -169,7 +164,7 @@ test("UI_33_hero_edges_no_rows_and_a_single_month", () => {
   const one = months("/debts/months?count=1");
   assert.equal(one.length, 1);
   // No month after this one: "this month is in budget", never "and 0 more months".
-  assert.deepEqual(heroView(one, null, "4800.00")?.line.text, HOME.withinBudgetNow);
+  assert.deepEqual(heroView(one, null, "4800.00")?.line?.text, HOME.withinBudgetNow);
 });
 
 test("UI_33_wallet_segments_follow_the_api_month_count_capped_at_six", () => {
@@ -247,11 +242,11 @@ test("UI_34_accent_classes_are_only_in_accent_ts", () => {
 });
 
 function markedItems(view: HomeView): Marked[] {
-  const strip = view.hero === null ? null : view.hero.strip;
+  const hero = view.hero;
   const c = view.consolidation;
+  const heroItems = hero === null ? [] : [hero.line, hero.warning, hero.buffer?.line ?? null];
   return [
-    ...(view.hero === null ? [] : [view.hero.line]),
-    ...(strip === null ? [] : [strip.title, ...strip.chips, strip.link, ...(strip.buffer === null ? [] : [strip.buffer])]),
+    ...heroItems.filter((item): item is Marked => item !== null),
     view.wallet.title,
     ...(c === null ? [] : [c.kind === "banner" ? c.line : c.title]),
   ];
@@ -268,67 +263,80 @@ test("UI_34_every_coloured_item_on_home_has_an_icon_and_text_in_every_state", ()
       assert.ok(item.icon.length > 0, `${name}: icon for ${item.text}`);
       assert.ok(item.text.trim() !== "", `${name}: text`);
     }
-    // A chip's amount is words too, for screen readers ("เกินงบ ..."), not only "+".
-    for (const chip of view.hero?.strip?.chips ?? []) assert.match(chip.spoken, /^เกินงบ [0-9,]+\.[0-9]{2} บาท$/);
   }
 });
 
-// ---- UI-36: over_by on GET /debts/months rows (critical, money) -----------------------
+// ---- UI-41: how many months over budget, from when to when -----------------------------
 
-test("UI_36_over_by_is_total_minus_budget_when_over_else_zero", () => {
-  // Persona: every month in budget.
-  assert.ok(months().every((m) => m.over_by === "0.00"));
-  // The motorbike from Oct: 7,500.00 to Dec, 5,500.00 to Jun, then 4,000.00 to Sep 2027.
-  scene("over_budget_now");
-  assert.deepEqual(
-    months().map((m) => [m.month, m.over_by]),
-    [
-      ["2026-10", "2500.00"],
-      ["2026-11", "2500.00"],
-      ["2026-12", "2500.00"],
-      ["2027-01", "500.00"],
-      ["2027-02", "500.00"],
-      ["2027-03", "500.00"],
-      ["2027-04", "500.00"],
-      ["2027-05", "500.00"],
-      ["2027-06", "500.00"],
-      ["2027-07", "0.00"],
-      ["2027-08", "0.00"],
-      ["2027-09", "0.00"],
-    ],
-  );
+const row = (month: string, over: boolean) => ({ month, over_budget: over });
+
+test("UI_41_over_range_counts_the_rows_over_budget_and_names_the_first_and_the_last", () => {
+  assert.equal(overRange([]), null);
+  assert.equal(overRange([row("2026-10", false), row("2026-11", false)]), null);
+  assert.deepEqual(overRange([row("2026-10", false), row("2026-11", true)]), { count: 1, first: "2026-11", last: "2026-11", together: true });
+  assert.deepEqual(overRange([row("2026-10", true), row("2026-11", true), row("2026-12", false)]), {
+    count: 2,
+    first: "2026-10",
+    last: "2026-11",
+    together: true,
+  });
+  // A gap: two months over in a three-month span.
+  assert.deepEqual(overRange([row("2026-10", true), row("2026-11", false), row("2026-12", true)]), {
+    count: 2,
+    first: "2026-10",
+    last: "2026-12",
+    together: false,
+  });
 });
 
-test("UI_36_exactly_the_budget_is_not_over_and_one_satang_more_is_over_by_0_01", () => {
-  const record = (id: string, monthly: string) =>
-    assert.equal(
-      call("POST", "/installments", {
-        client_request_id: id,
-        kind: "purchase",
-        item_name: "",
-        item_price: monthly,
-        months: 1,
-        monthly_amount: monthly,
-        first_due_month: "2027-01",
-        platform_name: null,
-      }).status,
-      201,
-    );
-  const jan = () => months().find((m) => m.month === "2027-01");
-  record("to-the-budget", "3500.00"); // 1,500.00 + 3,500.00 = 5,000.00
-  assert.deepEqual([jan()?.total, jan()?.over_budget, jan()?.over_by], ["5000.00", false, "0.00"]);
-  record("one-satang-more", "0.01");
-  assert.deepEqual([jan()?.total, jan()?.over_budget, jan()?.over_by], ["5000.01", true, "0.01"]);
+test("UI_41_each_line_says_how_many_and_from_when_to_when_and_a_gap_says_ในช่วง", () => {
+  // Home's hero (the ⚠ is its icon) and the result's plain line under the bars.
+  assert.equal(HOME.overWarning(9, "ต.ค. 2569", "มิ.ย. 2570", true), "เกินงบ 9 เดือน (ต.ค. 2569 ถึง มิ.ย. 2570)");
+  assert.equal(HOME.overWarning(1, "พ.ย. 2569", "พ.ย. 2569", true), "เกินงบ 1 เดือน (พ.ย. 2569)");
+  assert.equal(HOME.overWarning(2, "ธ.ค. 2569", "ก.พ. 2570", false), "เกินงบ 2 เดือน (ในช่วง ธ.ค. 2569 ถึง ก.พ. 2570)");
+  assert.equal(THINK.overSummary(10, "พ.ย. 2569", "ส.ค. 2570", true), "เกินงบ 10 เดือน: พ.ย. 2569 ถึง ส.ค. 2570");
+  assert.equal(THINK.overSummary(1, "พ.ย. 2569", "พ.ย. 2569", true), "เกินงบ 1 เดือน: พ.ย. 2569");
+  assert.equal(THINK.overSummary(2, "ธ.ค. 2569", "ก.พ. 2570", false), "เกินงบ 2 เดือน ในช่วง ธ.ค. 2569 ถึง ก.พ. 2570");
 });
 
-test("UI_36_over_by_is_never_negative_and_positive_exactly_when_over_budget", () => {
-  for (const name of ["persona", "over_budget", "over_budget_now", "over_budget_empty_buffer"]) {
+test("UI_41_a_gap_between_months_over_budget_never_reads_as_one_run", () => {
+  // Persona: 3,500.00 to Dec, then 1,500.00. 4,000.00 more in Dec and in Feb: 7,500.00 and
+  // 5,500.00, over 5,000.00; Jan stays at 1,500.00.
+  recordOne("dec", "2026-12", "4000.00");
+  recordOne("feb", "2027-02", "4000.00");
+  assert.equal(home().hero?.warning?.text, "เกินงบ 2 เดือน (ในช่วง ธ.ค. 2569 ถึง ก.พ. 2570)");
+});
+
+test("UI_41_the_hero_counts_the_same_months_as_the_plan_its_buffer_line_is_about", () => {
+  // The buffer line is the plan's `covered`, over every month the plan counts over
+  // budget; the warning names that many months, never only the next few (review F1).
+  for (const [name, count] of [
+    ["over_budget", 2],
+    ["over_budget_now", 9],
+    ["over_budget_empty_buffer", 2],
+  ] as const) {
     scene(name);
-    for (const m of months()) {
-      const overBy = m.over_by; // null only when an answer lacks it (UI-39); the mock always sends it
-      assert.ok(overBy !== null, `${name} ${m.month}`);
-      assert.match(overBy, /^(0|[1-9][0-9]*)\.[0-9]{2}$/, `${name} ${m.month}`); // no sign
-      assert.equal(toSatang(overBy) > 0n, m.over_budget, `${name} ${m.month}`);
-    }
+    assert.equal(plan().months.filter((m) => m.over_budget).length, count, name);
+    assert.equal(overRange(months())?.count, count, name);
+    assert.ok(home().hero?.warning?.text.startsWith(`เกินงบ ${count} เดือน `), name);
   }
+});
+
+// ---- UI-42 (rules): one buffer line, from the plan ----------------------------------------
+
+test("UI_42_the_buffer_line_is_the_plans_covered_and_needs_money_in_the_buffer", () => {
+  scene("over_budget");
+  const rows = months();
+  const answer = plan();
+  const at = (covered: boolean, balance: string, withPlan = true) =>
+    heroView(rows, withPlan ? { ...answer, buffer_plan: { ...answer.buffer_plan, covered } } : null, balance)?.buffer?.line ?? null;
+  assert.deepEqual(at(true, "0.01"), { accent: "buffer", icon: "check", text: HOME.bufferCovers });
+  assert.deepEqual(at(false, "0.01"), { accent: "buffer", icon: "shield", text: HOME.bufferHelpsSome });
+  // An empty buffer helps with nothing, whatever the plan says; no plan, no line.
+  assert.equal(at(false, "0.00"), null);
+  assert.equal(at(true, "0.00"), null);
+  assert.equal(at(true, "4800.00", false), null);
+  // No month over budget: nothing for the buffer to cover, so no line.
+  scene("persona");
+  assert.equal(heroView(months(), plan(), "4800.00")?.buffer, null);
 });

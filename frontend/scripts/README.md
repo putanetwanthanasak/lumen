@@ -25,8 +25,9 @@ node scripts/nav-layer-check.mjs    # another terminal, from frontend/
 | `--shots` | a folder for a screenshot of each card under the raised button | none |
 | `--url` | the dev server | `http://127.0.0.1:5173` |
 
-**Views:** every Home scene, ภาระผ่อนรายเดือน, both buffer scenes, the alerts, the
-form with and without the cash kinds, settings, and the Demo panel open. With the
+**Views:** every Home scene (with the paid-off list open in one), ภาระผ่อนรายเดือน,
+both buffer scenes, the alerts, the form with and without the cash kinds, settings,
+and the Demo panel open. With the
 Demo panel open, the panel must be on top instead of the nav.
 
 **How it checks:** it loads each view fresh, then scrolls the body in 4px steps. At

@@ -13,3 +13,24 @@ export function monthStatus(row: Pick<MonthRow, "over_budget" | "over_one_third"
   if (row.over_budget) return { tone: "over", icon: "alert", label: MONTHS_VIEW.over };
   return { tone: "ok", icon: "check", label: MONTHS_VIEW.ok };
 }
+
+/**
+ * The months over budget in the API's rows (one row per month, in order), for one
+ * summary line: how many, the first and the last (UI-41). Counted, never added up.
+ * `together` is true when they run without a gap, so "{first} ถึง {last}" reads true;
+ * otherwise the line says "ในช่วง" (somewhere in that span).
+ */
+export type OverRange = { count: number; first: string; last: string; together: boolean };
+
+export function overRange(rows: readonly Pick<MonthRow, "month" | "over_budget">[]): OverRange | null {
+  const over = rows.flatMap((row, at) => (row.over_budget ? [{ month: row.month, at }] : []));
+  const first = over[0];
+  const last = over.at(-1);
+  if (first === undefined || last === undefined) return null;
+  return {
+    count: over.length,
+    first: first.month,
+    last: last.month,
+    together: last.at - first.at + 1 === over.length, // positions in the rows, not money
+  };
+}

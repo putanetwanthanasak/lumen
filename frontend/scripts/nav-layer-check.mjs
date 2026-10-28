@@ -42,6 +42,7 @@ const VIEWS = [
   { name: "home-over-budget-now", route: "home", scene: "over_budget_now" },
   { name: "home-offer-interested", route: "home", scene: "over_budget_now", action: "สนใจรวมหนี้" },
   { name: "home-empty-buffer", route: "home", scene: "over_budget_empty_buffer" },
+  { name: "home-paid-off-open", route: "home", scene: "persona", action: "ผ่อนครบแล้ว" },
   { name: "home-ai-slow", route: "home", scene: "ai_slow" },
   { name: "home-ai-failing", route: "home", scene: "ai_failing" },
   { name: "months", route: "months", scene: "over_budget", action: "expand" },

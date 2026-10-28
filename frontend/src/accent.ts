@@ -50,7 +50,6 @@ export const SOLID = {
  */
 export const EDGE = {
   buffer: "border-2 border-teal-edge",
-  warn: "border-2 border-warn-edge",
   bank: "border-2 border-bank-700",
   ai: "border border-ai-edge",
   quiet: "border border-quiet-edge",
@@ -58,7 +57,6 @@ export const EDGE = {
 
 /** A feature's own button, drawn as an outline (green uses Button's secondary). */
 export const OUTLINE = {
-  buffer: "border-2 border-teal-700 bg-card text-teal-800 hover:bg-teal-50 active:bg-teal-100",
   bank: "border-2 border-bank-700 bg-card text-bank-800 hover:bg-bank-50",
 } as const satisfies Partial<Record<Accent, string>>;
 

@@ -384,13 +384,10 @@ function months(path: string): MockResponse {
     if (!isInt(count, 1, 600)) return invalid("count");
   }
   const rows = count === 0 ? [] : assess(settings, store.installments, { first_due_month: from, months: count, monthly_amount: "0.00" }, false).months;
-  const budget = toSatang(settings.monthly_installment_budget);
   const out: MonthsOut = {
     months: rows.map(
       (row): MonthDetail => ({
         ...row,
-        // TODO(backend): over_by, total - budget when over budget, else 0.00.
-        over_by: row.over_budget ? fromSatang(toSatang(row.total) - budget) : "0.00",
         installments: counted
           .filter((i) => dueIn(i, row.month))
           .map((i) => ({

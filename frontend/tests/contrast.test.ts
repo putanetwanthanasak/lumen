@@ -38,11 +38,10 @@ const TEXT: [string, string][] = [
   ["leaf-800", "card"],
   ["ok-ink", "card"],
   ["warn-ink", "warn-bg"],
-  ["warn-ink", "card"], // the month chips
+  ["warn-ink", "card"], // the hero's warning line
   ["ink", "warn-bg"],
   ["teal-800", "teal-50"],
-  ["teal-800", "card"],
-  ["teal-800", "warn-bg"], // the strip's buffer line
+  ["teal-800", "card"], // the hero's buffer line and its link
   ["white", "teal-700"],
   ["ink", "teal-50"],
   ["ink-muted", "teal-50"],
@@ -59,14 +58,29 @@ const TEXT: [string, string][] = [
   ["quiet-ink", "quiet-bg"],
   ["ink", "quiet-bg"],
   ["white", "bank-700"], // the offer's title on its solid header band
+  // The hero while hovered (leaf-50): every text and icon in it.
+  ["ink", "leaf-50"],
+  ["ink-muted", "leaf-50"],
+  ["leaf-800", "leaf-50"],
+  ["warn-ink", "leaf-50"],
+  ["teal-800", "leaf-50"],
 ];
 
 const GRAPHICS: [string, string][] = [
   ["bar-ok", "leaf-50"], // the hero's bar on its track
   ["bar-over", "leaf-50"],
+  ["ink", "leaf-50"], // the hero's budget mark, on the track and on either colour
+  ["ink", "bar-ok"],
+  ["ink", "bar-over"],
+  ["bar-ok", "card"], // the result's solid bars, on the card (UI-40)
+  ["bar-over", "card"],
+  ["bar-risk", "card"],
+  ["risk-ink", "card"], // the ⚠ above a bar over one third of income
+  ["leaf-100", "bar-ok"], // this item's pale share against the rest of its bar
+  ["warn-bg", "bar-over"],
+  ["risk-bg", "bar-risk"],
   ["teal-700", "teal-50"], // the wallet's filled segment and icon
   ["teal-700", "teal-200"], // filled against empty segments
-  ["teal-700", "warn-bg"], // the shield on the amber strip
   ["bank-700", "bank-50"], // the offer's button border
   ["ai-ink", "ai-from"],
 ];
@@ -85,9 +99,9 @@ test("UI_35_bars_meters_and_icons_are_at_least_3_to_1", () => {
 const borderToken = (cls: string) => cls.split(/\s+/).flatMap((c) => /^border-(?!\d)([a-z0-9-]+)$/.exec(c)?.slice(1) ?? []);
 
 test("UI_35_every_tinted_card_edge_stands_out_from_the_page_at_least_3_to_1", () => {
-  // The offer card, the assistant's panel, the consolidation banner, the amber strip and
-  // the buffer's wallet meet the page (surface) at their edge; the light tints alone blend into it.
-  assert.deepEqual(Object.keys(EDGE).sort(), ["ai", "bank", "buffer", "quiet", "warn"]);
+  // The offer card, the assistant's panel, the consolidation banner and the buffer's
+  // wallet meet the page (surface) at their edge; the light tints alone blend into it.
+  assert.deepEqual(Object.keys(EDGE).sort(), ["ai", "bank", "buffer", "quiet"]);
   const low = Object.entries(EDGE).flatMap(([accent, cls]) => {
     const [token] = borderToken(cls);
     if (token === undefined) return [`${accent}: no border colour in "${cls}"`];
