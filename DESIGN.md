@@ -242,7 +242,8 @@ Tones `ok`, `warn`, `risk`, `info`, each with its own icon. Connection errors us
   หน้าหลัก stays selected on ภาระผ่อนรายเดือน, เช็กก่อนผ่อน on the result. The centre
   tab uses the full name: at 14px it is 74px wide, one line in a 130px tab at 390px
   (and in 120px at 360px), so the short "เช็ก" is not needed (UI-25). Always "เช็ก"
-  ending in ก (ก ไก่), never in ค (ค ควาย) (UI-32). The preview button stays "ประเมินภาระผ่อน". Settings and notifications are not
+  ending in ก (ก ไก่), never in ค (ค ควาย). Every button and nav label that checks
+  uses "เช็ก" (เช็กก่อนผ่อน, เช็กรายการอื่น), never "ตรวจสอบ" (UI-32). The preview button stays "ประเมินภาระผ่อน". Settings and notifications are not
   tabs.
   - **Selected is the same for every tab:** a filled green icon background and a bold
     green label (`navStyle.ts`, UI-25). The centre button is larger but, when not
@@ -373,6 +374,7 @@ Every screen has the footer and handles **loading** (skeleton), **error**
    total, the amount saved (or "ครั้งนี้ไม่ได้กันเงินเข้ากันชน"), and the verdict
    again if it was not GREEN.
 7. **ยังไม่ซื้อ**: "โอเค ยังไม่ซื้อ ไว้ค่อยคิดใหม่ได้เสมอ", nothing is written.
+8. After 6 or 7: **เช็กรายการอื่น** (back to an empty form) and หน้าหลัก.
 - Opened without a preview (a reload): "ยังไม่มีรายการที่ประเมิน กรอกข้อมูลก่อนนะ" and "ไปกรอกข้อมูล".
 
 ### 7.4 Screen 4: Buffer, feature 2 (`#/buffer`, `screens/Buffer.tsx`)

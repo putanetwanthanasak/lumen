@@ -183,7 +183,7 @@ export const THINK = {
   demoTitle: "Demo: ลองตัวอย่างของมิ้นท์",
   demoScenario: { GREEN: "อยู่ในงบ", YELLOW: "เกินงบ", RED: "เกินเกณฑ์" },
   backHome: "กลับหน้าหลัก",
-  another: "ตรวจสอบรายการอื่น",
+  another: "เช็กรายการอื่น",
   resultTitle: "ผลการประเมิน",
   edit: "แก้ไข",
   summary: (what: string, price: string, months: number, monthly: string, start: string) =>

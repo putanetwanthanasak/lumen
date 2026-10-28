@@ -3,12 +3,14 @@
  * UI-06 (critical): no floating-point handling of money in the client.
  * UI-07: src/api.ts is the only place that fetches.
  * UI-10: no em dash and no banned brand names (CLAUDE.md rules 5 and 10).
- * UI-32: "เช็กก่อนผ่อน", spelt with ก, never "เช็ค" or the old "ตรวจสอบก่อนผ่อน".
+ * UI-32: "เช็ก" wording, spelt with ก: never "เช็ค", and no button or nav label
+ *   says "ตรวจสอบ" (descriptive sentences may).
  */
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { test } from "node:test";
+import { HOME, NAV, THINK } from "../src/copy.ts";
 
 // npm runs the tests from frontend/ (the tests are compiled to .test-build first).
 const ROOT = process.cwd();
@@ -96,8 +98,13 @@ test("UI_10_no_banned_brand_names_in_src_or_design_md", () => {
 });
 
 test("UI_32_check_before_installment_is_spelt_เช็ก_everywhere", () => {
-  // Wording change (part 5): "เช็ก" with ก, never "เช็ค"; the old name is gone.
-  assert.deepEqual(scan([...files, DESIGN], /เช็ค|ตรวจสอบก่อนผ่อน/), []);
+  // Wording change (parts 5 and 7): "เช็ก" with ก, never "เช็ค"; the old names are gone.
+  assert.deepEqual(scan([...files, DESIGN], /เช็ค|ตรวจสอบก่อนผ่อน|ตรวจสอบรายการอื่น/), []);
+  // Every button and nav label that checks says "เช็ก" (part 7).
+  for (const label of [NAV.think, HOME.thinkCta, THINK.title, THINK.another]) {
+    assert.match(label, /^เช็ก/, label);
+    assert.doesNotMatch(label, /ตรวจสอบ/, label);
+  }
 });
 
 test("UI_22_the_scrollbar_is_hidden_inside_the_phone_frame_only", () => {
