@@ -130,18 +130,21 @@ def test_AI_09_a_reload_never_asks_again_until_the_numbers_change(
     first = get_summary(summary_api).json()
     assert get_summary(summary_api).json() == first
     assert len(writer.calls) == 1
+    # Another user with exactly the same numbers has an answer of their own (B167),
+    # and the first user's stays cached.
+    mon(summary_api, "user_b")
+    get_summary(summary_api, "user_b")
+    assert len(writer.calls) == 2
+    get_summary(summary_api)
+    assert len(writer.calls) == 2
     # A new installment due later, still within budget, changes no number the
     # summary says: still no call.
     manual(summary_api, "500.00", 2, date(2026, 12, 1), item_name="เตารีด")
     get_summary(summary_api)
-    assert len(writer.calls) == 1
+    assert len(writer.calls) == 2
     # One due this month changes this month's total: the model is asked again.
     manual(summary_api, "500.00", 2, date(2026, 11, 1), item_name="พัดลม")
     get_summary(summary_api)
-    assert len(writer.calls) == 2
-    # Another user with the same numbers has an answer of their own.
-    mon(summary_api, "user_b")
-    get_summary(summary_api, "user_b")
     assert len(writer.calls) == 3
 
 

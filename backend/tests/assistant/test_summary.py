@@ -221,9 +221,12 @@ def test_AI_09_the_same_numbers_never_ask_twice() -> None:
 def test_AI_09_other_numbers_another_user_or_another_model_ask_again() -> None:
     cache, writer = SummaryCache(), FakeWriter(text=MON_AI)
     ask(MON, writer, cache)
-    ask(replace(MON, buffer_balance=Decimal("2700.01")), writer, cache)
-    assert len(writer.calls) == 2
+    # Another user with exactly the same numbers has an answer of their own (B167).
     summarize(MON, user_id="user_b", writer=writer, cache=cache)
+    assert len(writer.calls) == 2
+    ask(MON, writer, cache)  # and the first user's answer is still there
+    assert len(writer.calls) == 2
+    ask(replace(MON, buffer_balance=Decimal("2700.01")), writer, cache)
     assert len(writer.calls) == 3
     other = FakeWriter(text=MON_AI, model="another-model")
     ask(MON, other, cache)
