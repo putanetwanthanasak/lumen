@@ -299,7 +299,7 @@ data (UI-33); they format, never add up.
 | Card | Shape | Shrinks or goes when |
 |---|---|---|
 | Hero, this month | the only white card with a `text-display` number; the bar; one status line | nothing over budget in the months shown: no strip, one line |
-| Over-budget strip | an amber band joined to the hero's bottom edge: title, month chips in two columns ("⚠ พ.ย. 2569" over "+1,500.00 บาท"), the buffer line, an outline link | shown only while a month is over |
+| Over-budget strip | an amber band joined to the hero's bottom edge: title, month chips in two columns ("⚠ พ.ย. 2569" over "+1,500.00 บาท"), "และอีก {k} เดือนหลังจากนั้น", the total over all months, the buffer line, an outline link | shown only while a month is over |
 | เช็กก่อนผ่อน | the 56px green pill and its hint | never |
 | Wallet | one wide teal button: shield badge, "กันชนของคุณ ›", the balance at `text-title`; on the right 6 segments and "พอ {n} เดือน" | never; the meter is empty at 0 months |
 | Assistant bubble | a soft gradient panel; the mascot speaks from the left into a white bubble with a tail | loading: "กำลังสรุป..." at a fixed height, no spinner; error: one line and "ลองอีกครั้ง"; no plan: left out |
@@ -348,8 +348,11 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
      being the rows after this month ("เดือนนี้ยังอยู่ในงบ" when there are none);
    - this month over: an amber bar and "⚠ เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้";
    - any month over: the amber strip "เดือนที่ค่างวดรวมเกินงบ", one chip per month
-     with its `over_by` (read aloud as "เกินงบ 1,500.00 บาท"), the plan's buffer line
-     ("กันชน ... พอจ่ายส่วนที่เกินได้ทั้งหมด" or "... ยังขาดอีก ..."), and a link:
+     with its `over_by` (read aloud as "เกินงบ 1,500.00 บาท"); then, from the plan,
+     "และอีก {k} เดือนหลังจากนั้น" when months after the six shown are over too, the
+     total "ค่างวดส่วนที่เกินงบรวมทุกเดือน ..." and the buffer line about that total
+     ("กันชน ... พอจ่ายส่วนที่เกินได้ทั้งหมด" or "... ยังขาดอีก ..."), so the amounts on
+     the card agree; and a link:
      "ใช้กันชนช่วยจ่าย ›" (teal) while the buffer holds money, else
      "ดูภาระผ่อนรายเดือน ›" (green), as on the payday alert (UI-17).
    There is no separate upcoming-months card.
@@ -446,7 +449,9 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
 ### 7.4 Screen 4: Buffer, feature 2 (`#/buffer`, `screens/Buffer.tsx`)
 - Teal: the header is tinted with the shield. The balance card is the wallet's
   colour: shield badge, "ยอดในกันชน", the balance, the 6-segment meter,
-  "พอจ่ายค่างวดได้ประมาณ N เดือน" (or nothing owed), and the monthly total.
+  "พอจ่ายค่างวดได้ประมาณ N เดือน" (or nothing owed), and the monthly total. After a
+  move the new balance shows at once; the meter and the months wait for `GET /buffer`
+  to answer for it (`walletFor`, UI-13), so they never show the old balance's months.
 - **"ถ้าเดือนไหนเกินงบ", the buffer plan** (the plan's `buffer_plan`): "ค่างวดส่วนที่
   เกินงบรวมทุกเดือน {shortfall}", then "กันชน {balance} พอจ่ายส่วนที่เกินได้ทั้งหมด"
   (teal) or "กันชน {balance} ยังขาดอีก {still_short}" (amber); with no month over,
@@ -489,8 +494,8 @@ else imported them, so deleting was safe. Their parts now live in 7.2 (cards 4 a
   the YELLOW laptop from next month: 2 months over, the buffer covers it, no
   consolidation); "เกินงบตั้งแต่เดือนนี้" (records the RED motorbike from this
   month: 9 months over, the pause line, the buffer still short, consolidation
-  eligible); "มีเดือนเกินงบ กันชนว่าง" (the laptop with an empty buffer, so the strip
-  links to ภาระผ่อนรายเดือน); "ผู้ช่วยกำลังสรุป (ตอบช้า)" (the summary takes 15
+  eligible); "มีเดือนเกินงบ กันชนว่าง" (the laptop, then the whole buffer moved back to
+  the main account, so the strip links to ภาระผ่อนรายเดือน); "ผู้ช่วยกำลังสรุป (ตอบช้า)" (the summary takes 15
   seconds) and "ผู้ช่วยสรุปไม่สำเร็จ" (it fails with 503). The screen on show reloads.
 
 ## 8. Thai copy
@@ -517,7 +522,7 @@ Source of truth: `frontend/src/copy.ts`. The key strings:
 | Connection error | เชื่อมต่อไม่สำเร็จ ข้อมูลของคุณยังอยู่ครบ ลองอีกครั้งได้เลย |
 | Settings missing | บอกรายได้และงบผ่อนต่อเดือนก่อน KidNee ถึงจะช่วยคิดให้ได้ |
 | Money errors | กรอกจำนวนเงินด้วยนะ · ทศนิยมได้ไม่เกิน 2 ตำแหน่ง · จำนวนเงินต้องมากกว่า 0 |
-| Hero | เดือนนี้และอีก {n} เดือนอยู่ในงบ · เดือนที่ค่างวดรวมเกินงบ · +{over_by} |
+| Hero | เดือนนี้และอีก {n} เดือนอยู่ในงบ · เดือนที่ค่างวดรวมเกินงบ · +{over_by} · และอีก {k} เดือนหลังจากนั้น |
 | Strip link | ใช้กันชนช่วยจ่าย › · ดูภาระผ่อนรายเดือน › |
 | Wallet | กันชนของคุณ › · พอ {n} เดือน · ยังไม่พอ 1 เดือน · ไม่มีค่างวด |
 | Assistant | ผู้ช่วย KidNee · ตัวอย่าง · อ่านต่อ › · ย่อ · กำลังสรุป... |
@@ -595,8 +600,9 @@ Now: 3,500.00 a month.
 8. The bell shows 1 (the ตู้เย็น manual-entry alert); open it, the badge clears.
    Home's assistant bubble and the banner "ตอนนี้ยังไม่จำเป็นต้องรวมหนี้".
 9. Demo, "มิ้นท์: เกินงบตั้งแต่เดือนนี้": Home's hero turns amber with six chips
-   (ต.ค. to ธ.ค. 2569 +2,500.00, ม.ค. to มี.ค. 2570 +500.00), "กันชน 9,600.00 บาท
-   ยังขาดอีก 900.00 บาท" and "ใช้กันชนช่วยจ่าย ›". "ทางเลือกจากธนาคาร": 7,500.00 a month
+   (ต.ค. to ธ.ค. 2569 +2,500.00, ม.ค. to มี.ค. 2570 +500.00), "และอีก 3 เดือนหลังจากนั้น"
+   (เม.ย. to มิ.ย. 2570), "ค่างวดส่วนที่เกินงบรวมทุกเดือน 10,500.00 บาท", "กันชน 9,600.00
+   บาท ยังขาดอีก 900.00 บาท" and "ใช้กันชนช่วยจ่าย ›". "ทางเลือกจากธนาคาร": 7,500.00 a month
    now, 3,369.88 if consolidated, but 80,877.12 in total against 67,500.00 (example
    rate 18%, 24 months); "สนใจรวมหนี้". Tap the hero: "กลับมาอยู่ในงบเดือน ก.ค. 2570"
    and "ตอนนี้ยังไม่ควรผ่อนเพิ่ม". The form's hint. กันชน: 10,500.00 over in all,

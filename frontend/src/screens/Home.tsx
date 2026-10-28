@@ -180,8 +180,9 @@ function Strip({ strip }: { strip: OverStrip }) {
         ))}
       </ul>
       {strip.more !== null && <p className={`text-body font-semibold ${ACCENT.warn.ink}`}>{strip.more}</p>}
-      {strip.shortfall !== null && <p className="text-body font-semibold text-ink">{strip.shortfall}</p>}
-      {strip.buffer !== null && <MarkedText item={strip.buffer} />}
+      {/* text-pretty: an amount's "บาท" never sits alone on the last line. */}
+      {strip.shortfall !== null && <p className="text-body font-semibold text-pretty text-ink">{strip.shortfall}</p>}
+      {strip.buffer !== null && <MarkedText item={strip.buffer} className="text-pretty" />}
       <Button
         variant={strip.link.accent === "buffer" ? "buffer" : "secondary"}
         icon={strip.link.icon}
