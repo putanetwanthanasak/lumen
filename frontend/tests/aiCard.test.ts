@@ -1,9 +1,9 @@
 /**
  * Home's "ผู้ช่วย KidNee สรุปให้ฟัง" card on GET /assistant/summary (Session 18):
- * AI-18: the text shows the same way whether the model or the app worded it, with no
+ * AI-27: the text shows the same way whether the model or the app worded it, with no
  *   "ตัวอย่าง" tag, and nothing on screen reads `source` or `reason`.
- * AI-19: a loading state while the answer is on its way.
- * AI-20: a failed request (network, 5xx, or an answer without text) shows the plan's
+ * AI-28: a loading state while the answer is on its way.
+ * AI-29: a failed request (network, 5xx, or an answer without text) shows the plan's
  *   own words: never an error, a retry or an empty card. The mock answers the GET as
  *   the backend does without a key.
  */
@@ -37,9 +37,9 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-// ---- AI-18: one look for the model's words and the app's own ----------------------------
+// ---- AI-27: one look for the model's words and the app's own ----------------------------
 
-test("AI_18_the_models_words_and_the_apps_own_show_the_same_way", () => {
+test("AI_27_the_models_words_and_the_apps_own_show_the_same_way", () => {
   const p = plan();
   const text = "เดือน ต.ค. 2569 ค่างวดรวม 3,500.00 บาท\nทุกเดือนอยู่ในงบ";
   const answers: AssistantSummaryOut[] = [
@@ -52,7 +52,7 @@ test("AI_18_the_models_words_and_the_apps_own_show_the_same_way", () => {
   assert.deepEqual(bubbles[0], { state: "done", first: "เดือน ต.ค. 2569 ค่างวดรวม 3,500.00 บาท", rest: ["ทุกเดือนอยู่ในงบ"] });
 });
 
-test("AI_18_no_example_tag_and_nothing_reads_source_or_reason", () => {
+test("AI_27_no_example_tag_and_nothing_reads_source_or_reason", () => {
   const src = card();
   for (const banned of ["ExampleTag", "ตัวอย่าง", "source", "reason", "is_example"]) {
     assert.ok(!src.includes(banned), `the AI card must not use ${banned}`);
@@ -64,9 +64,9 @@ test("AI_18_no_example_tag_and_nothing_reads_source_or_reason", () => {
   assert.ok(!html.includes("ตัวอย่าง"));
 });
 
-// ---- AI-19: loading ---------------------------------------------------------------------
+// ---- AI-28: loading ---------------------------------------------------------------------
 
-test("AI_19_a_loading_state_while_waiting", () => {
+test("AI_28_a_loading_state_while_waiting", () => {
   assert.deepEqual(aiBubble({ state: "loading" }, plan()), { state: "loading" });
   // The first render, before the answer: a busy status line under the title.
   const html = renderToStaticMarkup(createElement(AiBubbleCard, { plan: plan() }));
@@ -74,9 +74,9 @@ test("AI_19_a_loading_state_while_waiting", () => {
   assert.equal(ASSIST.aiLoading, "กำลังสรุป...");
 });
 
-// ---- AI-20: a failed request shows the plan's own words ----------------------------------
+// ---- AI-29: a failed request shows the plan's own words ----------------------------------
 
-test("AI_20_a_failed_request_shows_the_plans_own_words_in_every_scene", () => {
+test("AI_29_a_failed_request_shows_the_plans_own_words_in_every_scene", () => {
   for (const name of SCENES) {
     scene(name);
     const p = plan();
@@ -90,7 +90,7 @@ test("AI_20_a_failed_request_shows_the_plans_own_words_in_every_scene", () => {
   }
 });
 
-test("AI_20_the_card_has_no_error_state_and_no_retry", () => {
+test("AI_29_the_card_has_no_error_state_and_no_retry", () => {
   const src = card();
   for (const banned of ["failed", "retry", "reload", "ไม่สำเร็จ"]) {
     assert.ok(!src.includes(banned), `the AI card must not show ${banned}`);
@@ -98,7 +98,7 @@ test("AI_20_the_card_has_no_error_state_and_no_retry", () => {
   assert.ok(!("aiFailed" in ASSIST), "the error copy is gone");
 });
 
-test("AI_20_the_getter_rejects_on_a_network_error_a_5xx_or_no_text", async () => {
+test("AI_29_the_getter_rejects_on_a_network_error_a_5xx_or_no_text", async () => {
   const answers: (() => Response)[] = [
     () => {
       throw new TypeError("Failed to fetch");
@@ -113,7 +113,7 @@ test("AI_20_the_getter_rejects_on_a_network_error_a_5xx_or_no_text", async () =>
   }
 });
 
-test("AI_20_the_mock_answers_the_get_as_the_backend_does_without_a_key", () => {
+test("AI_29_the_mock_answers_the_get_as_the_backend_does_without_a_key", () => {
   scene("over_budget_now");
   const answer = call("GET", "/assistant/summary");
   assert.equal(answer.status, 200);

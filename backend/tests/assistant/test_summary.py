@@ -1,4 +1,4 @@
-"""AI-01, AI-02 to AI-05 (through the service), AI-06 to AI-09, AI-11, AI-12 and AI-17:
+"""AI-10, AI-11 to AI-14 (through the service), AI-15 to AI-18, AI-20, AI-21 and AI-26:
 Home's summary (app.assistant.summary) over the plan's own numbers, with a fake model.
 Pure: no database. The three stories are the KidNee personas' (demo.kidnee), with
 "today" in November 2026."""
@@ -87,7 +87,7 @@ def ask(
 # --- The stories' facts and fallbacks ---------------------------------------------------
 
 
-def test_AI_11_each_story_has_its_own_fallback_in_the_apps_words() -> None:
+def test_AI_20_each_story_has_its_own_fallback_in_the_apps_words() -> None:
     assert fallback_text(MON) == (
         "เดือน พ.ย. 2569 ค่างวดรวม 3,500.00 บาท อยู่ในงบ 5,000.00 บาท\n"
         "ทุกเดือนอยู่ในงบ\n"
@@ -111,7 +111,7 @@ def test_AI_11_each_story_has_its_own_fallback_in_the_apps_words() -> None:
     )
 
 
-def test_AI_11_one_month_over_budget_is_named() -> None:
+def test_AI_20_one_month_over_budget_is_named() -> None:
     one = plan_facts([EARBUDS, FRIDGE, plan_of("2000.00", 1, 1)], "2700.00")
     assert fallback_text(one).split("\n")[1:3] == [
         "มี 1 เดือนที่ค่างวดเกินงบ คือ ธ.ค. 2569 กลับมาอยู่ในงบเดือน ม.ค. 2570",
@@ -120,7 +120,7 @@ def test_AI_11_one_month_over_budget_is_named() -> None:
     assert check(fallback_text(one), allowed_of(one)) is None
 
 
-def test_AI_11_prepared_months_are_said_as_the_buffer_screen_says_them() -> None:
+def test_AI_20_prepared_months_are_said_as_the_buffer_screen_says_them() -> None:
     nov, dec = NOW, NOW.plus(1)
     over = [plan_of("2000.00", 6, -4), FRIDGE, LAPTOP]
     partly = plan_facts(over, "4200.00", {nov: Decimal("1000.00")})
@@ -133,10 +133,10 @@ def test_AI_11_prepared_months_are_said_as_the_buffer_screen_says_them() -> None
     assert check(fallback_text(every), allowed_of(every)) is None
 
 
-# --- AI-01 to AI-05: the model's text, checked -------------------------------------------
+# --- AI-10 to AI-14: the model's text, checked -------------------------------------------
 
 
-def test_AI_01_grounded_model_text_is_shown_as_ai() -> None:
+def test_AI_10_grounded_model_text_is_shown_as_ai() -> None:
     writer = FakeWriter(text=f"  {MON_AI}\r\n")
     result = ask(MON, writer)
     assert (result.text, result.source, result.reason) == (MON_AI, "ai", Reason.OK)
@@ -146,16 +146,16 @@ def test_AI_01_grounded_model_text_is_shown_as_ai() -> None:
 @pytest.mark.parametrize(
     ("text", "why"),
     [
-        (MON_AI.replace("3,500.00", "3,600.00"), Check.NUMBER_NOT_IN_INPUT),  # AI-02
-        (MON_AI + " เหลือ 1,500.00 บาท", Check.NUMBER_NOT_IN_INPUT),  # AI-03: computed
-        (MON_AI.replace("พ.ย. 2569", "ธ.ค. 2569"), Check.MONTH_NOT_IN_INPUT),  # AI-03
-        (MON_AI.replace(" และ", " \u2014 และ"), Check.DASH),  # AI-04
-        (MON_AI + " ลองโปะหนี้ก้อนเล็กก่อน", Check.BANNED_PHRASE),  # AI-05: L69
-        (MON_AI + " ยังผ่อนเพิ่มได้", Check.BANNED_PHRASE),  # AI-05: more debt
-        (MON_AI + " ถ้ารวมหนี้ ธนาคารจะพิจารณา", Check.CONSOLIDATION_NOT_OFFERED),  # AI-05
+        (MON_AI.replace("3,500.00", "3,600.00"), Check.NUMBER_NOT_IN_INPUT),  # AI-11
+        (MON_AI + " เหลือ 1,500.00 บาท", Check.NUMBER_NOT_IN_INPUT),  # AI-12: computed
+        (MON_AI.replace("พ.ย. 2569", "ธ.ค. 2569"), Check.MONTH_NOT_IN_INPUT),  # AI-12
+        (MON_AI.replace(" และ", " \u2014 และ"), Check.DASH),  # AI-13
+        (MON_AI + " ลองโปะหนี้ก้อนเล็กก่อน", Check.BANNED_PHRASE),  # AI-14: L69
+        (MON_AI + " ยังผ่อนเพิ่มได้", Check.BANNED_PHRASE),  # AI-14: more debt
+        (MON_AI + " ถ้ารวมหนี้ ธนาคารจะพิจารณา", Check.CONSOLIDATION_NOT_OFFERED),  # AI-14
     ],
 )
-def test_AI_02_to_05_refused_model_text_gives_the_fallback(text: str, why: Check) -> None:
+def test_AI_11_to_05_refused_model_text_gives_the_fallback(text: str, why: Check) -> None:
     result = ask(MON, FakeWriter(text=text))
     assert (result.text, result.source, result.reason) == (
         fallback_text(MON),
@@ -167,7 +167,7 @@ def test_AI_02_to_05_refused_model_text_gives_the_fallback(text: str, why: Check
     assert result.rejected == text
 
 
-def test_AI_05_consolidation_as_an_option_passes_only_when_offered() -> None:
+def test_AI_14_consolidation_as_an_option_passes_only_when_offered() -> None:
     reduction = summary.baht(CONSOLIDATE.monthly_reduction or Decimal(0))
     text = (
         "เดือน พ.ย. 2569 ค่างวดรวม 7,500.00 บาท เกินงบ 2,500.00 บาท\n"
@@ -177,10 +177,10 @@ def test_AI_05_consolidation_as_an_option_passes_only_when_offered() -> None:
     assert ask(OVER, FakeWriter(text=text)).reason is Reason.GROUNDING_FAILED
 
 
-# --- AI-06 to AI-08: no key, timeout, API error -----------------------------------------
+# --- AI-15 to AI-17: no key, timeout, API error -----------------------------------------
 
 
-def test_AI_06_no_key_gives_the_fallback_without_asking() -> None:
+def test_AI_15_no_key_gives_the_fallback_without_asking() -> None:
     result = ask(MON, None)
     assert (result.text, result.source, result.reason) == (
         fallback_text(MON),
@@ -197,7 +197,7 @@ def test_AI_06_no_key_gives_the_fallback_without_asking() -> None:
         (RuntimeError("a writer bug"), Reason.API_ERROR),
     ],
 )
-def test_AI_07_08_timeout_and_api_errors_give_the_fallback_once(
+def test_AI_16_08_timeout_and_api_errors_give_the_fallback_once(
     error: Exception, reason: Reason
 ) -> None:
     writer = FakeWriter(error=error)
@@ -206,10 +206,10 @@ def test_AI_07_08_timeout_and_api_errors_give_the_fallback_once(
     assert len(writer.calls) == 1  # no retries
 
 
-# --- AI-09: the cache --------------------------------------------------------------------
+# --- AI-18: the cache --------------------------------------------------------------------
 
 
-def test_AI_09_the_same_numbers_never_ask_twice() -> None:
+def test_AI_18_the_same_numbers_never_ask_twice() -> None:
     cache, writer = SummaryCache(), FakeWriter(text=MON_AI)
     first = ask(MON, writer, cache)
     again = ask(replace(MON), writer, cache)  # equal facts, a new object
@@ -218,7 +218,7 @@ def test_AI_09_the_same_numbers_never_ask_twice() -> None:
     assert len(writer.calls) == 1
 
 
-def test_AI_09_other_numbers_another_user_or_another_model_ask_again() -> None:
+def test_AI_18_other_numbers_another_user_or_another_model_ask_again() -> None:
     cache, writer = SummaryCache(), FakeWriter(text=MON_AI)
     ask(MON, writer, cache)
     # Another user with exactly the same numbers has an answer of their own (B167).
@@ -233,14 +233,14 @@ def test_AI_09_other_numbers_another_user_or_another_model_ask_again() -> None:
     assert len(other.calls) == 1
 
 
-def test_AI_09_a_timeout_is_cached_too_so_a_reload_does_not_wait_again() -> None:
+def test_AI_18_a_timeout_is_cached_too_so_a_reload_does_not_wait_again() -> None:
     cache, writer = SummaryCache(), FakeWriter(error=WriterTimeoutError())
     assert ask(OVER, writer, cache).reason is Reason.TIMEOUT
     assert ask(OVER, writer, cache).reason is Reason.TIMEOUT
     assert len(writer.calls) == 1
 
 
-def test_AI_09_no_key_is_not_cached() -> None:
+def test_AI_18_no_key_is_not_cached() -> None:
     cache = SummaryCache()
     assert ask(MON, None, cache).reason is Reason.NO_KEY
     writer = FakeWriter(text=MON_AI)
@@ -248,7 +248,7 @@ def test_AI_09_no_key_is_not_cached() -> None:
     assert len(writer.calls) == 1
 
 
-def test_AI_09_the_users_lock_is_held_while_the_model_is_asked() -> None:
+def test_AI_18_the_users_lock_is_held_while_the_model_is_asked() -> None:
     cache = SummaryCache()
     seen: list[tuple[bool, bool]] = []
     writer = FakeWriter(
@@ -261,11 +261,11 @@ def test_AI_09_the_users_lock_is_held_while_the_model_is_asked() -> None:
     assert not cache.lock(USER).locked()
 
 
-def test_AI_09_the_app_shares_one_cache_across_requests() -> None:
+def test_AI_18_the_app_shares_one_cache_across_requests() -> None:
     assert summary.get_summary_cache() is summary.get_summary_cache() is summary.CACHE
 
 
-def test_AI_17_the_prompt_version_and_the_model_are_in_the_cache_key(
+def test_AI_26_the_prompt_version_and_the_model_are_in_the_cache_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     key = cache_key(MON, "fake-model")
@@ -275,10 +275,10 @@ def test_AI_17_the_prompt_version_and_the_model_are_in_the_cache_key(
     assert key != cache_key(MON, "fake-model")
 
 
-# --- AI-17: the prompt file ---------------------------------------------------------------
+# --- AI-26: the prompt file ---------------------------------------------------------------
 
 
-def test_AI_17_the_prompt_is_a_versioned_file_with_the_rules() -> None:
+def test_AI_26_the_prompt_is_a_versioned_file_with_the_rules() -> None:
     assert PROMPT_FILE.name == "summary_v1.md"
     assert summary.PROMPT_VERSION == "summary_v1"
     for rule in ("ธปท. แนะนำ", "กำหนด", "รวมหนี้", "ธนาคารจะติดต่อกลับเพื่อพิจารณา", "Thai"):
@@ -289,13 +289,24 @@ def test_AI_17_the_prompt_is_a_versioned_file_with_the_rules() -> None:
     # each one passes every rule of the check.
     examples = PROMPT.split("never copy them):\n")[1].strip().splitlines()
     assert len(examples) == 4
+    # One story: this month in budget, two later months over, the buffer covers them.
+    found = extract("\n".join(examples))
+    story = Allowed(
+        numbers=frozenset(found.numbers),
+        counts=frozenset(found.numbers),
+        months=frozenset(Month((m.year - 543) * 12 + m.month - 1) for m in found.months if m.year),
+        over_by=frozenset(),
+        reductions=frozenset(),
+        consolidation_offered=False,
+        over_now=False,
+        any_over=True,
+        above_one_third=False,
+    )
     for line in examples:
-        found = extract(line)
-        months = frozenset(Month((m.year - 543) * 12 + m.month - 1) for m in found.months if m.year)
-        assert check(line, Allowed(frozenset(found.numbers), months, False)) is None, line
+        assert check(line, story) is None, (line, check(line, story))
 
 
-# --- AI-12: only numbers and months reach the model ---------------------------------------
+# --- AI-21: only numbers and months reach the model ---------------------------------------
 
 EXAMPLES = 1500  # summed into the progress log's Hypothesis count
 
@@ -310,11 +321,17 @@ AMOUNTS = st.decimals(
 
 @st.composite
 def any_facts(draw: st.DrawFn) -> Facts:
+    """Facts as the plan gives them: this month is over budget only when it is the
+    first of the months over budget."""
     month = Month(draw(st.integers(min_value=2000 * 12, max_value=2100 * 12)))
     n = draw(st.integers(min_value=0, max_value=15))
+    over_now = n > 0 and draw(st.booleans())
+    start = 0 if over_now else 1
+    budget, gap = draw(AMOUNTS), draw(AMOUNTS)
+    total = budget + gap + Decimal("0.01") if over_now else max(budget - gap, Decimal("0.00"))
     over = tuple(
         OverMonth(
-            month.plus(i),
+            month.plus(start + i),
             draw(AMOUNTS),
             draw(AMOUNTS),
             draw(st.sampled_from(PreparedState)),
@@ -327,16 +344,16 @@ def any_facts(draw: st.DrawFn) -> Facts:
     offered = draw(st.booleans())
     return Facts(
         month=month,
-        total=draw(AMOUNTS),
-        budget=draw(AMOUNTS),
+        total=total,
+        budget=budget,
         income=draw(AMOUNTS),
         verdict=draw(st.sampled_from(Verdict)),
         over_months=over,
         over_month_count=None if truncated else n,
-        last_over_month=None if truncated or n == 0 else month.plus(n - 1),
+        last_over_month=None if truncated or n == 0 else month.plus(start + n - 1),
         back_in_budget=None
         if n == 0
-        else draw(st.none() | st.integers(0, 5).map(lambda k: month.plus(n + k))),
+        else draw(st.none() | st.integers(0, 5).map(lambda k: month.plus(start + n + k))),
         buffer_balance=draw(AMOUNTS),
         buffer_covered=draw(st.booleans()),
         all_prepared=n > 0 and draw(st.booleans()),
@@ -348,7 +365,7 @@ def any_facts(draw: st.DrawFn) -> Facts:
 
 @settings(max_examples=EXAMPLES, deadline=None)
 @given(facts=any_facts())
-def test_AI_11_the_fallback_always_passes_the_check(facts: Facts) -> None:
+def test_AI_20_the_fallback_always_passes_the_check(facts: Facts) -> None:
     text = fallback_text(facts)
     assert check(text, allowed_of(facts)) is None, check(text, allowed_of(facts))
     lines = text.split("\n")
@@ -359,12 +376,13 @@ def test_AI_11_the_fallback_always_passes_the_check(facts: Facts) -> None:
 
 @settings(max_examples=EXAMPLES, deadline=None)
 @given(facts=any_facts())
-def test_AI_12_the_model_gets_exactly_the_allowed_numbers_and_months(facts: Facts) -> None:
+def test_AI_21_the_model_gets_exactly_the_allowed_numbers_and_months(facts: Facts) -> None:
     allowed = allowed_of(facts)
     sent = extract(facts_text(facts))
     years = {Decimal(m.year + 543) for m in allowed.months}
-    assert set(sent.numbers) <= allowed.numbers | years
-    assert allowed.numbers <= set(sent.numbers)
+    assert set(sent.numbers) <= allowed.numbers | allowed.counts | years
+    assert allowed.numbers | allowed.counts <= set(sent.numbers)
+    assert allowed.over_by | allowed.reductions <= allowed.numbers
     assert {(m.month, m.year) for m in sent.months} == {
         (m.month, m.year + 543) for m in allowed.months
     }
@@ -372,7 +390,7 @@ def test_AI_12_the_model_gets_exactly_the_allowed_numbers_and_months(facts: Fact
     assert sent.stray == []
 
 
-def test_AI_12_the_model_input_holds_numbers_months_and_flags_only() -> None:
+def test_AI_21_the_model_input_holds_numbers_months_and_flags_only() -> None:
     for facts in (MON, OVER, CONSOLIDATE):
         data = model_input(facts)
         assert set(data) == {
@@ -406,7 +424,7 @@ def _leaves(value: object) -> list[object]:
 # --- Logs ------------------------------------------------------------------------------------
 
 
-def test_AI_13_the_log_says_the_reason_and_never_the_prompt_or_the_text(
+def test_AI_22_the_log_says_the_reason_and_never_the_prompt_or_the_text(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.DEBUG)

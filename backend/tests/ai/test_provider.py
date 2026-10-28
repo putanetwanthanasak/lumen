@@ -1,6 +1,6 @@
-"""AI-06, AI-14 and AI-15: the writer that calls the model (app.ai.provider), with a
+"""AI-15, AI-23 and AI-24: the writer that calls the model (app.ai.provider), with a
 fake SDK client. No test reaches the network: tests/conftest.py fails any test that
-builds the real Anthropic client (AI-14)."""
+builds the real Anthropic client (AI-23)."""
 
 import logging
 from dataclasses import dataclass, field
@@ -72,7 +72,7 @@ def writer(sdk: FakeSdk, model: str = DEFAULT_MODEL) -> AnthropicWriter:
     return AnthropicWriter(SecretStr(f"  {KEY} "), model, client=sdk)
 
 
-# --- AI-06: no key, no writer ----------------------------------------------------------
+# --- AI-15: no key, no writer ----------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -85,11 +85,11 @@ def writer(sdk: FakeSdk, model: str = DEFAULT_MODEL) -> AnthropicWriter:
         settings(KEY, provider="gemini"),
     ],
 )
-def test_AI_06_no_key_or_another_provider_gives_no_writer(config: Settings) -> None:
+def test_AI_15_no_key_or_another_provider_gives_no_writer(config: Settings) -> None:
     assert summary_writer(config) is None
 
 
-def test_AI_06_a_key_gives_the_anthropic_writer_without_building_the_client() -> None:
+def test_AI_15_a_key_gives_the_anthropic_writer_without_building_the_client() -> None:
     made = summary_writer(settings(KEY, provider="Anthropic"))
     assert isinstance(made, AnthropicWriter)
     assert made.model == DEFAULT_MODEL  # claude-haiku-5-5 when LLM_MODEL_PLANNER is unset
@@ -100,20 +100,20 @@ def test_AI_06_a_key_gives_the_anthropic_writer_without_building_the_client() ->
     blank = summary_writer(settings(KEY, model="  "))
     assert blank is not None
     assert blank.model == DEFAULT_MODEL
-    # Building the writer built no client: the guard (AI-14) would have failed the test.
+    # Building the writer built no client: the guard (AI-23) would have failed the test.
 
 
-# --- AI-14: the real client can never be built in a test ------------------------------
+# --- AI-23: the real client can never be built in a test ------------------------------
 
 
-def test_AI_14_building_the_real_client_fails_the_test_loudly() -> None:
+def test_AI_23_building_the_real_client_fails_the_test_loudly() -> None:
     with pytest.raises(pytest.fail.Exception, match="real Anthropic client"):
         anthropic.Anthropic(api_key=KEY)
     with pytest.raises(pytest.fail.Exception, match="real Anthropic client"):
         anthropic.AsyncAnthropic(api_key=KEY)
 
 
-def test_AI_14_the_real_writer_cannot_reach_the_network_in_a_test() -> None:
+def test_AI_23_the_real_writer_cannot_reach_the_network_in_a_test() -> None:
     real = summary_writer(settings(KEY))
     assert real is not None
     # A BaseException: the writer's `except Exception` does not turn it into an error.
@@ -121,10 +121,10 @@ def test_AI_14_the_real_writer_cannot_reach_the_network_in_a_test() -> None:
         real.write(system="s", facts="f")
 
 
-# --- AI-15: one request, no retries, text by block type, errors mapped ----------------
+# --- AI-24: one request, no retries, text by block type, errors mapped ----------------
 
 
-def test_AI_15_one_request_with_the_model_timeout_and_no_retries() -> None:
+def test_AI_24_one_request_with_the_model_timeout_and_no_retries() -> None:
     sdk = FakeSdk(answer=reply(("thinking", ""), ("text", "บรรทัดแรก\n"), ("text", "บรรทัดสอง")))
     assert writer(sdk, "claude-haiku-5-5").write(system="SYSTEM", facts="FACTS") == (
         "บรรทัดแรก\nบรรทัดสอง"
@@ -169,7 +169,7 @@ def test_AI_15_one_request_with_the_model_timeout_and_no_retries() -> None:
         (RuntimeError("anything else"), WriterError),
     ],
 )
-def test_AI_15_sdk_errors_become_timeout_or_api_error_and_the_client_is_closed(
+def test_AI_24_sdk_errors_become_timeout_or_api_error_and_the_client_is_closed(
     error: Exception, raised: type[Exception]
 ) -> None:
     sdk = FakeSdk(error=error)
@@ -188,12 +188,12 @@ def test_AI_15_sdk_errors_become_timeout_or_api_error_and_the_client_is_closed(
         reply(("text", "  \n ")),
     ],
 )
-def test_AI_15_a_refusal_a_cut_off_or_an_empty_reply_is_an_api_error(answer: Any) -> None:
+def test_AI_24_a_refusal_a_cut_off_or_an_empty_reply_is_an_api_error(answer: Any) -> None:
     with pytest.raises(WriterError):
         writer(FakeSdk(answer=answer)).write(system="s", facts="f")
 
 
-def test_AI_15_an_error_never_carries_the_key_or_the_prompt(
+def test_AI_24_an_error_never_carries_the_key_or_the_prompt(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.DEBUG)

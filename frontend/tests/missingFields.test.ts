@@ -2,7 +2,7 @@
  * UI-39: a field the backend does not send yet never crashes a screen (src/apiFields.ts).
  * main's backend leaves out monthly_reduction (the plan's estimate) and platform_name
  * (installment lines); the mock sends them all. An assistant summary without text
- * counts as failed, and the bubble shows the plan's own words (AI-20).
+ * counts as failed, and the bubble shows the plan's own words (AI-29).
  * Home no longer needs a month row's over_by (UI-42), so the mock no longer sends it. A reader gives null for such a field, with one console warning
  * per answer and field. It never guesses a value and never changes the answer it was
  * given, and Home, drawn from such answers, leaves out only what needs the field.
@@ -147,7 +147,7 @@ test("UI_39_platform_name_absent_reads_as_null_and_text_or_null_is_kept", () => 
 test("UI_39_an_assistant_summary_without_text_counts_as_failed", () => {
   const [, warned] = withWarnings(() => {
     // No text, or only spaces: a failed request (useLoad turns the throw into it), so
-    // the bubble shows the plan's own words (AI-20), never an empty bubble.
+    // the bubble shows the plan's own words (AI-29), never an empty bubble.
     for (const text of [undefined, null, 42, "", "  \n "]) {
       assert.throws(() => readAssistantSummary({ text, source: "ai", reason: "ok" } as unknown as AssistantSummaryOut), /no text/);
     }

@@ -246,13 +246,13 @@ def test_KD_05_platform_names_are_fictional_and_one_item_is_unnamed(
     }
 
 
-# --- AI-16: python -m demo.kidnee ai-check, with a fake model ----------------------------
+# --- AI-25: python -m demo.kidnee ai-check, with a fake model ----------------------------
 
 
-def test_AI_16_ai_check_asks_once_per_persona_and_prints_source_reason_and_text(
+def test_AI_25_ai_check_asks_once_per_persona_and_prints_source_reason_and_text(
     kidnee: Engine, first_seed: dict[str, list[str]]
 ) -> None:
-    writer = FakeWriter(text="ทุกเดือนอยู่ในงบ\nกันชนช่วยได้")
+    writer = FakeWriter(text="ค่อย ๆ ดูแลค่างวดไปด้วยกัน\nกันชนช่วยได้")
     report = ai_check(kidnee, day=DAY, writer=writer)
     assert list(report) == list(PERSONAS)
     assert len(writer.calls) == 3  # one call per persona, never cached across them
@@ -261,12 +261,12 @@ def test_AI_16_ai_check_asks_once_per_persona_and_prints_source_reason_and_text(
             "source: ai",
             "reason: ok",
             "text:",
-            "  ทุกเดือนอยู่ในงบ",
+            "  ค่อย ๆ ดูแลค่างวดไปด้วยกัน",
             "  กันชนช่วยได้",
         ]
 
 
-def test_AI_16_ai_check_shows_why_the_check_refused_the_model_text(
+def test_AI_25_ai_check_shows_why_the_check_refused_the_model_text(
     kidnee: Engine, first_seed: dict[str, list[str]]
 ) -> None:
     report = ai_check(kidnee, day=DAY, writer=FakeWriter(text="ค่างวดรวม 123.45 บาท"))
@@ -280,7 +280,7 @@ def test_AI_16_ai_check_shows_why_the_check_refused_the_model_text(
     ]
 
 
-def test_AI_16_ai_check_without_a_key_says_so_and_never_prints_a_key(
+def test_AI_25_ai_check_without_a_key_says_so_and_never_prints_a_key(
     kidnee: Engine, first_seed: dict[str, list[str]]
 ) -> None:
     report = ai_check(kidnee, day=DAY, writer=None)

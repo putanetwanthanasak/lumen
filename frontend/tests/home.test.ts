@@ -202,7 +202,7 @@ test("UI_33_ai_bubble_loading_and_the_first_line", () => {
     first: "หนึ่ง",
     rest: ["สอง", "สาม"],
   });
-  // The Demo panel's states: slow (loading) and failing (the plan's own words, AI-20).
+  // The Demo panel's states: slow (loading) and failing (the plan's own words, AI-29).
   scene("ai_slow");
   assert.equal(call("GET", "/assistant/summary").delayMs, SLOW_SUMMARY_MS);
   scene("ai_failing");

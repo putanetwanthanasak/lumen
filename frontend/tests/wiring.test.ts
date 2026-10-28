@@ -9,7 +9,7 @@
  *   and shows only while the demo endpoints are on.
  * UI-50: the build calls the API (no mock), with the persona's header; a 422 names its
  *   fields next to the form's fields; SETTINGS_REQUIRED is recognised; the assistant's
- *   summary comes from GET /assistant/summary (Session 18, AI-18).
+ *   summary comes from GET /assistant/summary (Session 18, AI-27).
  * UI-51 (critical): no money arithmetic in screen code: amounts are compared, never
  *   added, subtracted, multiplied or divided outside src/money.ts and the mock.
  */
@@ -299,7 +299,7 @@ test("UI_50_a_blank_app_name_is_sent_as_null", () => {
   }
 });
 
-test("UI_50_AI_18_the_assistant_summary_is_the_apis_answer_as_it_comes", async () => {
+test("UI_50_AI_27_the_assistant_summary_is_the_apis_answer_as_it_comes", async () => {
   for (const sent of [
     { text: "หนึ่ง\nสอง", source: "ai", reason: "ok" },
     { text: "สาม\nสี่", source: "fallback", reason: "grounding_failed" },

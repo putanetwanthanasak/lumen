@@ -9,7 +9,7 @@ S2: two roles, as in production. ``engine`` / ``db_session`` connect as the app 
 (TEST_MIGRATION_DATABASE_URL): migrations, clean-up, and tests that must drop a
 guard to show the next layer catches the bad state.
 
-AI-14: no test may build the real Anthropic client (it would reach the network, with
+AI-23: no test may build the real Anthropic client (it would reach the network, with
 a real key if one is in .env; CI has none). The summary tests use a fake writer.
 """
 
@@ -100,7 +100,7 @@ def owner_session(migration_engine: Engine) -> Iterator[Session]:
 
 @pytest.fixture(autouse=True)
 def no_real_model_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    """AI-14: building the real Anthropic client fails the test loudly. pytest.fail
+    """AI-23: building the real Anthropic client fails the test loudly. pytest.fail
     raises a BaseException, so the app's `except Exception` around the model call
     cannot swallow it."""
 

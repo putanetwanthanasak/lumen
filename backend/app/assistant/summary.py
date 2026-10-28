@@ -169,7 +169,7 @@ def _over(m: OverMonth) -> dict[str, Any]:
 
 def model_input(facts: Facts) -> dict[str, Any]:
     """The facts as the model gets them, formatted as the screens show them. Every
-    value here, and nothing else, is in allowed_of (AI-12)."""
+    value here, and nothing else, is in allowed_of (AI-21)."""
     this: dict[str, Any] = {
         "month": thai_month(facts.month),
         "total": baht(facts.total),
@@ -209,24 +209,36 @@ def model_input(facts: Facts) -> dict[str, Any]:
 def allowed_of(facts: Facts) -> Allowed:
     """Every number and month model_input sends, for the grounding check."""
     amounts = [facts.total, facts.budget, facts.income, facts.buffer_balance]
+    over_by = [m.over_by for m in facts.over_months]
     if facts.total > facts.budget:
-        amounts.append(facts.total - facts.budget)
+        over_by.append(facts.total - facts.budget)
+    amounts += over_by
     for m in facts.over_months:
-        amounts += [m.total, m.over_by]
+        amounts.append(m.total)
         if m.state is not PreparedState.NOT_PREPARED:
             amounts.append(m.prepared)
         if m.state is PreparedState.PARTLY_PREPARED:
             amounts.append(m.remaining_gap)
     if not facts.buffer_covered:
         amounts.append(facts.still_short)
-    if facts.monthly_reduction is not None:
-        amounts.append(facts.monthly_reduction)
+    reductions = [] if facts.monthly_reduction is None else [facts.monthly_reduction]
+    amounts += reductions
     counts = [] if facts.over_month_count is None else [Decimal(facts.over_month_count)]
     months = {facts.month, *(m.month for m in facts.over_months)}
     for month in (facts.last_over_month, facts.back_in_budget):
         if month is not None:
             months.add(month)
-    return Allowed(frozenset(amounts + counts), frozenset(months), facts.consolidation_offered)
+    return Allowed(
+        numbers=frozenset(amounts),
+        counts=frozenset(counts),
+        months=frozenset(months),
+        over_by=frozenset(over_by),
+        reductions=frozenset(reductions),
+        consolidation_offered=facts.consolidation_offered,
+        over_now=facts.total > facts.budget,
+        any_over=bool(facts.over_months),
+        above_one_third=facts.verdict is Verdict.RED,
+    )
 
 
 def facts_text(facts: Facts) -> str:
@@ -270,7 +282,7 @@ def _buffer_line(facts: Facts) -> str:
 
 def fallback_text(facts: Facts) -> str:
     """The deterministic summary: at most 4 lines, every number from the facts, so it
-    always passes the grounding check (AI-11)."""
+    always passes the grounding check (AI-20)."""
     over = facts.total > facts.budget
     this = f"เดือน {thai_month(facts.month)} ค่างวดรวม {baht(facts.total)} " + (
         f"เกินงบ {baht(facts.total - facts.budget)}" if over else f"อยู่ในงบ {baht(facts.budget)}"
@@ -304,7 +316,7 @@ class Summary:
 
 class SummaryCache:
     """In memory, per user: the last answer and the key it was for. One lock per user,
-    so two reloads at once ask the model once (AI-09)."""
+    so two reloads at once ask the model once (AI-18)."""
 
     def __init__(self) -> None:
         self._guard = threading.Lock()

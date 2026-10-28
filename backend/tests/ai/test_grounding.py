@@ -1,9 +1,12 @@
-"""AI-01 to AI-05 and AI-10: the grounding check on the model's text (app.ai.grounding).
+"""AI-10 to AI-14 and AI-19: the grounding check on the model's text (app.ai.grounding).
 Pure: no database, no model. Every number and month in the text must be an input
 value, in any format the screens display; the wording rules hold; anything else is
 refused, so the caller shows the fallback."""
 
+import re
+from dataclasses import replace
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from hypothesis import given, settings
@@ -28,12 +31,69 @@ THAI_DIGITS = str.maketrans("0123456789", "๐๑๒๓๔๕๖๗๘๙")
 
 
 def allowed(
-    *numbers: str, months: tuple[Month, ...] = (OCT_2026,), offered: bool = False
+    *numbers: str,
+    counts: tuple[int, ...] = (),
+    months: tuple[Month, ...] = (OCT_2026,),
+    over_by: tuple[str, ...] = (),
+    reductions: tuple[str, ...] = (),
+    offered: bool = False,
+    over_now: bool = False,
+    any_over: bool = False,
+    red: bool = False,
 ) -> Allowed:
-    return Allowed(frozenset(Decimal(n) for n in numbers), frozenset(months), offered)
+    return Allowed(
+        numbers=frozenset(Decimal(n) for n in (*numbers, *over_by, *reductions)),
+        counts=frozenset(Decimal(c) for c in counts),
+        months=frozenset(months),
+        over_by=frozenset(Decimal(n) for n in over_by),
+        reductions=frozenset(Decimal(n) for n in reductions),
+        consolidation_offered=offered,
+        over_now=over_now,
+        any_over=any_over,
+        above_one_third=red,
+    )
 
 
-BASE = allowed("3500.00", "5000.00", "1500.00", "2", months=(OCT_2026, NOV_2026, DEC_2026))
+# This month in budget, 2 months over later (from Nov), back in budget in Dec.
+BASE = allowed(
+    "3500.00",
+    "5000.00",
+    "1500.00",
+    counts=(2,),
+    months=(OCT_2026, NOV_2026, DEC_2026),
+    any_over=True,
+)
+# Over budget from this month (Oct) by 1,500.00; the bank's option offered.
+OVER_NOW = allowed(
+    "6500.00",
+    "5000.00",
+    counts=(2,),
+    months=(OCT_2026, NOV_2026, DEC_2026),
+    over_by=("1500.00",),
+    reductions=("4130.12",),
+    offered=True,
+    over_now=True,
+    any_over=True,
+)
+# Every month in budget.
+ALL_IN = allowed("3500.00", "5000.00", counts=(0,), months=(OCT_2026,))
+# Brand names (rule 5), built from parts so this file does not hold them either.
+BRANDS = [
+    a + b
+    for a, b in (
+        ("กสิ", "กร"),
+        ("K", "Bank"),
+        ("KB", "TG"),
+        ("Kasi", "korn"),
+        ("Sho", "pee"),
+        ("K ", "PLUS"),
+        ("K", "PLUS"),
+        ("ช้อป", "ปี้"),
+        ("ช็อป", "ปี้"),
+        ("เคแบ", "งก์"),
+        ("เคพ", "ลัส"),
+    )
+]
 GOOD = (
     "เดือน ต.ค. 2569 ค่างวดรวม 3,500.00 บาท อยู่ในงบ 5,000.00 บาท\n"
     "มี 2 เดือนที่ค่างวดเกินงบ กลับมาอยู่ในงบเดือน ธ.ค. 2569\n"
@@ -46,10 +106,10 @@ def failed(text: str, allow: Allowed = BASE) -> Check | None:
     return None if found is None else found.check
 
 
-# --- AI-01: grounded text passes -----------------------------------------------------
+# --- AI-10: grounded text passes -----------------------------------------------------
 
 
-def test_AI_01_grounded_text_passes() -> None:
+def test_AI_10_grounded_text_passes() -> None:
     assert check(GOOD, BASE) is None
 
 
@@ -63,20 +123,21 @@ def test_AI_01_grounded_text_passes() -> None:
         "เดือนตุลาคม 2569 ถึงเดือน พ.ย. พ.ศ. 2569",  # a full name, and พ.ศ.
         "ตั้งแต่ ต.ค. ปีนี้",  # a month without a year: its month is in the input
         "ปี 2569",  # a Buddhist year of an input month
-        "เกิน 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ",  # the fixed phrase of the L65 guidance
+        "ธปท. แนะนำว่าไม่ควรเกิน 1 ใน 3 ของรายได้",  # the fixed phrase of the L65 guidance
+        "มี 2 เดือนที่เกินงบ",  # a count, as "N เดือน"
         "ภาพรวมหนี้ของคุณดูได้ที่หน้าหลัก",  # the debt overview, not consolidation
     ],
 )
-def test_AI_01_every_display_format_of_an_input_value_passes(text: str) -> None:
+def test_AI_10_every_display_format_of_an_input_value_passes(text: str) -> None:
     assert check(text, BASE) is None, check(text, BASE)
 
 
-def test_AI_01_consolidation_as_an_option_the_bank_considers_passes() -> None:
+def test_AI_10_consolidation_as_an_option_the_bank_considers_passes() -> None:
     text = "ถ้าสนใจรวมหนี้ ธนาคารจะติดต่อกลับเพื่อพิจารณา"
     assert check(text, allowed(offered=True)) is None
 
 
-# --- AI-02, AI-03: a number or month not in the input --------------------------------
+# --- AI-11, AI-12: a number or month not in the input --------------------------------
 
 
 @pytest.mark.parametrize(
@@ -88,15 +149,23 @@ def test_AI_01_consolidation_as_an_option_the_bank_considers_passes() -> None:
         "ค่างวด๓,๖๐๐บาท",  # Thai digits, wrong
     ],
 )
-def test_AI_02_a_wrong_number_is_refused(text: str) -> None:
+def test_AI_11_a_wrong_number_is_refused(text: str) -> None:
     assert failed(text) is Check.NUMBER_NOT_IN_INPUT
 
 
 @pytest.mark.parametrize(
     ("text", "why"),
     [
-        ("ค่างวดรวม 3,500.00 บาท ลดได้ 10%", Check.NUMBER_NOT_IN_INPUT),
-        ("ค่างวดรวม 3,500.00 บาท เกินงบ 3 เดือน", Check.NUMBER_NOT_IN_INPUT),
+        ("ค่างวดรวม 3,500.00 บาท คิดเป็น 10%", Check.NUMBER_NOT_IN_INPUT),
+        ("ค่างวดรวม 3,500.00 บาท มี 3 เดือนที่เกินงบ", Check.NUMBER_NOT_IN_INPUT),
+        ("กันชนตอนนี้ 2.00 บาท", Check.NUMBER_NOT_IN_INPUT),  # a count, as an amount
+        ("กันชนตอนนี้ 2 บาท", Check.NUMBER_NOT_IN_INPUT),  # a count, not before เดือน
+        ("ยอด 2,569.00 บาท", Check.NUMBER_NOT_IN_INPUT),  # a year, as an amount
+        ("ยอด 2,569 บาท", Check.NUMBER_NOT_IN_INPUT),
+        ("ตอนนี้ผ่อนอยู่สามรายการ", Check.NUMBER_IN_WORDS),
+        ("สูงกว่างบเกือบสองเท่า", Check.NUMBER_IN_WORDS),
+        ("เหลือที่ว่างอีกพันห้าร้อย", Check.NUMBER_IN_WORDS),
+        ("ลดลงได้ร้อยละสิบ", Check.NUMBER_IN_WORDS),
         ("ผ่อน 12 งวด", Check.NUMBER_NOT_IN_INPUT),
         ("ส่วนต่าง -1,500.00 บาท", Check.NUMBER_NOT_IN_INPUT),  # negative: never an input
         ("เดือน ม.ค. 2570", Check.MONTH_NOT_IN_INPUT),
@@ -112,23 +181,23 @@ def test_AI_02_a_wrong_number_is_refused(text: str) -> None:
         ("ยอดหนึ่งหมื่นบาท", Check.NUMBER_IN_WORDS),
     ],
 )
-def test_AI_03_an_extra_number_month_or_year_is_refused(text: str, why: Check) -> None:
+def test_AI_12_an_extra_number_month_or_year_is_refused(text: str, why: Check) -> None:
     assert failed(text) is why
 
 
-# --- AI-04: dashes (rule 10) -----------------------------------------------------------
+# --- AI-13: dashes (rule 10) -----------------------------------------------------------
 
 
 @pytest.mark.parametrize("dash", ["\u2014", "\u2013", "\u2015", "\u2012", "\u2e3a", "\u2e3b"])
-def test_AI_04_an_em_dash_or_a_look_alike_is_refused(dash: str) -> None:
+def test_AI_13_an_em_dash_or_a_look_alike_is_refused(dash: str) -> None:
     assert failed(f"ค่างวดรวม 3,500.00 บาท {dash} อยู่ในงบ") is Check.DASH
 
 
-# --- AI-05: wording rules --------------------------------------------------------------
+# --- AI-14: wording rules --------------------------------------------------------------
 
 
 @pytest.mark.parametrize("phrase", BANNED)
-def test_AI_05_every_banned_phrase_is_refused(phrase: str) -> None:
+def test_AI_14_every_banned_phrase_is_refused(phrase: str) -> None:
     assert failed(f"ค่างวดรวม 3,500.00 บาท {phrase}") is Check.BANNED_PHRASE
 
 
@@ -141,8 +210,13 @@ def test_AI_05_every_banned_phrase_is_refused(phrase: str) -> None:
         ("กู้เงินมาจ่ายก่อนได้", Check.BANNED_PHRASE),
         ("ธนาคารอนุมัติการรวมหนี้แล้ว พิจารณาแล้ว", Check.BANNED_PHRASE),  # L71
         ("ธปท. กำหนดว่าไม่ควรเกิน 1 ใน 3 ของรายได้ ตามที่แนะนำ", Check.BANNED_PHRASE),
-        ("เปิดแอปกสิกรเพื่อดู", Check.BANNED_PHRASE),  # rule 5
-        ("ดูใน KBank ได้เลย", Check.NOT_THAI),  # rule 5, and English
+        (f"เปิดแอป{BRANDS[0]}เพื่อดู", Check.BANNED_PHRASE),  # rule 5
+        (f"ดูใน {BRANDS[1]} ได้เลย", Check.NOT_THAI),  # rule 5, and English
+        ("ลองแบ่งเงินไปลงทุน", Check.BANNED_PHRASE),  # 05 AI-06: no investing
+        ("ลองปลดหนี้ก้อนเล็กก่อน", Check.BANNED_PHRASE),  # L69: no payoff order
+        ("เคลียร์หนี้ให้หมดเร็ว ๆ", Check.BANNED_PHRASE),
+        ("ลองรวบหนี้กับธนาคาร", Check.CONSOLIDATION_NOT_OFFERED),  # L70: a synonym
+        ("ลองรีไฟแนนซ์ดู", Check.CONSOLIDATION_NOT_OFFERED),
         ("Your total is fine", Check.NOT_THAI),
         ("ค่างวด **3,500.00** บาท", Check.MARKUP),
         ("ค่างวด\u200b3,500.00 บาท", Check.CONTROL_CHARACTER),  # zero-width space
@@ -157,15 +231,31 @@ def test_AI_05_every_banned_phrase_is_refused(phrase: str) -> None:
         ("หนึ่ง\nสอง\nสาม\nสี่\nห้า", Check.TOO_MANY_LINES),
     ],
 )
-def test_AI_05_wording_rules(text: str, why: Check | None) -> None:
+def test_AI_14_wording_rules(text: str, why: Check | None) -> None:
     assert failed(text) is why
 
 
-def test_AI_05_consolidation_must_say_the_bank_considers_it() -> None:
+def test_AI_14_no_brand_name_is_written_out_in_backend_code_or_tests() -> None:
+    """Rule 5: the block list and the tests build the names from parts."""
+    root = Path(__file__).resolve().parents[2]
+    # Whole words only: "MockBankAccountProvider" is not a name.
+    names = "|".join(re.escape(n).replace(r"\ ", r"\s*") for n in BRANDS)
+    pattern = re.compile(f"(?<![A-Za-z])(?:{names})(?![A-Za-z])", re.I)
+    hits = [
+        f"{path.relative_to(root)}: {found.group(0)}"
+        for folder in ("app", "demo", "tests")
+        for path in sorted((root / folder).rglob("*"))
+        if path.suffix in {".py", ".md", ".json", ".toml"}
+        for found in pattern.finditer(path.read_text(encoding="utf-8"))
+    ]
+    assert hits == []
+
+
+def test_AI_14_consolidation_must_say_the_bank_considers_it() -> None:
     assert failed("รวมหนี้แล้วค่างวดลดลง", allowed(offered=True)) is Check.CONSOLIDATION_WORDING
 
 
-def test_AI_05_the_first_broken_rule_is_reported_with_its_token() -> None:
+def test_AI_14_the_first_broken_rule_is_reported_with_its_token() -> None:
     found = check("โปะหนี้ 9,999.00 บาท", BASE)
     assert found is not None
     assert (found.check, found.token) == (Check.BANNED_PHRASE, "โปะ")
@@ -174,7 +264,59 @@ def test_AI_05_the_first_broken_rule_is_reported_with_its_token() -> None:
     assert (found.check, found.token) == (Check.NUMBER_NOT_IN_INPUT, "3600.00")
 
 
-# --- AI-10: the extractor finds every number and month, in every display format ------
+# --- AI-30: budget claims and labelled amounts must match the facts -----------------
+
+
+@pytest.mark.parametrize(
+    ("text", "allow"),
+    [
+        # Over budget from this month: "every month is within budget" is wrong.
+        ("เดือน ต.ค. 2569 ค่างวดรวม 6,500.00 บาท\nทุกเดือนอยู่ในงบ", OVER_NOW),
+        ("ค่างวดรวม 6,500.00 บาท อยู่ในงบ 5,000.00 บาท", OVER_NOW),
+        ("ไม่มีเดือนไหนเกินงบ", OVER_NOW),
+        ("ทุกเดือนยังอยู่ในงบ", BASE),  # months over later
+        ("เดือนนี้เกินงบ", BASE),  # this month is in budget
+        ("ค่างวดรวม 3,500.00 บาท เกินงบ", ALL_IN),  # nothing is over budget
+        ("บางเดือนเกิน 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ", BASE),  # verdict is not RED
+        # A real amount with the wrong label.
+        ("เกินงบ 5,000.00 บาท", OVER_NOW),  # the budget, not the amount over it
+        ("เกินงบ 2 เดือน", allowed("5000.00", counts=(3,), any_over=True)),  # not the count
+        (
+            "ถ้าสนใจรวมหนี้ ค่างวดอาจลดลงเดือนละ 1,500.00 บาท ธนาคารจะติดต่อกลับเพื่อพิจารณา",
+            OVER_NOW,  # 1,500.00 is the amount over budget, not the reduction
+        ),
+        ("ค่างวดลดลง 3,500.00 บาท", BASE),  # no reduction in the facts
+    ],
+)
+def test_AI_30_a_claim_the_facts_do_not_support_is_refused(text: str, allow: Allowed) -> None:
+    assert failed(text, allow) is Check.CLAIM_NOT_IN_INPUT
+
+
+@pytest.mark.parametrize(
+    ("text", "allow"),
+    [
+        (
+            "เดือน ต.ค. 2569 ค่างวดรวม 6,500.00 บาท เกินงบ 1,500.00 บาท\n"
+            "มี 2 เดือนที่เกินงบ กลับมาอยู่ในงบเดือน ธ.ค. 2569",
+            OVER_NOW,
+        ),
+        ("ค่างวดรวม 6,500.00 บาท ไม่อยู่ในงบ", OVER_NOW),
+        ("เกินงบ 2 เดือน", OVER_NOW),  # the count, as "N เดือน"
+        (
+            "ถ้าสนใจรวมหนี้ ค่างวดอาจลดลงเดือนละ 4,130.12 บาท ธนาคารจะติดต่อกลับเพื่อพิจารณา",
+            OVER_NOW,
+        ),
+        ("เดือนนี้อยู่ในงบ แต่ ธ.ค. 2569 เกินงบ", BASE),
+        ("ทุกเดือนอยู่ในงบ และไม่เกินงบเลย", ALL_IN),
+        ("ธปท. แนะนำว่าไม่ควรเกิน 1 ใน 3 ของรายได้", ALL_IN),
+        ("บางเดือนเกิน 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ", replace(BASE, above_one_third=True)),
+    ],
+)
+def test_AI_30_a_claim_the_facts_support_passes(text: str, allow: Allowed) -> None:
+    assert check(text, allow) is None, check(text, allow)
+
+
+# --- AI-19: the extractor finds every number and month, in every display format ------
 
 EXAMPLES = 1500  # summed into the progress log's Hypothesis count
 
@@ -200,7 +342,7 @@ def display_formats(value: Decimal) -> list[str]:
 
 @settings(max_examples=EXAMPLES, deadline=None)
 @given(value=AMOUNTS, pick=st.integers(min_value=0, max_value=7), before=FILLER, after=FILLER)
-def test_AI_10_every_display_format_of_an_amount_is_read_as_its_value(
+def test_AI_19_every_display_format_of_an_amount_is_read_as_its_value(
     value: Decimal, pick: int, before: str, after: str
 ) -> None:
     forms = display_formats(value)
@@ -220,7 +362,7 @@ def test_AI_10_every_display_format_of_an_amount_is_read_as_its_value(
     thai_digits=st.booleans(),
     before=FILLER,
 )
-def test_AI_10_a_thai_month_and_buddhist_year_is_read_as_that_month(
+def test_AI_19_a_thai_month_and_buddhist_year_is_read_as_that_month(
     index: int, full: bool, era: bool, thai_digits: bool, before: str
 ) -> None:
     month = Month(index)
@@ -237,7 +379,7 @@ def test_AI_10_a_thai_month_and_buddhist_year_is_read_as_that_month(
 
 @settings(max_examples=EXAMPLES, deadline=None)
 @given(shown=AMOUNTS, given_value=AMOUNTS, pick=st.integers(min_value=0, max_value=7))
-def test_AI_10_an_amount_passes_exactly_when_it_equals_an_input(
+def test_AI_19_an_amount_passes_exactly_when_it_equals_an_input(
     shown: Decimal, given_value: Decimal, pick: int
 ) -> None:
     forms = display_formats(shown)

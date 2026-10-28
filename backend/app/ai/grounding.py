@@ -6,10 +6,16 @@ must be one of the input values, in any format the screens or alerts display
 year on its own). Anything in doubt rejects the text: the caller then shows the
 fallback template, so a false rejection only costs the AI wording, never a number.
 
+Numbers are also tied to what they may mean: a count only as "N เดือน", a Buddhist
+year only as four bare digits, and the amount after "เกินงบ" or "ลดลง" only an
+over-budget amount or the consolidation's reduction. Claims about the budget must
+match the facts: no "every month is within budget" while a month is over, and so on.
+It cannot prove every sentence true; it refuses the wrong claims we know to look for.
+
 The wording rules come from the product rules: no prepaying or closing early (L69),
-no more debt, consolidation only as an option the bank considers (L71), the third of
-income is what the Bank of Thailand recommends, never "requires" (L65), no em dashes
-(rule 10) and no brand names (rule 5).
+no more debt or investing, consolidation only as an option the bank considers (L71),
+the third of income is what the Bank of Thailand recommends, never "requires" (L65),
+no em dashes (rule 10) and no brand names (rule 5).
 """
 
 import re
@@ -52,9 +58,8 @@ MONTH_RE = re.compile(
 # Digit runs, commas only between runs, an optional decimal part, and a minus sign
 # (hyphen, minus or any dash) right before it, so "-1,500" is negative and never
 # matches an amount.
-NUMBER_RE = re.compile(
-    "(?P<sign>[-\u2212\u2010\u2011\u2012\u2013\u2014]?)" r"(?P<digits>\d+(?:,\d+)*(?:\.\d+)?)"
-)
+SIGNS = "-\u2212\u2010\u2011\u2012\u2013\u2014"
+NUMBER_RE = re.compile(f"(?P<sign>[{SIGNS}]?)" r"(?P<digits>\d+(?:,\d+)*(?:\.\d+)?)")
 GROUPED = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?")
 # The 1/3-of-income rule is a fixed phrase, not a number from the input (L65).
 ONE_THIRD_RE = re.compile(r"1\s*ใน\s*3")
@@ -82,7 +87,9 @@ BANNED = (
     "ชำระหมด",
     "จ่ายเพิ่ม",
     "ชำระเพิ่ม",
-    # Never suggest more debt.
+    "ปลดหนี้",
+    "เคลียร์",
+    # Never suggest more debt, or investing (05 AI-06).
     "กู้",
     "ยืม",
     "สินเชื่อ",
@@ -95,6 +102,10 @@ BANNED = (
     "กดเงินสด",
     "เบิกเงินสด",
     "รูดบัตร",
+    "ลงทุน",
+    "หุ้น",
+    "กองทุน",
+    "คริปโต",
     # Consolidation is never approved by anyone but the bank (L71).
     "อนุมัติ",
     "การันตี",
@@ -107,20 +118,32 @@ BANNED = (
     "กฎหมาย",
     "บังคับ",
     "ระเบียบ",
-    # Rule 5: no bank or shop brand, and nothing that sounds like an official service.
-    "กสิกร",
-    "เคแบงก์",
-    "เคพลัส",
-    "ช้อปปี้",
-    "ช็อปปี้",
+    # Rule 5: no bank or shop brand. Built from parts, so this file does not hold the
+    # names it forbids (as frontend/tests/guards.test.ts does).
+    *(a + b for a, b in (("กสิ", "กร"), ("เคแบ", "งก์"), ("เคพ", "ลัส"), ("ช้อป", "ปี้"), ("ช็อป", "ปี้"))),
 )
-# Consolidating, not "ภาพรวมหนี้" (the debt overview) or "ยอดรวมหนี้" (the total owed).
-CONSOLIDATION_RE = re.compile("(?<!ภาพ)(?<!ยอด)รวมหนี้")
-# Numbers in words: a magnitude anywhere, or a digit word right before a unit.
+# Consolidating, not "ภาพรวมหนี้" (the debt overview) or "ยอดรวมหนี้" (the total owed),
+# and its synonyms.
+CONSOLIDATION_RE = re.compile("(?<!ภาพ)(?<!ยอด)รวมหนี้|รวบหนี้|รีไฟแนนซ์")
+# Numbers in words: a magnitude or a percentage anywhere, a digit word next to ร้อย or
+# พัน ("ห้าร้อย", "พันห้า"), or a digit word right before a counted word.
+DIGIT_WORD = "(?:หนึ่ง|สอง|สาม|สี่|ห้า|หก|เจ็ด|แปด|เก้า|สิบ|ยี่|เอ็ด)"
 NUMBER_WORDS_RE = re.compile(
-    r"หมื่น|แสน|ล้าน|ครึ่ง|(?<!เรียบ)(?:หนึ่ง|สอง|สาม|สี่|ห้า|หก|เจ็ด|แปด|เก้า|สิบ|ยี่|เอ็ด|ร้อย|พัน)+"
-    r"\s*(?:เดือน|บาท|งวด|ปี|ครั้ง)"
+    r"หมื่น|แสน|ล้าน|ครึ่ง|ร้อยละ|เปอร์เซ็น"
+    rf"|{DIGIT_WORD}(?:ร้อย|พัน)|(?:ร้อย|พัน){DIGIT_WORD}"
+    rf"|(?<!เรียบ)(?:{DIGIT_WORD}|ร้อย|พัน)+"
+    r"\s*(?:เดือน|บาท|งวด|ปี|ครั้ง|รายการ|เท่า|ชิ้น|ส่วน|ก้อน|อย่าง|แอป|วัน|สัปดาห์)"
 )
+# Claims about the budget, checked against the facts.
+ALL_IN_BUDGET_RE = re.compile(r"ทุกเดือน(?:ยัง|ก็)?\s*อยู่ในงบ|ไม่มี(?:เดือน)?\S{0,8}?เกินงบ|ไม่เกินงบเลย")
+IN_BUDGET_RE = re.compile("(?<!กลับมา)(?<!ไม่)อยู่ในงบ")
+OVER_BUDGET_RE = re.compile("(?<!ไม่)เกินงบ")
+THIS_MONTH_OVER_RE = re.compile(r"เดือนนี้(?:ค่างวด(?:รวม)?)?(?:ก็)?\s*เกินงบ")
+ABOVE_THIRD_RE = re.compile(r"(?<!ไม่)(?<!ไม่ควร)เกิน\s*(?:1\s*ใน\s*3|หนึ่งในสาม)")
+# An amount right after these words must be one of these facts.
+SIGNED = f"[{SIGNS}]?" r"\d[\d,]*(?:\.\d+)?"
+OVER_BY_RE = re.compile(rf"เกินงบ(?:อยู่|ไป)?\s*(?P<num>{SIGNED})(?P<unit>\s*เดือน)?")
+REDUCTION_RE = re.compile(rf"ลด(?:ลง)?(?:ได้)?(?:อีก)?(?:เดือนละ)?\s*(?P<num>{SIGNED})")
 
 
 class Check(StrEnum):
@@ -137,6 +160,7 @@ class Check(StrEnum):
     CONSOLIDATION_NOT_OFFERED = "consolidation_not_offered"
     CONSOLIDATION_WORDING = "consolidation_wording"
     ONE_THIRD_WORDING = "one_third_wording"
+    CLAIM_NOT_IN_INPUT = "claim_not_in_input"
     NUMBER_IN_WORDS = "number_in_words"
     MONTH_NOT_IN_INPUT = "month_not_in_input"
     MALFORMED_NUMBER = "malformed_number"
@@ -152,12 +176,21 @@ class Failure:
 
 @dataclass(frozen=True)
 class Allowed:
-    """What the model was given: every amount and count, every month, and whether
-    consolidation was offered. A Buddhist year of a given month is also allowed."""
+    """What the model was given. `numbers` are amounts, in any display format;
+    `counts` are numbers of months, allowed only as "N เดือน"; a Buddhist year of a
+    given month is allowed as four bare digits. `over_by` are the amounts over budget
+    and `reductions` the consolidation's monthly reduction, for the amounts right after
+    "เกินงบ" and "ลดลง". The flags are what the budget claims may say."""
 
     numbers: frozenset[Decimal]
+    counts: frozenset[Decimal]
     months: frozenset[Month]
+    over_by: frozenset[Decimal]
+    reductions: frozenset[Decimal]
     consolidation_offered: bool
+    over_now: bool  # this month's total is above the budget
+    any_over: bool  # some month from now on is above the budget
+    above_one_third: bool  # some month is above a third of income (verdict RED)
 
 
 @dataclass(frozen=True)
@@ -168,11 +201,22 @@ class MonthMention:
 
 
 @dataclass(frozen=True)
+class NumberMention:
+    value: Decimal
+    bare: bool  # digits only, no comma or decimal part: may be a count or a year
+    months_after: bool  # "เดือน" right after it: a number of months
+
+
+@dataclass(frozen=True)
 class Extracted:
     months: list[MonthMention]
-    numbers: list[Decimal]
+    mentions: list[NumberMention]
     malformed: list[str]  # digits in a shape we never display ("35,00")
     stray: list[str]  # numerals \d does not read: "²", "½", "Ⅻ"
+
+    @property
+    def numbers(self) -> list[Decimal]:
+        return [n.value for n in self.mentions]
 
 
 def ascii_digits(text: str) -> str:
@@ -192,22 +236,31 @@ def extract(text: str) -> Extracted:
         for m in MONTH_RE.finditer(text)
     ]
     rest = ONE_THIRD_RE.sub(" ", MONTH_RE.sub(" ", text))
-    numbers: list[Decimal] = []
+    mentions: list[NumberMention] = []
     malformed: list[str] = []
     for m in NUMBER_RE.finditer(rest):
         digits = ascii_digits(m.group("digits"))
         if "," in digits and GROUPED.fullmatch(digits) is None:
             malformed.append(m.group(0))
             continue
-        try:
-            value = Decimal(digits.replace(",", ""))
-        except InvalidOperation:  # pragma: no cover - the pattern only admits digits
-            malformed.append(m.group(0))
-            continue
-        numbers.append(-value if m.group("sign") else value)
+        value = _decimal(digits)
+        bare = digits.isdigit()
+        after = re.match(r"\s*เดือน", rest[m.end() :]) is not None
+        mentions.append(NumberMention(-value if m.group("sign") else value, bare, after))
     left = NUMBER_RE.sub(" ", rest)
     stray = [c for c in left if unicodedata.numeric(c, None) is not None]
-    return Extracted(months, numbers, malformed, stray)
+    return Extracted(months, mentions, malformed, stray)
+
+
+def _decimal(text: str) -> Decimal:
+    """A number as the patterns above match it ("-1,500.00", Thai digits)."""
+    sign = text[:1] != "" and text[0] in SIGNS
+    digits = ascii_digits(text[1:] if sign else text).replace(",", "")
+    try:
+        value = Decimal(digits)
+    except InvalidOperation:  # pragma: no cover - the patterns only admit digits
+        return Decimal("NaN")  # equal to nothing, so never an allowed value
+    return -value if sign else value
 
 
 def _wording(text: str, allowed: Allowed) -> Iterator[Failure]:
@@ -243,13 +296,38 @@ def _wording(text: str, allowed: Allowed) -> Iterator[Failure]:
     third = ONE_THIRD_RE.search(text) or re.search("ธปท|หนึ่งในสาม|1/3", text)
     if third is not None and "แนะนำ" not in text:
         yield Failure(Check.ONE_THIRD_WORDING, third.group(0))
+    yield from _claims(text, allowed)
     words = NUMBER_WORDS_RE.search(text)
     if words is not None:
         yield Failure(Check.NUMBER_IN_WORDS, words.group(0))
 
 
+def _claims(text: str, allowed: Allowed) -> Iterator[Failure]:
+    """Budget claims the facts do not support, and amounts after "เกินงบ" or "ลดลง"
+    that are not what those words mean."""
+    refused = [
+        (allowed.any_over, ALL_IN_BUDGET_RE),  # "every month is within budget"
+        (not allowed.any_over, OVER_BUDGET_RE),  # "over budget" while nothing is
+        (allowed.over_now, IN_BUDGET_RE),  # "within budget" while this month is over
+        (not allowed.over_now, THIS_MONTH_OVER_RE),  # "this month is over" while it is not
+        (not allowed.above_one_third, ABOVE_THIRD_RE),  # "above a third" while none is
+    ]
+    for applies, pattern in refused:
+        found = pattern.search(text) if applies else None
+        if found is not None:
+            yield Failure(Check.CLAIM_NOT_IN_INPUT, found.group(0))
+    for m in OVER_BY_RE.finditer(text):
+        value = _decimal(m.group("num"))
+        counted = m.group("unit") is not None and value in allowed.counts
+        if not counted and value not in allowed.over_by:
+            yield Failure(Check.CLAIM_NOT_IN_INPUT, m.group(0))
+    for m in REDUCTION_RE.finditer(text):
+        if _decimal(m.group("num")) not in allowed.reductions:
+            yield Failure(Check.CLAIM_NOT_IN_INPUT, m.group(0))
+
+
 def _values(found: Extracted, allowed: Allowed) -> Iterator[Failure]:
-    years = {m.year + BUDDHIST_ERA_OFFSET for m in allowed.months}
+    years = {Decimal(m.year + BUDDHIST_ERA_OFFSET) for m in allowed.months}
     for mention in found.months:
         if mention.year is None:
             ok = any(m.month == mention.month for m in allowed.months)
@@ -260,9 +338,11 @@ def _values(found: Extracted, allowed: Allowed) -> Iterator[Failure]:
             yield Failure(Check.MONTH_NOT_IN_INPUT, mention.text)
     for token in found.malformed:
         yield Failure(Check.MALFORMED_NUMBER, token)
-    for value in found.numbers:
-        if value not in allowed.numbers and value not in years:
-            yield Failure(Check.NUMBER_NOT_IN_INPUT, str(value))
+    for n in found.mentions:
+        counted = n.bare and n.months_after and n.value in allowed.counts
+        year = n.bare and n.value in years  # "ปี 2569", never "2,569.00"
+        if n.value not in allowed.numbers and not counted and not year:
+            yield Failure(Check.NUMBER_NOT_IN_INPUT, str(n.value))
     for c in found.stray:
         yield Failure(Check.STRAY_NUMERAL, c)
 

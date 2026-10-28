@@ -1,6 +1,6 @@
-"""AI-01, AI-06, AI-09, AI-12 and AI-13 over HTTP: GET /assistant/summary on the
+"""AI-10, AI-15, AI-18, AI-21 and AI-22 over HTTP: GET /assistant/summary on the
 Ledger, with "today" fixed at 2026-11-10 (the plan_api fixture), a fake model and a
-fresh cache per test. No test reaches the network (AI-14, tests/conftest.py)."""
+fresh cache per test. No test reaches the network (AI-23, tests/conftest.py)."""
 
 import uuid
 from datetime import date
@@ -89,7 +89,7 @@ def row_counts(api: Api) -> dict[str, int]:
     }
 
 
-def test_AI_01_grounded_text_over_http(summary_api: Api, writer: FakeWriter) -> None:
+def test_AI_10_grounded_text_over_http(summary_api: Api, writer: FakeWriter) -> None:
     mon(summary_api)
     response = get_summary(summary_api)
     assert response.status_code == 200
@@ -97,7 +97,7 @@ def test_AI_01_grounded_text_over_http(summary_api: Api, writer: FakeWriter) -> 
     assert len(writer.calls) == 1
 
 
-def test_AI_02_refused_text_over_http_gives_the_fallback(
+def test_AI_11_refused_text_over_http_gives_the_fallback(
     summary_api: Api, writer: FakeWriter
 ) -> None:
     mon(summary_api)
@@ -109,9 +109,9 @@ def test_AI_02_refused_text_over_http_gives_the_fallback(
     }
 
 
-def test_AI_06_no_key_over_http_never_builds_the_client(plan_api: Api) -> None:
+def test_AI_15_no_key_over_http_never_builds_the_client(plan_api: Api) -> None:
     """The real dependency, with settings that have no key: the fallback, and no
-    client (the AI-14 guard fails the test if one is built)."""
+    client (the AI-23 guard fails the test if one is built)."""
     no_key = get_settings().model_copy(update={"llm_api_key": None})
     app.dependency_overrides[get_settings] = lambda: no_key
     app.dependency_overrides[summary.get_summary_cache] = summary.SummaryCache
@@ -123,7 +123,7 @@ def test_AI_06_no_key_over_http_never_builds_the_client(plan_api: Api) -> None:
     }
 
 
-def test_AI_09_a_reload_never_asks_again_until_the_numbers_change(
+def test_AI_18_a_reload_never_asks_again_until_the_numbers_change(
     summary_api: Api, writer: FakeWriter
 ) -> None:
     mon(summary_api)
@@ -148,7 +148,7 @@ def test_AI_09_a_reload_never_asks_again_until_the_numbers_change(
     assert len(writer.calls) == 3
 
 
-def test_AI_12_no_item_or_platform_name_reaches_the_model(
+def test_AI_21_no_item_or_platform_name_reaches_the_model(
     summary_api: Api, writer: FakeWriter
 ) -> None:
     configure(summary_api)
@@ -168,7 +168,7 @@ def test_AI_12_no_item_or_platform_name_reaches_the_model(
         assert secret not in system
 
 
-def test_AI_13_auth_settings_and_nothing_written(summary_api: Api, writer: FakeWriter) -> None:
+def test_AI_22_auth_settings_and_nothing_written(summary_api: Api, writer: FakeWriter) -> None:
     assert get_summary(summary_api, user=None).status_code == 401
     response = get_summary(summary_api)
     assert response.status_code == 409

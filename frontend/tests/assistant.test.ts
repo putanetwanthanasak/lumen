@@ -6,7 +6,7 @@
  * UI-29: the words around the plan's numbers (assistantText.ts).
  * UI-30: two features and the check: three tabs, no payoff or consolidation screen.
  * UI-31: "สนใจรวมหนี้" sends nothing, and the mock's summary is the plan's own words
- *   (Session 18: the backend's fallback when it has no model, AI-20).
+ *   (Session 18: the backend's fallback when it has no model, AI-29).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
