@@ -5,6 +5,7 @@
  * UI-10: no em dash and no banned brand names (CLAUDE.md rules 5 and 10).
  * UI-32: "เช็ก" wording, spelt with ก: never "เช็ค", and no button or nav label
  *   says "ตรวจสอบ" (descriptive sentences may).
+ * UI-27: layers come from order, never from z-index numbers (nav.test.ts draws them).
  */
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -149,6 +150,20 @@ test("UI_26_the_phone_frame_never_scrolls_and_hidden_inputs_stay_in_the_scrollin
   const screen = readFileSync(join(SRC, "components", "Screen.tsx"), "utf8");
   // (a template literal since the header can carry a feature's accent, the buffer's teal)
   assert.match(screen, /<header\s+className=\{?[`"][^`"]*shrink-0/);
-  assert.match(screen, /<main\s+tabIndex=\{0\}\s+className=\{`phone-scroll min-h-0 flex-1 overflow-y-auto/);
-  assert.match(screen, /<nav aria-label=\{NAV.menu\} className="shrink-0 /);
+  // (`isolate` first: each bar is its own layer, UI-27 in nav.test.ts)
+  assert.match(screen, /<main\s+tabIndex=\{0\}\s+className=\{`phone-scroll isolate min-h-0 flex-1 overflow-y-auto/);
+  assert.match(screen, /<nav aria-label=\{NAV.menu\} className="isolate shrink-0 /);
+});
+
+test("UI_27_layers_come_from_order_never_from_z_index_numbers", () => {
+  // The nav is on top because it is drawn last, in a layer of its own (nav.test.ts),
+  // never because of a bigger number. The one z-index is the Demo panel's: the overlay
+  // that covers the whole frame, the nav included.
+  const zIndex = scan(files, /\bz-(\d|\[|auto\b)|zIndex/).map((h) => `${h.file}: ${/\bz-[^\s"'`]+/.exec(h.text)?.[0] ?? h.text}`);
+  assert.deepEqual(zIndex, ["src/components/DemoPanel.tsx: z-30"]);
+  // Every screen draws its body and its nav through Screen.tsx, so each has those layers.
+  assert.deepEqual(scan(files, /<(main|nav)\b/).map((h) => h.file), ["src/components/Screen.tsx", "src/components/Screen.tsx"]);
+  const screens = readdirSync(join(SRC, "screens"));
+  assert.equal(screens.length, 7);
+  for (const name of screens) assert.match(readFileSync(join(SRC, "screens", name), "utf8"), /<Screen\b/, name);
 });
