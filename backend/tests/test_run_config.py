@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from pydantic import SecretStr
 
+from demo.kidnee import HOST, KIDNEE_DB_NAME, KidneeConfig, create_if_missing, main
 from demo.script import DemoConfig, reset_database
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -45,3 +46,42 @@ def test_demo_refuses_to_reset_any_other_database() -> None:
         config = DemoConfig("postgresql://x/y", "postgresql://x/y", SecretStr("s"), db_name=name)
         with pytest.raises(SystemExit, match="Refusing to reset"):
             reset_database(config)
+
+
+def test_KD_02_kidnee_demo_binds_uvicorn_to_loopback_only() -> None:
+    source = (ROOT / "backend" / "demo" / "kidnee.py").read_text()
+    hosts = re.findall(r'host="([^"]+)"', source)
+    assert hosts == ["127.0.0.1"]
+    assert HOST == "127.0.0.1"
+    assert "0.0.0.0" not in source  # noqa: S104
+    assert "0.0.0.0" not in (ROOT / "backend" / "app" / "serve.py").read_text()  # noqa: S104
+
+
+def test_KD_02_readme_documents_the_kidnee_commands() -> None:
+    readme = (ROOT / "README.md").read_text()
+    for command in ["python -m demo.kidnee reset --yes", "python -m demo.kidnee serve"]:
+        assert command in readme
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["lumen", "lumen_test", "lumen_demo", "lumen_kidnee_x", 'lumen_kidnee"; DROP', "LUMEN_KIDNEE"],
+)
+def test_KD_03_kidnee_refuses_any_other_database(name: str) -> None:
+    config = KidneeConfig("postgresql://x/y", "postgresql://x/y", db_name=name)
+    with pytest.raises(SystemExit, match="Refusing"):
+        reset_database(config, KIDNEE_DB_NAME)
+    with pytest.raises(SystemExit, match="Refusing"):
+        create_if_missing(config)
+
+
+def test_KD_03_kidnee_whitelist_is_the_demo_and_its_test_database_only() -> None:
+    assert [n for n in ["lumen_kidnee", "lumen_kidnee_test"] if KIDNEE_DB_NAME.fullmatch(n)] == [
+        "lumen_kidnee",
+        "lumen_kidnee_test",
+    ]
+
+
+def test_KD_03_reset_needs_yes_before_touching_anything() -> None:
+    with pytest.raises(SystemExit, match="--yes"):
+        main(["reset"])
