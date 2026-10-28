@@ -10,14 +10,12 @@
  */
 import type { ReactNode } from "react";
 import { ACCENT, type Accent } from "../accent.ts";
-import { getNotifications } from "../api.ts";
 import { APP_NAME, APP_NAME_TH, FOOTER, NAV } from "../copy.ts";
 import { navigate, type Route } from "../router.ts";
 import { DemoButton } from "./DemoPanel.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { LogoBean } from "./Logo.tsx";
 import { bottomPads, NAV_TABS, navActive, navIconClass, navLabelClass, type NavTab } from "../navStyle.ts";
-import { useLoad } from "../useLoad.ts";
 
 type ScreenProps = {
   title?: string;
@@ -81,7 +79,7 @@ export function Screen({ title, back, route, children, showNav = true, actions, 
 const HEADER_BUTTON =
   "relative inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-pill text-leaf-800 hover:bg-leaf-50";
 
-/** Top right: the notifications bell with its unread count, and settings as a gear. */
+/** Top right: the notifications bell, and settings as a gear. */
 function HeaderActions({ route }: { route: Route }) {
   return (
     <div className="-mr-2 flex items-center gap-1">
@@ -96,21 +94,11 @@ function HeaderActions({ route }: { route: Route }) {
   );
 }
 
-/** The unread count is the API's (`unread_count`); opening the list marks it read. */
+/** The bell opens the list. The API keeps no seen-or-not state, so it carries no badge. */
 function Bell() {
-  const [load] = useLoad(getNotifications);
-  const unread = load.state === "ready" ? load.data.unread_count : 0;
   return (
-    <a href="#/alerts" className={HEADER_BUTTON} aria-label={unread > 0 ? NAV.alertsUnread(unread) : NAV.alerts}>
+    <a href="#/alerts" className={HEADER_BUTTON} aria-label={NAV.alerts}>
       <Icon name="bell" />
-      {unread > 0 && (
-        <span
-          aria-hidden="true"
-          className="absolute top-1 right-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-pill bg-risk-ink px-1 text-[0.75rem] leading-none font-bold text-white ring-2 ring-card"
-        >
-          {unread > 9 ? "9+" : unread}
-        </span>
-      )}
     </a>
   );
 }

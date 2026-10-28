@@ -1,7 +1,8 @@
 /**
  * Request and response types for the KidNee screens.
  *
- * Copied from the merged backend (read only, 2026-10-27). Money is always a string
+ * Copied from the merged backend (read only; checked against docs/api/kidnee-endpoints.md
+ * on 2026-10-29, Session 17). Money is always a string
  * ("1500.00"): pydantic serialises Decimal as a JSON string, and requests must send
  * strings with at most 2 decimals (L49). Source file next to each type.
  */
@@ -70,16 +71,17 @@ export type VerdictOut = {
 };
 
 /**
- * POST /installments/preview as the result screen needs it.
- * TODO(backend, Session 15): add `saving_if_recorded`, the amount POST /installments
+ * POST /installments/preview. `saving_if_recorded` is the amount POST /installments
  * would save for this entry right now (L63: same rule, same 500.00 safety net,
- * "0.00" when nothing would be saved). Mocked until then.
+ * "0.00" when nothing would be saved).
  */
 export type PreviewOut = VerdictOut & { saving_if_recorded: Money };
 
 // ---- /installments (backend/app/installments/schemas.py) ----------------------
 
 export type InstallmentKind = "purchase" | "cash_withdrawal" | "cash_loan";
+/** What an answer may say: a consolidation loan (L72) is never in a request. */
+export type LineKind = InstallmentKind | "consolidation_loan";
 
 /** The body of both POST /installments/preview and POST /installments. */
 export type ManualEntryIn = {
@@ -91,18 +93,17 @@ export type ManualEntryIn = {
   first_due_month: string; // "YYYY-MM"
   item_name: string; // may be ""
   /**
-   * TODO(backend, Session 15): the app the user pays through, free text, at most
-   * 60 characters, null when not given. Never a list of real platform names (rule 5).
-   * The backend's ManualEntryIn has extra="forbid", so it rejects this field (422)
-   * until it is added. Mocked until then.
+   * The app the user pays through, free text, 1 to 60 characters, no control
+   * characters; null when not given ("" is a 422, so the form trims and sends null).
+   * Never a list of real platform names (rule 5).
    */
   platform_name: string | null;
 };
 
 /**
- * TODO(backend, Session 15): GET /installments/suggested-monthly?item_price=&months=
+ * GET /installments/suggested-monthly?item_price=&months=
  * The 0% monthly amount the เช็กก่อนผ่อน form prefills: item_price / months, rounded UP
- * to 0.01 (so the payments never add up to less than the price). Mocked until then.
+ * to 0.01 (so the payments never add up to less than the price).
  */
 export type SuggestedMonthlyOut = { monthly_amount: Money };
 
@@ -117,13 +118,14 @@ export type RecordedOut = {
 
 // ---- /debts/summary (backend/app/debts/service.py) ----------------------------
 
-export type InstallmentStatus = "active" | "paid_off" | "cancelled" | "disputed";
+/** `consolidated`: paid off by a consolidation loan (L72), not owed, history kept. */
+export type InstallmentStatus = "active" | "paid_off" | "cancelled" | "disputed" | "consolidated";
 
 export type InstallmentLine = {
   id: string;
   vendor: string; // "manual" for entries the user recorded, "shopdemo" for the platform
   contract_id: string;
-  kind: InstallmentKind;
+  kind: LineKind;
   item_name: string;
   principal: Money;
   monthly_amount: Money;
@@ -134,7 +136,9 @@ export type InstallmentLine = {
   status: InstallmentStatus;
   disputed_at: string | null;
   owed: boolean;
-  platform_name: string | null; // TODO(backend, Session 15): see ManualEntryIn; absent reads as null (apiFields.ts)
+  platform_name: string | null; // null when not named; absent reads as null (apiFields.ts)
+  first_due_date: string; // "YYYY-MM-DD"
+  last_due_date: string; // "YYYY-MM-DD"
 };
 
 /** GET /debts/summary. */
@@ -149,25 +153,25 @@ export type DebtSummary = {
 export type MonthInstallment = {
   installment_id: string;
   item_name: string;
-  platform_name: string | null; // TODO(backend): not in these rows yet; absent reads as null (apiFields.ts)
+  platform_name: string | null; // null when not named; absent reads as null (apiFields.ts)
   monthly_amount: Money;
   installment_no: number; // "งวดที่ x": 1 in the first due month
   installments_total: number; // "จาก y": the installment's months
   is_last: boolean; // its last due month
+  last_month: string; // "YYYY-MM", its last due month
 };
 
-/** A month row with the installments due that month. */
-export type MonthDetail = MonthRow & { installments: MonthInstallment[] };
+/** A month row with the budget, how far over it (`over_by`, "0.00" when not), and what is due. */
+export type MonthDetail = MonthRow & { budget: Money; over_by: Money; installments: MonthInstallment[] };
 
 /**
- * TODO(backend, Session 15): GET /debts/months[?count=N]. Not built yet.
- * From this month: N months when `count` is given, otherwise up to the last month
- * with an installment due (Home and ภาระผ่อนรายเดือน ask for that). Each row is the preview's MonthRow
- * with no candidate (the L43 owed set, full monthly amount in every scheduled
- * month, L65 flags) plus the installments due that month, in the order recorded.
- * 409 SETTINGS_REQUIRED without settings. Mocked until then.
+ * GET /debts/months[?count=N]. From this month: N months when `count` is given,
+ * otherwise up to the last month with an installment due (at most 600 rows,
+ * `months_truncated`). Each row is the preview's MonthRow with no candidate (the
+ * L43 owed set, full monthly amount in every scheduled month, L65 flags) plus the
+ * installments due that month, in the order recorded. 409 SETTINGS_REQUIRED.
  */
-export type MonthsOut = { months: MonthDetail[] };
+export type MonthsOut = { months: MonthDetail[]; months_truncated: boolean };
 
 // ---- /buffer (backend/app/buffer/schemas.py) ----------------------------------
 
@@ -178,14 +182,47 @@ export type BufferOut = {
   months_covered: number | null; // null when nothing is owed
 };
 
-/** POST /buffer/move-to-main: 201 moved, 200 repeat, 409 reused id, 422 AMOUNT_ABOVE_BALANCE. */
-export type MoveIn = { client_request_id: string; amount: Money };
+/**
+ * POST /buffer/move-to-main: 201 moved, 200 repeat, 409 reused id (another amount or
+ * month), 422 AMOUNT_ABOVE_BALANCE. `for_month` ("YYYY-MM") labels the money for a
+ * month over budget ("ใช้กันชนจ่ายส่วนที่เกิน"); a free move leaves it out. A label
+ * only: it never limits or blocks the move (L66).
+ */
+export type MoveIn = { client_request_id: string; amount: Money; for_month?: string };
 
 export type MovedOut = {
   transaction_id: string;
   status: "created" | "duplicate";
   amount: Money;
+  for_month: string | null;
   balance: Money; // the buffer after the move
+};
+
+/** Whether the user moved money for a month over budget (Session 17); the API decides it. */
+export type PreparedState = "not_prepared" | "partly_prepared" | "prepared";
+
+/** One month over budget (GET /buffer/shortfalls). total, budget and shortfall never change after a move. */
+export type ShortfallMonth = {
+  month: string;
+  total: Money;
+  budget: Money;
+  shortfall: Money; // total - budget
+  prepared: Money; // moved to the main account for this month
+  remaining_gap: Money; // max(0, shortfall - prepared)
+  state: PreparedState;
+  covered_by_buffer: Money; // what the buffer covers of remaining_gap, months in date order
+  still_short: Money;
+};
+
+/** GET /buffer/shortfalls: every month over budget from this month on. 409 SETTINGS_REQUIRED. */
+export type ShortfallsOut = {
+  balance: Money;
+  shortfall: Money;
+  remaining_gap: Money;
+  covered: boolean;
+  still_short: Money;
+  months: ShortfallMonth[];
+  months_truncated: boolean;
 };
 
 // ---- /demo/payday (backend/app/payday/router.py) ------------------------------
@@ -218,26 +255,23 @@ export type NotificationKind =
   | "cash_loan"
   | "over_cap"
   | "payday_shortfall"
-  | "leftover_saved";
+  | "leftover_saved"
+  | "consolidation_loan";
 
 /**
- * TODO(backend): GET /notifications is not built yet (Session 13 carry-over).
- * Expected shape, from the `notifications` table: newest first; title and body are
- * the Thai text already written by backend/app/notifications/copy.py.
+ * GET /notifications: newest first, at most the 100 newest; title and body are the
+ * Thai text already written by backend/app/notifications/copy.py. There is no read
+ * state: `count` is every alert the user has.
  */
 export type NotificationOut = {
   id: string;
   kind: NotificationKind;
   title: string;
   body: string;
+  installment_id: string | null; // null for payday alerts
   created_at: string; // ISO datetime
-  read: boolean; // TODO(backend): new; false until POST /notifications/read
 };
-/**
- * TODO(backend): `unread_count` is new; the header bell shows it as a badge.
- * POST /notifications/read marks every notification read and answers the same shape.
- */
-export type NotificationsOut = { notifications: NotificationOut[]; unread_count: number };
+export type NotificationsOut = { notifications: NotificationOut[]; count: number };
 
 // ---- Assistant plan (GET /assistant/plan, merged backend) -------------------------
 
@@ -256,9 +290,10 @@ export type PlanMonth = {
 
 export type BufferPlanOut = {
   shortfall: Money; // total - budget, added over the months over budget
+  remaining_gap: Money; // the shortfall less what was already moved for each month
   balance: Money; // the buffer (L66)
-  covered: boolean; // the buffer covers the whole shortfall
-  still_short: Money; // max(0, shortfall - balance)
+  covered: boolean; // balance >= remaining_gap
+  still_short: Money; // max(0, remaining_gap - balance)
 };
 
 /** Why consolidation is or is not offered (L70), checked in this order. */
@@ -283,10 +318,11 @@ export type EstimateOut = {
   total_cost: Money; // monthly_payment x term_months
   current_remaining_total: Money; // what is left on the current plans
   extra_cost: Money; // total_cost - current_remaining_total
-  // TODO(backend): not in GET /assistant/plan yet, mock only. The monthly amounts of the
-  // plans the loan pays off (every counted installment, so DebtSummary.monthly_total,
-  // L43) minus monthly_payment; "0.00" if that is not above zero. Null when the answer
-  // did not carry it (src/apiFields.ts): the offer shows without its benefit line (UI-39).
+  // This month's total (the hero's), the offer's "ตอนนี้". Null when the answer did not
+  // carry it (src/apiFields.ts): the "ตอนนี้" column then shows its total only (UI-39).
+  current_monthly_total: Money | null;
+  // max(0, current_monthly_total - monthly_payment). Null when the answer did not carry
+  // it (src/apiFields.ts): the offer shows without its benefit line (UI-39).
   monthly_reduction: Money | null;
 };
 
@@ -309,7 +345,7 @@ export type AssistantPlanOut = {
 };
 
 /**
- * TODO(backend, tomorrow): POST /assistant/summary, the AI summary of the plan.
- * Mock now: a fixed example built from the plan's numbers, labelled ตัวอย่าง.
+ * The assistant's summary. Not built in the backend (AI is roadmap only): an example
+ * worded from the real plan's numbers, labelled ตัวอย่าง (src/api.ts).
  */
 export type AssistantSummaryOut = { text: string; is_example: boolean };

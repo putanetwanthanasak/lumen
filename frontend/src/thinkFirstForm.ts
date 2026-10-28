@@ -18,7 +18,7 @@
  * shows its error once the user leaves it with something typed.
  */
 import type { InstallmentKind, ManualEntryIn, PreviewOut } from "./api-types.ts";
-import { MONEY_ERRORS, THINK } from "./copy.ts";
+import { MONEY_ERRORS, REJECTED, THINK } from "./copy.ts";
 import { parseMoneyInput, type Money } from "./money.ts";
 import { addMonths, monthOf } from "./thaiMonth.ts";
 
@@ -34,6 +34,8 @@ export type Form = {
   firstDue: string; // "" until the user picks a month
 };
 export type FieldKey = "price" | "months" | "monthly" | "firstDue" | "platform";
+/** A 422 can name the item name too, which the form never refuses itself. */
+export type RejectedKey = FieldKey | "name";
 export type Errors = Partial<Record<FieldKey, string>>;
 
 const MONTHS = /^([1-9][0-9]{0,2})$/;
@@ -108,6 +110,24 @@ export function toEntry(form: Form, requestId: string): { ok: true; entry: Manua
       platform_name: platform === "" ? null : platform,
     },
   };
+}
+
+const FIELD_OF_API: Record<string, RejectedKey> = {
+  item_name: "name",
+  platform_name: "platform",
+  item_price: "price",
+  months: "months",
+  monthly_amount: "monthly",
+  first_due_month: "firstDue",
+};
+
+/**
+ * The fields a 422 refused (ApiError.fields), as the form's fields, each with the
+ * same words. Null when it named none of them: the screen then says the check failed.
+ */
+export function rejectedErrors(fields: readonly string[]): Partial<Record<RejectedKey, string>> | null {
+  const keys = fields.flatMap((name) => FIELD_OF_API[name] ?? []);
+  return keys.length === 0 ? null : Object.fromEntries(keys.map((key) => [key, REJECTED]));
 }
 
 // ---- the 0% suggestion ----------------------------------------------------------

@@ -58,6 +58,12 @@ export const EDGE = {
 /** A feature's own button, drawn as an outline (green uses Button's secondary). */
 export const OUTLINE = {
   bank: "border-2 border-bank-700 bg-card text-bank-800 hover:bg-bank-50",
+  buffer: "border-2 border-teal-700 bg-card text-teal-800 hover:bg-teal-50",
+} as const satisfies Partial<Record<Accent, string>>;
+
+/** A feature's own main button, filled (green uses Button's primary): the buffer's move. */
+export const FILL = {
+  buffer: "bg-teal-700 text-white hover:bg-teal-800 disabled:bg-teal-200",
 } as const satisfies Partial<Record<Accent, string>>;
 
 /** The wallet's month segments: filled and empty. */

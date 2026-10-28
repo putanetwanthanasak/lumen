@@ -19,6 +19,7 @@ Source of truth: the pydantic models named under each endpoint. If this file and
 - **Bodies** are strict: unknown keys are a 422, and ints must be JSON ints.
 
 ## Changes the frontend must make against the mock (`frontend/src/api-types.ts`)
+All made in Session 17 PR B (`feat/kidnee-wiring-frontend`): the screens call this API, and `npm run dev -- --mode mock` keeps the mock.
 | Mock today | Backend | What to change |
 |---|---|---|
 | `ManualEntryIn.platform_name` | Accepted (Session 17): optional, 1 to 60 characters, no control characters | Send it, or `null` when the field is blank. `""` is a 422. |
@@ -32,10 +33,10 @@ Source of truth: the pydantic models named under each endpoint. If this file and
 | `NotificationOut` | Adds `installment_id` (null for payday alerts) | Add the field. |
 | `NotificationKind` | Adds `consolidation_loan` | Add it to the union. |
 | `MonthDetail` | Adds `budget`. `MonthsOut` adds `months_truncated` | Add both. |
-| `GET /buffer/shortfalls` | New (the buffer's "ถ้าเดือนไหนเกินงบ" card) | Optional: `GET /assistant/plan` `buffer_plan` still has the totals. |
+| `GET /buffer/shortfalls` | New (the buffer's "ถ้าเดือนไหนเกินงบ" card) | Used by Home's hero, the months screen and the buffer screen for each month's state. |
 | `InstallmentKind` | Responses may also say `consolidation_loan` (a request may not) | Add it to response types only. |
 | `InstallmentStatus` | Adds `consolidated` (L72: paid off by a consolidation loan, not owed) | Add it; show it with the not-counted lines. |
-| `POST /demo/scene`, `POST /assistant/summary` | Not built (mock only; AI is roadmap) | Keep mocked. |
+| `POST /demo/scene`, `POST /assistant/summary` | Not built (mock only; AI is roadmap) | Kept in the mock. On the API, the assistant's example is worded from `GET /assistant/plan` and labelled ตัวอย่าง; scenes exist only in the mock. |
 
 ---
 
@@ -404,7 +405,8 @@ Platform names are fictional ("ShopDemo", "RideDemo"); the fridge is left unname
 
 ## How the browser reaches the API
 - The frontend calls `/api/<path>` in every mode (`API_PREFIX = "/api"` in `frontend/src/api.ts`).
-- **Dev** (`npm run dev`): Vite on 127.0.0.1:5173 proxies `/api` to the backend on 127.0.0.1:8000 and strips the prefix (`vite.config.ts`).
+- **Dev** (`npm run dev`): Vite on 127.0.0.1:5173 proxies `/api` to the backend on 127.0.0.1:8000 and strips the prefix (`vite.config.ts`). `npm run dev -- --mode mock` answers every call from the in-browser mock instead.
+- **Persona**: the frontend sends `X-Demo-User` for the persona chosen in the Demo panel (`demo-mon` by default).
 - **One-server demo**: one server on 127.0.0.1:8000. It serves `frontend/dist` at `/`, and the unchanged API app is mounted at `/api`, so the mount strips the prefix the way the proxy does.
   - Nothing binds 0.0.0.0. There is no end-user auth (L60 1).
   - The screens use hash routes (`#/months`), so no history fallback is needed.

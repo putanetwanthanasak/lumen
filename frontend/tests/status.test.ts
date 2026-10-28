@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { InstallmentLine, MonthDetail } from "../src/api-types.ts";
+import { HOME } from "../src/copy.ts";
 import { lineStatus, scheduleText } from "../src/installmentStatus.ts";
 
 const ACTIVE: InstallmentLine = {
@@ -23,6 +24,8 @@ const ACTIVE: InstallmentLine = {
   disputed_at: null,
   owed: true,
   platform_name: null,
+  first_due_date: "2026-07-01",
+  last_due_date: "2026-12-01",
 };
 
 test("UI_12_active_owed_line_has_no_label_and_counts", () => {
@@ -63,6 +66,8 @@ function due(month: string, items: [string, number, number, boolean][]): MonthDe
     total: "0.00", // not read
     over_budget: false,
     over_one_third: false,
+    budget: "5000.00", // not read
+    over_by: "0.00", // not read
     installments: items.map(([installment_id, installment_no, installments_total, is_last]) => ({
       installment_id,
       item_name: "",
@@ -71,6 +76,7 @@ function due(month: string, items: [string, number, number, boolean][]): MonthDe
       installment_no,
       installments_total,
       is_last,
+      last_month: "2027-01", // not read
     })),
   };
 }
@@ -94,4 +100,12 @@ test("UI_43_one_that_starts_later_says_when_and_one_not_in_the_rows_gets_null", 
   assert.equal(scheduleText("later", rows.slice(0, 2)), "เริ่ม พ.ย. 2569");
   assert.equal(scheduleText("gone", rows), null); // Home then keeps "ผ่อน {months} เดือน"
   assert.equal(scheduleText("a", []), null);
+});
+
+test("UI_12_a_line_paid_off_by_a_consolidation_loan_says_so_and_is_not_counted", () => {
+  // L72: never "ผ่อนครบแล้ว" for a debt the bank's loan paid off (review round 2 F4).
+  const line = lineStatus({ ...ACTIVE, status: "consolidated", owed: false, remaining: "0.00" });
+  assert.deepEqual(line, { label: HOME.statusConsolidated, counted: false });
+  assert.equal(HOME.statusConsolidated, "ปิดด้วยสินเชื่อรวมหนี้แล้ว");
+  assert.ok(line.label !== HOME.statusPaidOff);
 });

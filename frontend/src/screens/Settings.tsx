@@ -4,14 +4,14 @@
  * anyway; the API's warning code is shown (L64, advice only).
  */
 import { useState, type FormEvent } from "react";
-import { getSettings, saveSettings } from "../api.ts";
+import { getSettings, rejectedFields, saveSettings } from "../api.ts";
 import { BUDGET_ABOVE_ONE_THIRD_OF_INCOME, type SettingsOut } from "../api-types.ts";
 import { SETTINGS } from "../copy.ts";
 import { Alert, Button, Card, Checkbox, ErrorState, Field, Loading, Toggle } from "../components/ui.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { PERSONA_SETTINGS } from "../mock/persona.ts";
 import { navigate } from "../router.ts";
-import { EMPTY, fromSettings, toRequest, type Errors, type Form } from "../settingsForm.ts";
+import { EMPTY, fromSettings, rejectedErrors, toRequest, type Errors, type Form } from "../settingsForm.ts";
 import { useLoad } from "../useLoad.ts";
 
 export function SettingsScreen() {
@@ -60,8 +60,11 @@ function SettingsForm({ existing }: { existing: SettingsOut | null }) {
     try {
       setSaved(await saveSettings(request.body, exists));
       setExists(true);
-    } catch {
-      setFailed(true);
+    } catch (error) {
+      // A 422 is said next to the fields it names; anything else may be retried.
+      const rejected = rejectedErrors(rejectedFields(error));
+      if (rejected === null) setFailed(true);
+      else setErrors(rejected);
     } finally {
       setBusy(false);
     }

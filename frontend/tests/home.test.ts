@@ -7,14 +7,17 @@
  *   how many and from when to when (monthStatus.ts), on Home and under the result's bars.
  * UI-42 (rules): the hero's one warning line and one buffer line. Expected months are
  *   worked out by hand from the persona (DESIGN.md section 10), not by the mock.
+ * UI-46 (rules): the buffer line is a month over budget and whether money was moved
+ *   for it, from GET /buffer/shortfalls (bufferState.ts).
  */
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, test } from "node:test";
 import { ACCENT, type Marked } from "../src/accent.ts";
-import type { AssistantPlanOut, BufferOut, DebtSummary, MonthsOut, PreviewOut } from "../src/api-types.ts";
-import { ASSIST, HOME, THINK } from "../src/copy.ts";
+import type { AssistantPlanOut, BufferOut, MonthsOut, PreviewOut, ShortfallMonth, ShortfallsOut } from "../src/api-types.ts";
+import { shortfallView } from "../src/bufferState.ts";
+import { ASSIST, BUFFER_STATE, HOME, THINK } from "../src/copy.ts";
 import { aiBubble, consolidationView, heroView, homeView, walletView, type HomeView } from "../src/homeLayout.ts";
 import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
 import { handle, resetMock, SLOW_SUMMARY_MS } from "../src/mock/server.ts";
@@ -25,6 +28,7 @@ const call = (method: string, path: string, body?: unknown) => handle(method, pa
 const scene = (name: string) => assert.equal(call("POST", "/demo/scene", { scene: name }).status, 200);
 const months = (path = "/debts/months") => (call("GET", path).body as MonthsOut).months;
 const plan = () => call("GET", "/assistant/plan").body as AssistantPlanOut;
+const shortfalls = () => call("GET", "/buffer/shortfalls").body as ShortfallsOut;
 
 /** Home as the screen builds it, from the mock's answers: every month, as Home loads them. */
 function home(withPlan: "with plan" | "no plan" = "with plan"): HomeView {
@@ -32,7 +36,7 @@ function home(withPlan: "with plan" | "no plan" = "with plan"): HomeView {
     months: months(),
     plan: withPlan === "no plan" ? null : plan(),
     buffer: call("GET", "/buffer").body as BufferOut,
-    monthlyTotal: (call("GET", "/debts/summary").body as DebtSummary).monthly_total,
+    shortfalls: shortfalls(),
   });
 }
 
@@ -81,12 +85,14 @@ test("UI_33_upcoming_months_over_only_and_the_buffer_covers", () => {
   assert.equal(view.hero?.barOver, false); // this month is 3,500.00
   assert.deepEqual(view.hero?.line, { accent: "debt", icon: "check", text: HOME.withinBudgetNow });
   assert.deepEqual(view.hero?.warning, { accent: "warn", icon: "alert", text: "เกินงบ 2 เดือน (พ.ย. 2569 ถึง ธ.ค. 2569)" });
-  // Buffer 4,800.00 + 3,000.00 saved = 7,800.00 covers the 3,000.00 over in all: the plan's `covered`.
-  assert.equal(plan().buffer_plan.covered, true);
+  // The first month over: Nov, 6,500.00 - 5,000.00 = 1,500.00 over, nothing moved yet.
+  // Buffer 4,800.00 + 3,000.00 saved = 7,800.00, so the move is the whole gap.
   assert.deepEqual(view.hero?.buffer, {
-    line: { accent: "buffer", icon: "check", text: "กันชนพอจ่ายส่วนที่เกิน" },
-    link: "ใช้กันชน ›",
-    route: "buffer",
+    month: "2026-11",
+    state: "not_prepared",
+    total: "6500.00",
+    line: { accent: "warn", icon: "alert", text: "พ.ย. 2569 เกินงบ 1,500.00 บาท" },
+    prepare: { month: "2026-11", amount: "1500.00", total: "6500.00" },
   });
   assert.equal(view.consolidation?.kind, "banner"); // 2 months in a row, not 3
 });
@@ -100,13 +106,9 @@ test("UI_33_this_month_over_budget_the_buffer_falls_short_and_the_offer_card_sho
   // One warning line covers this month too: no second line saying this month is over.
   assert.equal(view.hero?.line, null);
   assert.deepEqual(view.hero?.warning, { accent: "warn", icon: "alert", text: "เกินงบ 9 เดือน (ต.ค. 2569 ถึง มิ.ย. 2570)" });
-  // 3 x 2,500.00 + 6 x 500.00 = 10,500.00 over; buffer 4,800.00 + 4,800.00 = 9,600.00: part of it.
-  assert.equal(plan().buffer_plan.covered, false);
-  assert.deepEqual(view.hero?.buffer, {
-    line: { accent: "buffer", icon: "shield", text: "กันชนช่วยได้บางส่วน" },
-    link: "ใช้กันชน ›",
-    route: "buffer",
-  });
+  // Oct is 7,500.00, 2,500.00 over; buffer 4,800.00 + 4,800.00 = 9,600.00 holds it.
+  assert.deepEqual(view.hero?.buffer?.line, { accent: "warn", icon: "alert", text: "ต.ค. 2569 เกินงบ 2,500.00 บาท" });
+  assert.deepEqual(view.hero?.buffer?.prepare, { month: "2026-10", amount: "2500.00", total: "7500.00" });
   const offer = view.consolidation;
   assert.equal(offer?.kind, "offer");
   if (offer?.kind !== "offer") return;
@@ -125,7 +127,9 @@ test("UI_33_an_empty_buffer_gets_no_buffer_line_and_the_wallet_shows_it_empty", 
   const view = home();
   assert.equal(view.hero?.status, "later_over");
   assert.deepEqual(view.hero?.warning?.text, "เกินงบ 2 เดือน (พ.ย. 2569 ถึง ธ.ค. 2569)");
-  assert.equal(view.hero?.buffer, null); // nothing in it to use; the card itself opens the months
+  // The month still says it is over, but nothing in the buffer to move: no button.
+  assert.deepEqual(view.hero?.buffer?.line.text, "พ.ย. 2569 เกินงบ 1,500.00 บาท");
+  assert.equal(view.hero?.buffer?.prepare, null);
   assert.deepEqual([view.wallet.balance, view.wallet.filled, view.wallet.caption], ["0.00", 0, "ยังไม่พอ 1 เดือน"]);
 });
 
@@ -154,17 +158,17 @@ test("UI_33_without_the_plan_the_assistant_and_consolidation_cards_are_left_out"
   const view = home("no plan");
   assert.equal(view.assistant, false);
   assert.equal(view.consolidation, null);
-  // The hero still says which months are over (from the months); only the plan's buffer line is missing.
+  // The hero needs no plan: the months over and the buffer line come from their own answers.
   assert.equal(view.hero?.warning?.text, "เกินงบ 2 เดือน (พ.ย. 2569 ถึง ธ.ค. 2569)");
-  assert.equal(view.hero?.buffer, null);
+  assert.equal(view.hero?.buffer?.month, "2026-11");
 });
 
 test("UI_33_hero_edges_no_rows_and_a_single_month", () => {
-  assert.equal(heroView([], null, "0.00"), null);
+  assert.equal(heroView([], null), null);
   const one = months("/debts/months?count=1");
   assert.equal(one.length, 1);
   // No month after this one: "this month is in budget", never "and 0 more months".
-  assert.deepEqual(heroView(one, null, "4800.00")?.line?.text, HOME.withinBudgetNow);
+  assert.deepEqual(heroView(one, null)?.line?.text, HOME.withinBudgetNow);
 });
 
 test("UI_33_wallet_segments_follow_the_api_month_count_capped_at_six", () => {
@@ -181,7 +185,7 @@ test("UI_33_wallet_segments_follow_the_api_month_count_capped_at_six", () => {
 test("UI_33_banner_wording_per_reason", () => {
   const reasons = ["OVERDUE_DEBT", "DISPUTED_DEBT", "ESTIMATE_TOO_LARGE", "PAYMENT_ABOVE_BUDGET", "PAYMENT_ABOVE_ONE_THIRD_OF_INCOME"] as const;
   for (const reason of reasons) {
-    const view = consolidationView({ eligible: false, reason, estimate: null }, "3500.00");
+    const view = consolidationView({ eligible: false, reason, estimate: null });
     assert.equal(view.kind, "banner");
     if (view.kind !== "banner") continue;
     assert.equal(view.line.text, ASSIST.notWorth, reason);
@@ -322,21 +326,75 @@ test("UI_41_the_hero_counts_the_same_months_as_the_plan_its_buffer_line_is_about
   }
 });
 
-// ---- UI-42 (rules): one buffer line, from the plan ----------------------------------------
+// ---- UI-46 (rules): a month over budget and the buffer ------------------------------------
 
-test("UI_42_the_buffer_line_is_the_plans_covered_and_needs_money_in_the_buffer", () => {
+const over = (state: ShortfallMonth["state"], prepared: string, gap: string): ShortfallMonth => ({
+  month: "2026-11",
+  total: "6500.00",
+  budget: "5000.00",
+  shortfall: "1500.00",
+  prepared,
+  remaining_gap: gap,
+  state,
+  covered_by_buffer: "0.00",
+  still_short: "0.00",
+});
+
+test("UI_46_not_prepared_partly_prepared_and_prepared_say_the_apis_state", () => {
+  const not = shortfallView(over("not_prepared", "0.00", "1500.00"), "5700.00");
+  assert.deepEqual(not.line, { accent: "warn", icon: "alert", text: "พ.ย. 2569 เกินงบ 1,500.00 บาท" });
+  assert.deepEqual(not.prepare, { month: "2026-11", amount: "1500.00", total: "6500.00" });
+  // Partly: the gap left, and the move is that gap only.
+  const partly = shortfallView(over("partly_prepared", "600.00", "900.00"), "5100.00");
+  assert.deepEqual(partly.line, {
+    accent: "warn",
+    icon: "alert",
+    text: "พ.ย. 2569 เกินงบ 1,500.00 บาท เตรียมจากกันชนแล้ว 600.00 บาท ยังขาด 900.00 บาท",
+  });
+  assert.deepEqual(partly.prepare?.amount, "900.00");
+  // Prepared: a check, the same shortfall (the budget numbers never change), no button.
+  const done = shortfallView(over("prepared", "1500.00", "0.00"), "4200.00");
+  assert.deepEqual(done.line, { accent: "buffer", icon: "check", text: "พ.ย. 2569 เกินงบ 1,500.00 บาท เตรียมเงินจากกันชนแล้ว" });
+  assert.equal(done.prepare, null);
+  // The words are the brief's own.
+  assert.equal(BUFFER_STATE.use, "ใช้กันชนจ่ายส่วนที่เกิน");
+});
+
+test("UI_46_the_move_is_the_smaller_of_the_gap_and_the_buffer_and_none_from_an_empty_one", () => {
+  // A prepared month gets no button, however much the buffer holds.
+  assert.equal(shortfallView(over("prepared", "1500.00", "0.00"), "9000.00").prepare, null);
+  assert.equal(shortfallView(over("not_prepared", "0.00", "1500.00"), "1000.00").prepare?.amount, "1000.00");
+  assert.equal(shortfallView(over("not_prepared", "0.00", "1500.00"), "1500.00").prepare?.amount, "1500.00");
+  assert.equal(shortfallView(over("not_prepared", "0.00", "1500.00"), "1500.01").prepare?.amount, "1500.00");
+  assert.equal(shortfallView(over("not_prepared", "0.00", "1500.00"), "0.01").prepare?.amount, "0.01");
+  assert.equal(shortfallView(over("not_prepared", "0.00", "1500.00"), "0.00").prepare, null);
+  assert.equal(shortfallView(over("partly_prepared", "600.00", "900.00"), "0.00").prepare, null);
+});
+
+test("UI_46_the_hero_shows_the_first_month_over_budget_and_it_turns_prepared_after_the_move", () => {
   scene("over_budget");
   const rows = months();
-  const answer = plan();
-  const at = (covered: boolean, balance: string, withPlan = true) =>
-    heroView(rows, withPlan ? { ...answer, buffer_plan: { ...answer.buffer_plan, covered } } : null, balance)?.buffer?.line ?? null;
-  assert.deepEqual(at(true, "0.01"), { accent: "buffer", icon: "check", text: HOME.bufferCovers });
-  assert.deepEqual(at(false, "0.01"), { accent: "buffer", icon: "shield", text: HOME.bufferHelpsSome });
-  // An empty buffer helps with nothing, whatever the plan says; no plan, no line.
-  assert.equal(at(false, "0.00"), null);
-  assert.equal(at(true, "0.00"), null);
-  assert.equal(at(true, "4800.00", false), null);
-  // No month over budget: nothing for the buffer to cover, so no line.
+  assert.equal(heroView(rows, null)?.buffer, null); // no answer, no line
+  assert.equal(heroView(rows, shortfalls())?.buffer?.state, "not_prepared");
+  // Move the gap for Nov, as the buffer screen does: Nov is prepared, Dec is untouched.
+  const moved = call("POST", "/buffer/move-to-main", { client_request_id: "nov", amount: "1500.00", for_month: "2026-11" });
+  assert.equal(moved.status, 201);
+  const after = shortfalls();
+  assert.deepEqual(
+    after.months.map((m) => [m.month, m.total, m.shortfall, m.state]),
+    [
+      ["2026-11", "6500.00", "1500.00", "prepared"],
+      ["2026-12", "6500.00", "1500.00", "not_prepared"],
+    ],
+  );
+  assert.deepEqual(heroView(rows, after)?.buffer?.line, {
+    accent: "buffer",
+    icon: "check",
+    text: "พ.ย. 2569 เกินงบ 1,500.00 บาท เตรียมเงินจากกันชนแล้ว",
+  });
+  // The months themselves never change after a move: the hero's total and warning stay.
+  assert.deepEqual(months(), rows);
+  // No month over budget: no line at all.
   scene("persona");
-  assert.equal(heroView(months(), plan(), "4800.00")?.buffer, null);
+  assert.equal(heroView(months(), shortfalls())?.buffer, null);
 });

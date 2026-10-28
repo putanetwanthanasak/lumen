@@ -29,13 +29,21 @@ export function formHint(plan: AssistantPlanOut): string | null {
   return ASSIST.formHint(formatBaht(plan.safe_new_monthly), thaiMonth(plan.safe_new_from));
 }
 
-/** The buffer screen's over-budget card: the shortfall, then covered or still short. */
+/**
+ * The buffer screen's over-budget card: the shortfall, then covered or still short.
+ * `covered` and `still_short` are measured on `remaining_gap`, so once a month is
+ * prepared the gap is said between them and the numbers add up (review F2).
+ */
 export function bufferPlanLines(b: BufferPlanOut): { tone: "ok" | "warn"; lines: string[] } {
   if (toSatang(b.shortfall) === 0n) return { tone: "ok", lines: [ASSIST.bufferNone] };
+  const shortfall = ASSIST.shortfall(formatBaht(b.shortfall));
+  if (toSatang(b.remaining_gap) === 0n) return { tone: "ok", lines: [shortfall, ASSIST.allPrepared] };
+  const gap = toSatang(b.remaining_gap) === toSatang(b.shortfall) ? [] : [ASSIST.notPrepared(formatBaht(b.remaining_gap))];
   return {
     tone: b.covered ? "ok" : "warn",
     lines: [
-      ASSIST.shortfall(formatBaht(b.shortfall)),
+      shortfall,
+      ...gap,
       b.covered ? ASSIST.covered(formatBaht(b.balance)) : ASSIST.stillShort(formatBaht(b.balance), formatBaht(b.still_short)),
     ],
   };
@@ -53,4 +61,21 @@ export function ratePercent(rate: string): string {
   const intPart = (whole + digits.slice(0, 2)).replace(/^0+(?=\d)/, "");
   const rest = digits.slice(2).replace(/0+$/, "");
   return rest === "" ? intPart : `${intPart}.${rest}`;
+}
+
+/**
+ * The assistant's example summary (AI is roadmap only): the plan's own words, the
+ * same lines the screens show, one point per line. Shown labelled ตัวอย่าง.
+ */
+export function exampleSummary(plan: AssistantPlanOut): string {
+  const lines = planLines(plan);
+  const buffer = bufferPlanLines(plan.buffer_plan).lines.join(" ");
+  const c = plan.consolidation;
+  const consolidate =
+    c.estimate === null
+      ? `${notConsolidatingLine(c.reason)} ${ASSIST.reason[c.reason]}`
+      : `${ASSIST.worth} ${ASSIST.newMonthly} ${formatBaht(c.estimate.monthly_payment)} ${ASSIST.totalCost} ${formatBaht(c.estimate.total_cost)} (${ASSIST.exampleTag})`;
+  // The buffer line already says every month is in budget: say it once.
+  const back = plan.back_in_budget_month === null ? [] : [lines.back];
+  return [...back, lines.safe, buffer, consolidate].join("\n"); // one point per line
 }

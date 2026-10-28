@@ -9,7 +9,7 @@
  * opens the result screen (screens/Result.tsx); the form survives the trip.
  */
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { ApiError, getAssistantPlan, getSettings, previewInstallment, suggestMonthly } from "../api.ts";
+import { getAssistantPlan, getSettings, needsSettings, previewInstallment, rejectedFields, suggestMonthly } from "../api.ts";
 import { formHint } from "../assistantText.ts";
 import type { InstallmentKind } from "../api-types.ts";
 import { THINK } from "../copy.ts";
@@ -29,6 +29,7 @@ import {
   getDraft,
   MONTH_CHIPS,
   PLATFORM_MAX,
+  rejectedErrors,
   setDraft,
   shownErrors,
   startPreview,
@@ -36,6 +37,7 @@ import {
   toEntry,
   type FieldKey,
   type Form,
+  type RejectedKey,
   type Stage,
 } from "../thinkFirstForm.ts";
 import { useLoad, type Load } from "../useLoad.ts";
@@ -92,7 +94,9 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
   });
   const [touched, setTouched] = useState<ReadonlySet<FieldKey> | "all">(() => new Set());
   const [stage, setStage] = useState<Stage>({ name: "form" });
-  const [problem, setProblem] = useState<"failed" | "settings" | null>(null);
+  const [problem, setProblem] = useState<"failed" | null>(null);
+  // Fields the API refused (422), until the user edits them.
+  const [rejected, setRejected] = useState<Partial<Record<RejectedKey, string>>>({});
   // A cash item is the exception: its kinds open on request, and stay open while one is chosen.
   const [kindsOpen, setKindsOpen] = useState(() => form.kind !== "purchase");
   const pending = useRef<string | null>(null); // the preview request still waited for
@@ -104,6 +108,7 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => {
     setForm((f) => ({ ...f, [key]: value, ...(key === "monthly" ? { monthlyEdited: true } : {}) }));
+    setRejected((r) => (key in r ? Object.fromEntries(Object.entries(r).filter(([k]) => k !== key)) : r));
     pending.current = null;
     // A changed entry is a new entry: a pending verdict no longer applies.
     setStage((s) => (s.name === "checking" || s.name === "verdict" ? edit(s) : s));
@@ -170,14 +175,20 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
       navigate("result");
     } catch (error) {
       // Only an error for the request still waited for is reported.
-      if (pending.current === id) {
-        setProblem(error instanceof ApiError && error.code === "SETTINGS_REQUIRED" ? "settings" : "failed");
-        setStage({ name: "form" });
+      if (pending.current !== id) return;
+      setStage({ name: "form" });
+      if (needsSettings(error)) {
+        setDraft({ form, stage: { name: "form" } }); // kept for the way back from settings
+        navigate("settings");
+        return;
       }
+      const fields = rejectedErrors(rejectedFields(error));
+      if (fields === null) setProblem("failed");
+      else setRejected(fields);
     }
   }
 
-  if (load.state !== "ready" || load.data === null || problem === "settings") {
+  if (load.state !== "ready" || load.data === null) {
     return (
       <Screen route="think" title={THINK.title} back="home">
         {load.state === "loading" && <Loading lines={3} />}
@@ -190,7 +201,7 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
   const hint = load.data.hint;
   const checking = stage.name === "checking";
   const cash = form.kind !== "purchase";
-  const errors = shownErrors(form, touched);
+  const errors = { ...shownErrors(form, touched), ...rejected };
   const ready = canPreview(form);
   // Always in view, above the nav; disabled until the four required fields are valid.
   const actions = (
@@ -247,6 +258,7 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
             onChange={(v) => set("name", v)}
             placeholder={THINK.itemNamePlaceholder}
             maxLength={100}
+            error={errors.name ?? null}
           />
           <Field
             label={THINK.platform}

@@ -13,7 +13,7 @@ if it is not on your `PATH`), and the dev server. No package is installed: it
 uses Node's own `fetch` and `WebSocket` and the Chrome DevTools Protocol.
 
 ```bash
-npm run dev                         # one terminal, from frontend/
+npm run dev -- --mode mock          # one terminal, from frontend/ (the views use the mock's scenes)
 node scripts/nav-layer-check.mjs    # another terminal, from frontend/
 ```
 
