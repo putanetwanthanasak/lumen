@@ -36,7 +36,8 @@ All made in Session 17 PR B (`feat/kidnee-wiring-frontend`): the screens call th
 | `GET /buffer/shortfalls` | New (the buffer's "ถ้าเดือนไหนเกินงบ" card) | Used by Home's hero, the months screen and the buffer screen for each month's state. |
 | `InstallmentKind` | Responses may also say `consolidation_loan` (a request may not) | Add it to response types only. |
 | `InstallmentStatus` | Adds `consolidated` (L72: paid off by a consolidation loan, not owed) | Add it; show it with the not-counted lines. |
-| `POST /demo/scene`, `POST /assistant/summary` | Not built (mock only; AI is roadmap) | Kept in the mock. On the API, the assistant's example is worded from `GET /assistant/plan` and labelled ตัวอย่าง; scenes exist only in the mock. |
+| `POST /demo/scene` | Not built (mock only) | Kept in the mock; scenes exist only in the mock. |
+| `POST /assistant/summary` (mock) | `GET /assistant/summary` (Session 18) | Done in Session 18: both modes call the GET; the mock answers it as the backend does without a key. No `is_example` and no ตัวอย่าง tag. |
 
 ---
 
@@ -349,6 +350,28 @@ Model: `assistant/schemas.py` (`PlanOut`). It writes nothing; the UI never calls
 - `monthly_reduction` (Session 17) is `max(0, current_monthly_total - monthly_payment)`. It is `"0.00"` when the loan costs as much as this month or more, which can happen when the run over budget comes later; the card then leaves out its benefit line. Show both figures as sent; never compute them. `demo-consolidate` on 2026-10-29: `"current_monthly_total": "7500.00"`, `"monthly_payment": "3369.88"`, `"monthly_reduction": "4130.12"`.
 - `buffer_plan.remaining_gap` (Session 17): see `GET /buffer/shortfalls`.
 - 409 `SETTINGS_REQUIRED`.
+
+### `GET /assistant/summary` (new, Session 18)
+Model: `assistant/schemas.py` (`SummaryOut`); service `assistant/summary.py`. Home's "ผู้ช่วย KidNee สรุปให้ฟัง" card. It writes nothing.
+```json
+{
+  "text": "เดือน พ.ย. 2569 ค่างวดรวม 3,500.00 บาท อยู่ในงบ 5,000.00 บาท\nทุกเดือนอยู่ในงบ\nกันชนตอนนี้ 2,700.00 บาท",
+  "source": "fallback",
+  "reason": "no_key"
+}
+```
+- `demo-mon` on 2026-11-10 without a key. `text` is one point per line, at most 4 lines; show it as sent, the same way for both sources.
+- `source` is `ai` (the model's words passed the grounding check) or `fallback` (the app's own template from the same numbers).
+- `reason` is one of:
+  - `ok` (only with `source: "ai"`)
+  - `no_key`: `LLM_API_KEY` is not set, or `LLM_PROVIDER` names another provider; the model is never called
+  - `timeout`: no answer within the 8 s timeout
+  - `api_error`: any other API error, a refusal, a cut-off or an empty answer
+  - `grounding_failed`: the model's text had a number or month not in its input, a dash, a banned phrase, or broke a wording rule
+- The model (Claude Haiku, `LLM_MODEL_PLANNER`, default `claude-haiku-5-5`) gets only numbers, months and flags the plan already computed: no item names, app names or other text the user typed. One call per change of those numbers per user (an in-memory cache keyed by their hash, the prompt version and the model); no retries.
+- `demo-over` (2026-11-10, no key): `"text": "เดือน พ.ย. 2569 ค่างวดรวม 6,500.00 บาท เกินงบ 1,500.00 บาท\nมี 2 เดือนที่ค่างวดเกินงบ ตั้งแต่ พ.ย. 2569 ถึง ธ.ค. 2569 กลับมาอยู่ในงบเดือน ม.ค. 2570\nกันชน 5,700.00 บาท พอจ่ายส่วนที่เกินได้ทั้งหมด\nตอนนี้ยังไม่ควรผ่อนเพิ่ม"`.
+- `demo-consolidate` (2026-11-10, no key): `"text": "เดือน พ.ย. 2569 ค่างวดรวม 7,500.00 บาท เกินงบ 2,500.00 บาท\nมี 9 เดือนที่ค่างวดเกินงบ ตั้งแต่ พ.ย. 2569 ถึง ก.ค. 2570 กลับมาอยู่ในงบเดือน ส.ค. 2570 บางเดือนค่างวดรวมเกิน 1 ใน 3 ของรายได้ ซึ่ง ธปท. แนะนำว่าไม่ควรเกิน\nกันชน 1,500.00 บาท ยังขาดอีก 9,000.00 บาท\nถ้ารวมหนี้ ค่างวดอาจลดลงเดือนละ 4,130.12 บาท ถ้าสนใจ ธนาคารจะติดต่อกลับเพื่อพิจารณา"`.
+- 401 without `X-Demo-User`; 409 `SETTINGS_REQUIRED`. Never a 5xx for a model problem: every one of them is a `fallback`.
 
 ## Notifications
 ### `GET /notifications` (new)

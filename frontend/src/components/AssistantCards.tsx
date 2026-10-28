@@ -1,12 +1,14 @@
 /**
  * Home's two assistant cards (DESIGN.md section 7.2): consolidation from the plan
  * (L70), and the assistant's chat bubble. Numbers come from GET /assistant/plan; the
- * summary from POST /assistant/summary (mock example now). Shapes and words come
+ * summary from GET /assistant/summary (the model's words behind the backend's grounding
+ * check, or the backend's own template). Shapes and words come
  * from homeLayout.ts (UI-33). "สนใจรวมหนี้" only shows a message: no form, no request
  * call (L71: the bank decides).
  */
 import { useId, useState } from "react";
 import { getAssistantSummary } from "../api.ts";
+import type { AssistantPlanOut } from "../api-types.ts";
 import { ACCENT, EDGE, SOLID, type Accent } from "../accent.ts";
 import { ratePercent } from "../assistantText.ts";
 import { ASSIST, COMMON } from "../copy.ts";
@@ -144,12 +146,16 @@ function Plan({ title, monthly, total }: { title: string; monthly: Money | null;
   );
 }
 
-/** The assistant speaks: the mascot on the left, the summary's first line in a bubble. */
-export function AiBubbleCard() {
-  const [load, reload] = useLoad(getAssistantSummary);
+/**
+ * The assistant speaks: the mascot on the left, the summary's first line in a bubble.
+ * The same look for the model's words and the app's own, and no error state: a failed
+ * request shows the plan's own words (homeLayout.aiBubble).
+ */
+export function AiBubbleCard({ plan }: { plan: AssistantPlanOut }) {
+  const [load] = useLoad(getAssistantSummary);
   const [open, setOpen] = useState(false);
   const restId = useId();
-  const bubble = aiBubble(load);
+  const bubble = aiBubble(load, plan);
   const ai = ACCENT.ai;
   return (
     <section className={`flex items-start gap-3 rounded-card p-4 ${ai.tint} ${EDGE.ai}`}>
@@ -160,23 +166,12 @@ export function AiBubbleCard() {
         <span aria-hidden="true" className="absolute top-4 -left-1.5 h-3 w-3 rotate-45 bg-card" />
         <h2 className={`flex flex-wrap items-center gap-2 text-body font-bold ${ai.ink}`}>
           <Icon name={ai.icon} size={20} />
-          {ai.label}
-          {bubble.state === "done" && bubble.example && <ExampleTag text={ASSIST.aiExample} accent="ai" />}
+          {ASSIST.aiTitle}
         </h2>
         {bubble.state === "loading" && (
           <p role="status" aria-busy="true" className="min-h-12 text-body text-ink-muted">
             {ASSIST.aiLoading}
           </p>
-        )}
-        {bubble.state === "failed" && (
-          <>
-            <p role="status" className="text-body text-ink">
-              {ASSIST.aiFailed}
-            </p>
-            <Button variant="secondary" onClick={reload}>
-              {COMMON.retry}
-            </Button>
-          </>
         )}
         {bubble.state === "done" && (
           <>

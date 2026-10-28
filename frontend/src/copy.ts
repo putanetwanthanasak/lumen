@@ -350,11 +350,10 @@ export const ASSIST = {
   interested: "สนใจรวมหนี้",
   bankWillCall: "ธนาคารจะติดต่อกลับเพื่อพิจารณา",
   bankDecides: "ธนาคารพิจารณาจากข้อมูลของธนาคารเอง ตัวเลขนี้ยังไม่ใช่ข้อเสนอ",
+  aiTitle: "ผู้ช่วย KidNee สรุปให้ฟัง",
   aiLoading: "กำลังสรุป...",
   aiMore: "อ่านต่อ ›",
   aiLess: "ย่อ",
-  aiExample: "ตัวอย่าง",
-  aiFailed: "สรุปไม่สำเร็จ ลองอีกครั้งได้เลย",
 };
 
 export const DEMO = {
@@ -376,7 +375,7 @@ export const DEMO = {
   sceneOverNow: "ม่อน: เกินงบตั้งแต่เดือนนี้",
   sceneOverEmpty: "ม่อน: มีเดือนเกินงบ กันชนว่าง",
   sceneAiSlow: "ม่อน: ผู้ช่วยกำลังสรุป (ตอบช้า)",
-  sceneAiFailing: "ม่อน: ผู้ช่วยสรุปไม่สำเร็จ",
+  sceneAiFailing: "ม่อน: เรียกผู้ช่วยไม่สำเร็จ (ใช้คำของแอป)",
   done: "เปลี่ยนฉากแล้ว",
   personaTitle: "ผู้ใช้ตัวอย่าง",
   personaNote: "สลับผู้ใช้ที่ seed ไว้ใน lumen_kidnee (X-Demo-User)",

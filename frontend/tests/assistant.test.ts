@@ -5,7 +5,8 @@
  *   out with Python Decimal using the backend's own formula, not with this mock.
  * UI-29: the words around the plan's numbers (assistantText.ts).
  * UI-30: two features and the check: three tabs, no payoff or consolidation screen.
- * UI-31: "สนใจรวมหนี้" sends nothing, and the AI summary is an example.
+ * UI-31: "สนใจรวมหนี้" sends nothing, and the mock's summary is the plan's own words
+ *   (Session 18: the backend's fallback when it has no model, AI-20).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -190,7 +191,7 @@ test("UI_28_months_stop_at_600_and_say_so", () => {
 test("UI_28_no_settings_is_409", () => {
   resetMock(TODAY);
   assert.equal(call("GET", "/assistant/plan").status, 409);
-  assert.equal(call("POST", "/assistant/summary").status, 409);
+  assert.equal(call("GET", "/assistant/summary").status, 409);
 });
 
 // ---- UI-29: words around the numbers -------------------------------------------------
@@ -274,7 +275,7 @@ test("UI_30_three_tabs_and_no_payoff_or_consolidation_screen", () => {
   assert.ok(!navActive("buffer", "alerts"));
 });
 
-// ---- UI-31: no request on "สนใจรวมหนี้", the summary is an example ----------------------
+// ---- UI-31: no request on "สนใจรวมหนี้", the mock's summary is the plan's words ---------
 
 test("UI_31_interest_in_consolidation_sends_nothing", () => {
   const src = readFileSync("src/components/AssistantCards.tsx", "utf8");
@@ -288,10 +289,11 @@ test("UI_31_interest_in_consolidation_sends_nothing", () => {
   assert.equal(ASSIST.bankWillCall, "ธนาคารจะติดต่อกลับเพื่อพิจารณา");
 });
 
-test("UI_31_ai_summary_is_an_example_of_points_1_to_4", () => {
+test("UI_31_the_mock_summary_is_the_plans_own_words_for_points_1_to_4", () => {
   scene("over_budget_now");
-  const out = call("POST", "/assistant/summary").body as AssistantSummaryOut;
-  assert.equal(out.is_example, true);
+  const out = call("GET", "/assistant/summary").body as AssistantSummaryOut;
+  // The mock has no model: it answers as the backend does without a key.
+  assert.deepEqual([out.source, out.reason], ["fallback", "no_key"]);
   const p = plan();
   const lines = planLines(p);
   for (const part of [
@@ -305,7 +307,7 @@ test("UI_31_ai_summary_is_an_example_of_points_1_to_4", () => {
     assert.ok(out.text.includes(part), part);
   }
   scene("persona");
-  const calm = (call("POST", "/assistant/summary").body as AssistantSummaryOut).text;
+  const calm = (call("GET", "/assistant/summary").body as AssistantSummaryOut).text;
   // The same words as Home's banner: not needed, then why.
   assert.ok(calm.includes(ASSIST.notNeeded));
   assert.ok(calm.includes(ASSIST.reason.NOT_NEEDED));

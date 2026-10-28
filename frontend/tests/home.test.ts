@@ -194,22 +194,21 @@ test("UI_33_banner_wording_per_reason", () => {
   }
 });
 
-test("UI_33_ai_bubble_loading_failed_and_the_first_line", () => {
-  assert.deepEqual(aiBubble({ state: "loading" }), { state: "loading" });
-  assert.deepEqual(aiBubble({ state: "error", error: new Error("503") }), { state: "failed" });
-  assert.deepEqual(aiBubble({ state: "ready", data: { text: "หนึ่ง\nสอง\n\nสาม", is_example: true } }), {
+test("UI_33_ai_bubble_loading_and_the_first_line", () => {
+  const p = plan();
+  assert.deepEqual(aiBubble({ state: "loading" }, p), { state: "loading" });
+  assert.deepEqual(aiBubble({ state: "ready", data: { text: "หนึ่ง\nสอง\n\nสาม", source: "ai", reason: "ok" } }, p), {
     state: "done",
     first: "หนึ่ง",
     rest: ["สอง", "สาม"],
-    example: true,
   });
-  // The Demo panel's states: slow (loading) and failing (error).
+  // The Demo panel's states: slow (loading) and failing (the plan's own words, AI-20).
   scene("ai_slow");
-  assert.equal(call("POST", "/assistant/summary").delayMs, SLOW_SUMMARY_MS);
+  assert.equal(call("GET", "/assistant/summary").delayMs, SLOW_SUMMARY_MS);
   scene("ai_failing");
-  assert.equal(call("POST", "/assistant/summary").status, 503);
+  assert.equal(call("GET", "/assistant/summary").status, 503);
   scene("persona");
-  const answer = call("POST", "/assistant/summary");
+  const answer = call("GET", "/assistant/summary");
   assert.deepEqual([answer.status, answer.delayMs], [200, undefined]);
 });
 

@@ -1,7 +1,8 @@
 /**
  * UI-39: a field the backend does not send yet never crashes a screen (src/apiFields.ts).
  * main's backend leaves out monthly_reduction (the plan's estimate) and platform_name
- * (installment lines), and has no assistant summary yet; the mock sends them all.
+ * (installment lines); the mock sends them all. An assistant summary without text
+ * counts as failed, and the bubble shows the plan's own words (AI-20).
  * Home no longer needs a month row's over_by (UI-42), so the mock no longer sends it. A reader gives null for such a field, with one console warning
  * per answer and field. It never guesses a value and never changes the answer it was
  * given, and Home, drawn from such answers, leaves out only what needs the field.
@@ -70,8 +71,10 @@ test("UI_39_complete_answers_pass_unchanged_and_warn_nothing", () => {
       const summary = answer<DebtSummary>("/debts/summary");
       assert.deepEqual(readSummary(summary), summary, name);
     }
-    const summary: AssistantSummaryOut = { text: "บรรทัดแรก\nบรรทัดสอง", is_example: false };
-    assert.deepEqual(readAssistantSummary(summary), summary);
+    for (const source of ["ai", "fallback"] as const) {
+      const summary: AssistantSummaryOut = { text: "บรรทัดแรก\nบรรทัดสอง", source, reason: source === "ai" ? "ok" : "timeout" };
+      assert.deepEqual(readAssistantSummary(summary), summary);
+    }
   });
   assert.ok(estimates > 0, "the estimate path ran");
   // Since Session 17 the rows carry over_by, as the backend's do, and pass unchanged.
@@ -141,16 +144,19 @@ test("UI_39_platform_name_absent_reads_as_null_and_text_or_null_is_kept", () => 
   assert.equal(rowWarnings.length, 1);
 });
 
-test("UI_39_an_assistant_summary_without_text_is_an_error_and_without_is_example_keeps_the_tag", () => {
+test("UI_39_an_assistant_summary_without_text_counts_as_failed", () => {
   const [, warned] = withWarnings(() => {
-    // No text: the bubble's error state with a retry (useLoad turns the throw into it).
-    assert.throws(() => readAssistantSummary({ is_example: false } as unknown as AssistantSummaryOut), /no text/);
-    assert.throws(() => readAssistantSummary({ text: null, is_example: false } as unknown as AssistantSummaryOut), /no text/);
-    // No is_example: the example tag stays, the safe side for AI text.
+    // No text, or only spaces: a failed request (useLoad turns the throw into it), so
+    // the bubble shows the plan's own words (AI-20), never an empty bubble.
+    for (const text of [undefined, null, 42, "", "  \n "]) {
+      assert.throws(() => readAssistantSummary({ text, source: "ai", reason: "ok" } as unknown as AssistantSummaryOut), /no text/);
+    }
+    // No source or reason: nothing on screen needs them, so the answer passes as it is.
     const read = readAssistantSummary({ text: "สรุป" } as unknown as AssistantSummaryOut);
-    assert.deepEqual(read, { text: "สรุป", is_example: true });
+    assert.deepEqual(read, { text: "สรุป" });
   });
-  assert.equal(warned.length, 3);
+  assert.equal(warned.length, 5);
+  assert.match(warned[0] ?? "", /^GET \/assistant\/summary: no readable text, so the assistant's bubble shows the plan's own words\./);
 });
 
 test("UI_39_api_ts_reads_every_such_answer_through_its_reader", () => {
@@ -160,16 +166,12 @@ test("UI_39_api_ts_reads_every_such_answer_through_its_reader", () => {
     ["getDebtSummary", "readSummary"],
     ["getMonths", "readMonths"],
     ["getAssistantPlan", "readPlan"],
+    ["getAssistantSummary", "readAssistantSummary"], // in both modes since Session 18
   ];
   for (const [getter, reader] of getters) {
     const body = new RegExp(`export async function ${getter}\\([^)]*\\)[^{]*\\{\\s*return ${reader}\\(\\(await call<`).test(api);
     assert.ok(body, `${getter} returns ${reader}(...)`);
   }
-  // The summary: an example from the real plan (read by readPlan), or the mock's answer through its reader.
-  const summary = api.slice(api.indexOf("export async function getAssistantSummary"));
-  const end = summary.indexOf("\n}\n");
-  assert.match(summary.slice(0, end), /return \{ text: exampleSummary\(await getAssistantPlan\(\)\), is_example: true \}/);
-  assert.match(summary.slice(0, end), /return readAssistantSummary\(\(await call</);
 });
 
 // ---- Home, drawn from the answers as main's backend gives them today -------------
