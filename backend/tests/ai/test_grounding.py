@@ -6,7 +6,7 @@ refused, so the caller shows the fallback."""
 from decimal import Decimal
 
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from app.affordability.months import Month
@@ -176,6 +176,8 @@ def test_AI_05_the_first_broken_rule_is_reported_with_its_token() -> None:
 
 # --- AI-10: the extractor finds every number and month, in every display format ------
 
+EXAMPLES = 1500  # summed into the progress log's Hypothesis count
+
 AMOUNTS = st.decimals(
     min_value=Decimal("0.00"),
     max_value=Decimal("9999999999.99"),
@@ -196,6 +198,7 @@ def display_formats(value: Decimal) -> list[str]:
     return forms + [form.translate(THAI_DIGITS) for form in forms]
 
 
+@settings(max_examples=EXAMPLES, deadline=None)
 @given(value=AMOUNTS, pick=st.integers(min_value=0, max_value=7), before=FILLER, after=FILLER)
 def test_AI_10_every_display_format_of_an_amount_is_read_as_its_value(
     value: Decimal, pick: int, before: str, after: str
@@ -209,6 +212,7 @@ def test_AI_10_every_display_format_of_an_amount_is_read_as_its_value(
     assert found.stray == []
 
 
+@settings(max_examples=EXAMPLES, deadline=None)
 @given(
     index=st.integers(min_value=1900 * 12, max_value=2400 * 12),
     full=st.booleans(),
@@ -231,6 +235,7 @@ def test_AI_10_a_thai_month_and_buddhist_year_is_read_as_that_month(
     assert found.stray == []
 
 
+@settings(max_examples=EXAMPLES, deadline=None)
 @given(shown=AMOUNTS, given_value=AMOUNTS, pick=st.integers(min_value=0, max_value=7))
 def test_AI_10_an_amount_passes_exactly_when_it_equals_an_input(
     shown: Decimal, given_value: Decimal, pick: int

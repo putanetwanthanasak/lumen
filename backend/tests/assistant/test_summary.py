@@ -9,7 +9,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from app.affordability.months import Month, Scheduled, Verdict
@@ -297,6 +297,8 @@ def test_AI_17_the_prompt_is_a_versioned_file_with_the_rules() -> None:
 
 # --- AI-12: only numbers and months reach the model ---------------------------------------
 
+EXAMPLES = 1500  # summed into the progress log's Hypothesis count
+
 AMOUNTS = st.decimals(
     min_value=Decimal("0.00"),
     max_value=Decimal("9999999999.99"),
@@ -344,6 +346,7 @@ def any_facts(draw: st.DrawFn) -> Facts:
     )
 
 
+@settings(max_examples=EXAMPLES, deadline=None)
 @given(facts=any_facts())
 def test_AI_11_the_fallback_always_passes_the_check(facts: Facts) -> None:
     text = fallback_text(facts)
@@ -354,6 +357,7 @@ def test_AI_11_the_fallback_always_passes_the_check(facts: Facts) -> None:
     assert "\u2014" not in text
 
 
+@settings(max_examples=EXAMPLES, deadline=None)
 @given(facts=any_facts())
 def test_AI_12_the_model_gets_exactly_the_allowed_numbers_and_months(facts: Facts) -> None:
     allowed = allowed_of(facts)
