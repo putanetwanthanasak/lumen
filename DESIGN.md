@@ -66,8 +66,10 @@ holds the user's money. Recording is always allowed, whatever the verdict.
 - **Logo:** abstract and friendly, never a realistic kidney or any organ. Two
   options, both inline SVG in `src/components/Logo.tsx`:
 
-**Option A, "Bean" (used in the app).** A soft bean with a smile and a small
-gold coin: "think, then keep something back".
+**Option A, "Bean" (used in the app: the header, the assistant's card, the
+favicon).** A soft green bean with a small smile: "think it through, calmly".
+Neither option has a yellow badge: a small yellow circle on the edge read like a
+warning sign (UI-44).
 
 ```svg
 <svg viewBox="0 0 48 48" width="48" height="48">
@@ -75,20 +77,18 @@ gold coin: "think, then keep something back".
   <path d="M16 13c3-2 7-2 10 0" stroke="#aee9c8" stroke-width="3" stroke-linecap="round" fill="none"/>
   <circle cx="17" cy="25" r="2" fill="#ffffff"/><circle cx="26" cy="25" r="2" fill="#ffffff"/>
   <path d="M17 31c2.5 2.5 6.5 2.5 9 0" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" fill="none"/>
-  <circle cx="37" cy="36" r="6" fill="#ffc94d"/>
-  <path d="M37 33v6" stroke="#0a3f28" stroke-width="2" stroke-linecap="round"/>
 </svg>
 ```
 
-**Option B, "Filter".** Three rounded layers narrowing to one coin: "only what
-fits passes through".
+**Option B, "Filter".** Three rounded layers narrowing to one dark green coin:
+"only what fits passes through".
 
 ```svg
 <svg viewBox="0 0 48 48" width="48" height="48">
   <rect x="6" y="7" width="36" height="8" rx="4" fill="#7fd8a7"/>
   <rect x="11" y="18" width="26" height="8" rx="4" fill="#22a565"/>
   <rect x="16" y="29" width="16" height="8" rx="4" fill="#0d6e42"/>
-  <circle cx="24" cy="43" r="4" fill="#ffc94d"/>
+  <circle cx="24" cy="43" r="4" fill="#0a3f28"/>
 </svg>
 ```
 
@@ -133,8 +133,7 @@ Components use tokens only, never raw hex.
 | `leaf-500` | `#22a565` | focus ring |
 | `leaf-600` | `#138a52` | logo body, field focus |
 | `leaf-700` | `#0d6e42` | **primary button**, active toggle |
-| `leaf-800` / `900` | `#0b5735` / `#0a3f28` | links, pressed states |
-| `sun-300` / `400` | `#ffd977` / `#ffc94d` | logo coin only, never text |
+| `leaf-800` / `900` | `#0b5735` / `#0a3f28` | links, pressed states; `900` is also logo B's coin |
 | `ink` | `#10231a` | text |
 | `ink-muted` | `#4a5b52` | secondary text |
 | `line` | `#dce5df` | borders, dividers |
@@ -375,7 +374,7 @@ Every screen has the footer and handles **loading** (skeleton), **error**
 
 ### 7.2 Screen 2: Home (`#/home`)
 The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state.
-1. Greeting "สวัสดี มิ้นท์".
+1. Greeting "สวัสดี ม่อน".
 2. **Hero, this month** (`GET /debts/months?count=6`, this month first):
    "ค่างวดรวมเดือน ต.ค. 2569" with "ดูทุกเดือน ›" (opens 7.2b), the total, "จากงบ ...",
    the bar, then:
@@ -479,7 +478,7 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
    calls the preview (writes nothing) and opens 7.3b. The form is kept, so "แก้ไข"
    there returns to it with every value.
 5. Changing a field while the preview is in flight drops its answer.
-- Demo strip: three buttons (อยู่ในงบ, เกินงบ, เกินเกณฑ์) fill มิ้นท์'s examples,
+- Demo strip: three buttons (อยู่ในงบ, เกินงบ, เกินเกณฑ์) fill ม่อน's examples,
   first due month next month.
 - No label wraps or clips at 390px or in the 370px desktop frame (measured in the
   DOM, every state).
@@ -549,7 +548,7 @@ else imported them, so deleting was safe. Their parts now live in 7.2 (cards 4 a
   "สำหรับนำเสนอเท่านั้น ไม่ใช่ส่วนหนึ่งของแอป".
 - Payday: pick a month, run `POST /demo/payday`, see the outcome in words; a
   second run for the same month says it already ran (L67, once a month).
-- Scenes (mock only): first launch; มิ้นท์ with settings; "มีเดือนเกินงบ" (records
+- Scenes (mock only): first launch; ม่อน with settings; "มีเดือนเกินงบ" (records
   the YELLOW laptop from next month: 2 months over, the buffer covers it, no
   consolidation); "เกินงบตั้งแต่เดือนนี้" (records the RED motorbike from this
   month: 9 months over, the pause line, the buffer still short, consolidation
@@ -595,7 +594,7 @@ backend writes them.
 
 All in `frontend/src/api-types.ts`, copied from the merged backend. Money is a
 string. `src/api.ts` is the only module that gets data (test UI-07); it sends
-`X-Demo-User: demo-mint` (L60, demo only) and calls `/api/...`, which the Vite
+`X-Demo-User: demo-mon` (L60, demo only) and calls `/api/...`, which the Vite
 proxy forwards to `http://127.0.0.1:8000` with `/api` stripped (the backend has no
 prefix; to be confirmed when wiring).
 
@@ -640,7 +639,7 @@ Fields the backend already sends are not checked again on screen.
 
 ## 10. Demo persona and scenes
 
-**มิ้นท์**, 24, first job. Income 20,000.00, payday the 25th, installment budget
+**ม่อน**, 24, first job. Income 20,000.00, payday the 25th, installment budget
 5,000.00, auto-save 10% of the price, leftover saving on, consent given. Main
 account 9,500.00, buffer 4,800.00.
 
@@ -659,7 +658,7 @@ Now: 3,500.00 a month.
 
 ### Scenes, in order
 1. **Settings** (`/#/settings`): empty first-time form. Tap "Demo: กรอกข้อมูลตัวอย่างของ
-   มิ้นท์", save. Optionally change the budget to 7,000 to show the one-third
+   ม่อน", save. Optionally change the budget to 7,000 to show the one-third
    warning (7,000 x 3 > 20,000), then back to 5,000.
 2. **Home**: 3,500.00 of 5,000.00, "เดือนนี้และอีก 5 เดือนอยู่ในงบ", the wallet
    4,800.00 (พอ 1 เดือน), installments grouped by app. Tap the month card for
@@ -677,7 +676,7 @@ Now: 3,500.00 a month.
 7. **Home** again: the installments now total 4,700.00 a month (from next month), buffer 6,000.00.
 8. The bell shows 1 (the ตู้เย็น manual-entry alert); open it, the badge clears.
    Home's assistant bubble and the banner "ตอนนี้ยังไม่จำเป็นต้องรวมหนี้".
-9. Demo, "มิ้นท์: เกินงบตั้งแต่เดือนนี้": Home's hero turns amber with six chips
+9. Demo, "ม่อน: เกินงบตั้งแต่เดือนนี้": Home's hero turns amber with six chips
    (ต.ค. to ธ.ค. 2569 +2,500.00, ม.ค. to มี.ค. 2570 +500.00), "และอีก 3 เดือนหลังจากนั้น"
    (เม.ย. to มิ.ย. 2570), "ค่างวดส่วนที่เกินงบรวมทุกเดือน 10,500.00 บาท", "กันชน 9,600.00
    บาท ยังขาดอีก 900.00 บาท" and "ใช้กันชนช่วยจ่าย ›". "ทางเลือกจากธนาคาร": 7,500.00 a month
@@ -691,7 +690,7 @@ Home per scene (UI-33 tests the rules behind it):
 
 | Scene | Hero | Strip link | Assistant | Consolidation |
 |---|---|---|---|---|
-| มิ้นท์: ตั้งค่าแล้ว | all in budget, one line | none | summary | banner |
+| ม่อน: ตั้งค่าแล้ว | all in budget, one line | none | summary | banner |
 | มีเดือนเกินงบ | later months over, 2 chips, buffer covers | ใช้กันชนช่วยจ่าย | summary | banner |
 | เกินงบตั้งแต่เดือนนี้ | this month over, 6 chips, buffer short | ใช้กันชนช่วยจ่าย | summary | bank offer |
 | มีเดือนเกินงบ กันชนว่าง | later months over, wallet empty | ดูภาระผ่อนรายเดือน | summary | banner |

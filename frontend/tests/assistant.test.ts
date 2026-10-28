@@ -21,7 +21,7 @@ import { NAV_TABS, navActive } from "../src/navStyle.ts";
 import { ROUTES } from "../src/router.ts";
 
 const TODAY = new Date(2026, 9, 27); // Oct 2026
-const call = (method: string, path: string, body?: unknown) => handle(method, path, body, "demo-mint");
+const call = (method: string, path: string, body?: unknown) => handle(method, path, body, "demo-mon");
 const plan = () => call("GET", "/assistant/plan").body as AssistantPlanOut;
 const scene = (name: string) => assert.equal(call("POST", "/demo/scene", { scene: name }).status, 200);
 const debt = (first_due_month: string, months: number, monthly_amount: string): PlanDebt => ({

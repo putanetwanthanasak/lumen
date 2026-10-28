@@ -20,10 +20,6 @@
   --color-leaf-800: #0b5735;
   --color-leaf-900: #0a3f28;
 
-  /* Friendly accent for the logo and highlights, never for text. */
-  --color-sun-300: #ffd977;
-  --color-sun-400: #ffc94d;
-
   /* Neutrals. ink on white is about 15:1, ink-muted about 7:1. */
   --color-ink: #10231a;
   --color-ink-muted: #4a5b52;

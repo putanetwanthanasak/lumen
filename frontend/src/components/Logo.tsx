@@ -1,8 +1,9 @@
 /**
  * Two logo options (DESIGN.md section 2). Abstract and friendly; never an organ.
- * A: "Bean": a soft bean shape with a small smile and a coin dot ("think, then keep").
+ * A: "Bean": a soft green bean with a small smile ("think it through, calmly").
  * B: "Filter": three rounded layers narrowing to one coin ("only what fits passes").
- * The app uses A; B is kept for comparison in DESIGN.md.
+ * The app uses A; B is kept for comparison in DESIGN.md. Neither has a yellow badge:
+ * a small yellow circle on the edge read like a warning sign (UI-44).
  */
 type Props = { size?: number; title?: string };
 
@@ -29,8 +30,6 @@ export function LogoBean({ size = 40, title = "KidNee" }: Props) {
         strokeLinecap="round"
         fill="none"
       />
-      <circle cx="37" cy="36" r="6" fill="var(--color-sun-400)" />
-      <path d="M37 33v6" stroke="var(--color-leaf-900)" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -41,7 +40,7 @@ export function LogoFilter({ size = 40, title = "KidNee" }: Props) {
       <rect x="6" y="7" width="36" height="8" rx="4" fill="var(--color-leaf-300)" />
       <rect x="11" y="18" width="26" height="8" rx="4" fill="var(--color-leaf-500)" />
       <rect x="16" y="29" width="16" height="8" rx="4" fill="var(--color-leaf-700)" />
-      <circle cx="24" cy="43" r="4" fill="var(--color-sun-400)" />
+      <circle cx="24" cy="43" r="4" fill="var(--color-leaf-900)" />
     </svg>
   );
 }

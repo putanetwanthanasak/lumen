@@ -1,5 +1,5 @@
 /**
- * Demo persona มิ้นท์ (DESIGN.md section 10). Months are relative to the month the
+ * Demo persona ม่อน (DESIGN.md section 10). Months are relative to the month the
  * demo runs in, so the story reads the same on any date:
  * - an installment of 2,000.00 that ends soon (its last month is next-next month),
  * - one of 1,500.00 that runs most of next year.
@@ -9,8 +9,8 @@ import type { InstallmentKind, SettingsIn } from "../api-types.ts";
 import type { Money } from "../money.ts";
 import { addMonths, monthOf } from "../thaiMonth.ts";
 
-export const PERSONA_NAME = "มิ้นท์";
-export const DEMO_USER = "demo-mint";
+export const PERSONA_NAME = "ม่อน";
+export const DEMO_USER = "demo-mon";
 
 export const PERSONA_SETTINGS: SettingsIn = {
   income: "20000.00",

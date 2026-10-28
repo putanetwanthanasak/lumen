@@ -46,7 +46,7 @@ test("UI_11_first_save_retried_after_a_lost_answer_still_saves", async () => {
   resetMock(new Date(2026, 9, 27));
   const result = toRequest(FILLED);
   assert.ok(result.ok);
-  assert.equal(handle("POST", "/settings", result.body, "demo-mint").status, 201); // answer "lost"
+  assert.equal(handle("POST", "/settings", result.body, "demo-mon").status, 201); // answer "lost"
   const saved = await saveSettings({ ...result.body, payday: 1 }, false);
   assert.equal(saved.payday, 1);
 });

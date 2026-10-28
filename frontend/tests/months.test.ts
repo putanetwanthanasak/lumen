@@ -7,7 +7,7 @@ import { handle, resetMock } from "../src/mock/server.ts";
 import { monthStatus } from "../src/monthStatus.ts";
 
 const TODAY = new Date(2026, 9, 27);
-const months = (path = "/debts/months") => handle("GET", path, undefined, "demo-mint");
+const months = (path = "/debts/months") => handle("GET", path, undefined, "demo-mon");
 
 beforeEach(() => resetMock(TODAY, PERSONA_SETTINGS));
 
@@ -59,7 +59,7 @@ test("UI_20_a_recorded_plan_extends_the_months_and_sets_the_flags", () => {
     item_name: "มอเตอร์ไซค์",
     platform_name: null,
   };
-  assert.equal(handle("POST", "/installments", entry, "demo-mint").status, 201);
+  assert.equal(handle("POST", "/installments", entry, "demo-mon").status, 201);
   const out = months().body as MonthsOut;
   assert.equal(out.months.at(-1)?.month, "2027-10");
   const nov = out.months.find((m) => m.month === "2026-11");

@@ -106,7 +106,7 @@ function seedNotifications(): void {
 let store = freshStore(new Date());
 seedNotifications();
 
-// Demo shortcut: "?persona" starts with มิ้นท์'s settings already saved, so a demo or a
+// Demo shortcut: "?persona" starts with ม่อน's settings already saved, so a demo or a
 // screenshot can open straight on Home (e.g. http://127.0.0.1:5173/?persona#/home).
 if (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("persona")) {
   store.settings = toSettingsOut(PERSONA_SETTINGS);

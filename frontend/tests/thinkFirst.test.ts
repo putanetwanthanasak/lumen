@@ -97,8 +97,8 @@ test("UI_16_record_and_its_retry_reuse_the_preview_request_id", () => {
   assert.deepEqual(retry, first);
   assert.equal(entryToRecord({ name: "form" }), null);
   // And the API records it once.
-  const a = handle("POST", "/installments", first, "demo-mint").body as RecordedOut;
-  const b = handle("POST", "/installments", retry, "demo-mint").body as RecordedOut;
+  const a = handle("POST", "/installments", first, "demo-mon").body as RecordedOut;
+  const b = handle("POST", "/installments", retry, "demo-mon").body as RecordedOut;
   assert.equal(b.status, "duplicate");
   assert.equal(b.installment_id, a.installment_id);
 });
@@ -108,7 +108,7 @@ test("UI_16_kind_is_sent_and_a_cash_loan_saves_nothing", () => {
   assert.equal(built(FORM, "r").kind, "purchase");
   const loan = built({ ...FORM, kind: "cash_loan" }, "r-loan");
   assert.equal(loan.kind, "cash_loan");
-  const out = handle("POST", "/installments", loan, "demo-mint").body as RecordedOut;
+  const out = handle("POST", "/installments", loan, "demo-mon").body as RecordedOut;
   assert.equal(out.saved_amount, "0.00");
   assert.equal(built({ ...FORM, kind: "cash_withdrawal" }, "r-w").kind, "cash_withdrawal");
 });
@@ -156,7 +156,7 @@ test("UI_18_a_value_the_user_edited_is_never_overwritten", () => {
 
 test("UI_18_the_api_suggests_price_over_months_rounded_up_to_the_satang", () => {
   const ask = (price: string, months: number) =>
-    handle("GET", `/installments/suggested-monthly?item_price=${price}&months=${months}`, undefined, "demo-mint");
+    handle("GET", `/installments/suggested-monthly?item_price=${price}&months=${months}`, undefined, "demo-mon");
   const monthly = (price: string, months: number) => (ask(price, months).body as SuggestedMonthlyOut).monthly_amount;
   assert.equal(monthly("12000", 10), "1200.00");
   assert.equal(monthly("1000", 3), "333.34"); // 333.333... rounded UP, never down
@@ -176,7 +176,7 @@ test("UI_19_platform_name_is_optional_trimmed_and_at_most_60_characters", () => 
   const long = toEntry({ ...FORM, platform: "ก".repeat(61) }, "r");
   assert.equal(long.ok, false);
   if (!long.ok) assert.ok(long.errors.platform !== undefined);
-  const res = handle("POST", "/installments/preview", { ...built(FORM, "r"), platform_name: "a\u0007b" }, "demo-mint");
+  const res = handle("POST", "/installments/preview", { ...built(FORM, "r"), platform_name: "a\u0007b" }, "demo-mon");
   assert.equal(res.status, 422);
 });
 
@@ -197,21 +197,21 @@ test("UI_19_home_groups_by_app_with_no_app_last", () => {
 
 test("UI_21_preview_says_what_recording_would_save_and_recording_saves_that", () => {
   const entry = built(FORM, "r-save");
-  const preview = handle("POST", "/installments/preview", entry, "demo-mint").body as PreviewOut;
+  const preview = handle("POST", "/installments/preview", entry, "demo-mon").body as PreviewOut;
   assert.equal(preview.saving_if_recorded, "1200.00");
-  const recorded = handle("POST", "/installments", entry, "demo-mint").body as RecordedOut;
+  const recorded = handle("POST", "/installments", entry, "demo-mon").body as RecordedOut;
   assert.equal(recorded.saved_amount, preview.saving_if_recorded);
-  const cash = handle("POST", "/installments/preview", { ...entry, kind: "cash_loan" }, "demo-mint").body as PreviewOut;
+  const cash = handle("POST", "/installments/preview", { ...entry, kind: "cash_loan" }, "demo-mon").body as PreviewOut;
   assert.equal(cash.saving_if_recorded, "0.00");
   // The safety net (L63): main 8,300.00 left; 10% of 78,000.00 would leave 500.00
   // (allowed), 10% of 78,000.10 would leave 499.99 (skipped whole). The preview says
   // so, and recording then saves exactly that.
   const near = (price: string, id: string) => ({ ...entry, client_request_id: id, item_price: price, months: 12, monthly_amount: "6500.00" });
-  const atNet = handle("POST", "/installments/preview", near("78000.00", "n1"), "demo-mint").body as PreviewOut;
+  const atNet = handle("POST", "/installments/preview", near("78000.00", "n1"), "demo-mon").body as PreviewOut;
   assert.equal(atNet.saving_if_recorded, "7800.00");
-  const belowNet = handle("POST", "/installments/preview", near("78000.10", "n2"), "demo-mint").body as PreviewOut;
+  const belowNet = handle("POST", "/installments/preview", near("78000.10", "n2"), "demo-mon").body as PreviewOut;
   assert.equal(belowNet.saving_if_recorded, "0.00");
-  const skipped = handle("POST", "/installments", near("78000.10", "n2"), "demo-mint").body as RecordedOut;
+  const skipped = handle("POST", "/installments", near("78000.10", "n2"), "demo-mon").body as RecordedOut;
   assert.equal(skipped.saved_amount, belowNet.saving_if_recorded);
 });
 

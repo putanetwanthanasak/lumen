@@ -20,7 +20,7 @@ import { handle, resetMock, SLOW_SUMMARY_MS } from "../src/mock/server.ts";
 import { toSatang } from "../src/money.ts";
 
 const TODAY = new Date(2026, 9, 27); // Oct 2026
-const call = (method: string, path: string, body?: unknown) => handle(method, path, body, "demo-mint");
+const call = (method: string, path: string, body?: unknown) => handle(method, path, body, "demo-mon");
 const scene = (name: string) => assert.equal(call("POST", "/demo/scene", { scene: name }).status, 200);
 const months = (path = "/debts/months") => (call("GET", path).body as MonthsOut).months;
 

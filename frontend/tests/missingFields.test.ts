@@ -19,7 +19,7 @@ import { handle, resetMock } from "../src/mock/server.ts";
 import { HomeBody } from "../src/screens/Home.tsx";
 
 const TODAY = new Date(2026, 9, 27); // Oct 2026
-const call = (method: string, path: string, body?: unknown) => handle(method, path, body, "demo-mint");
+const call = (method: string, path: string, body?: unknown) => handle(method, path, body, "demo-mon");
 const scene = (name: string) => assert.equal(call("POST", "/demo/scene", { scene: name }).status, 200);
 /** An answer as the screens get it: through JSON, as api.ts does. */
 const answer = <T>(path: string): T => JSON.parse(JSON.stringify(call("GET", path).body)) as T;
