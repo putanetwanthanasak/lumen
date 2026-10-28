@@ -3,7 +3,7 @@
  * monthly view, the form hint, the buffer card and Home's consolidation card
  * (UI-29). Every amount and month is the API's; this only formats and picks words.
  */
-import type { AssistantPlanOut, BufferPlanOut } from "./api-types.ts";
+import type { AssistantPlanOut, BufferPlanOut, ConsolidationReason } from "./api-types.ts";
 import { ASSIST } from "./copy.ts";
 import { formatBaht, toSatang } from "./money.ts";
 import { thaiMonth } from "./thaiMonth.ts";
@@ -39,6 +39,11 @@ export function bufferPlanLines(b: BufferPlanOut): { tone: "ok" | "warn"; lines:
       b.covered ? ASSIST.covered(formatBaht(b.balance)) : ASSIST.stillShort(formatBaht(b.balance), formatBaht(b.still_short)),
     ],
   };
+}
+
+/** Home's one-line banner when consolidation is not offered (L70); the reason expands under it. */
+export function notConsolidatingLine(reason: ConsolidationReason): string {
+  return reason === "NOT_NEEDED" ? ASSIST.notNeeded : ASSIST.notWorth;
 }
 
 /** "0.18" -> "18", "0.185" -> "18.5": the decimal point moved two places, as text. */

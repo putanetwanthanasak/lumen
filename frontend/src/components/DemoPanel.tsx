@@ -2,7 +2,7 @@
  * The Demo panel (DESIGN.md section 7.8): a dashed "Demo" button in the header,
  * clearly not part of the app, opens a sheet over the phone frame. It simulates
  * payday for a month (POST /demo/payday) and switches the mock between the demo
- * scenes.
+ * scenes, one per Home state (DESIGN.md section 10).
  */
 import { useEffect, useState } from "react";
 import { ApiError, runPayday, setDemoScene, USE_MOCK, type DemoScene } from "../api.ts";
@@ -145,6 +145,15 @@ function Sheet({ onClose }: { onClose: () => void }) {
             </Button>
             <Button variant="ghost" onClick={() => void scene("over_budget_now")} disabled={busy}>
               {DEMO.sceneOverNow}
+            </Button>
+            <Button variant="ghost" onClick={() => void scene("over_budget_empty_buffer")} disabled={busy}>
+              {DEMO.sceneOverEmpty}
+            </Button>
+            <Button variant="ghost" onClick={() => void scene("ai_slow")} disabled={busy}>
+              {DEMO.sceneAiSlow}
+            </Button>
+            <Button variant="ghost" onClick={() => void scene("ai_failing")} disabled={busy}>
+              {DEMO.sceneAiFailing}
             </Button>
           </section>
         )}

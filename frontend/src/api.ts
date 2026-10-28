@@ -57,6 +57,7 @@ async function call<T>(method: "GET" | "POST" | "PUT", path: string, body?: unkn
     await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY_MS));
     // Through JSON, so the mock cannot hand the screens anything the API could not.
     const answer = handle(method, path, body === undefined ? undefined : JSON.parse(JSON.stringify(body)), DEMO_USER);
+    if (answer.delayMs !== undefined) await new Promise((resolve) => setTimeout(resolve, answer.delayMs));
     status = answer.status;
     data = JSON.parse(JSON.stringify(answer.body));
   } else {
@@ -169,7 +170,10 @@ export async function getAssistantPlan(): Promise<AssistantPlanOut> {
   return (await call<AssistantPlanOut>("GET", "/assistant/plan")).body;
 }
 
-/** TODO(backend, tomorrow): POST /assistant/summary, the AI summary. The mock returns an example. */
+/**
+ * TODO(backend, tomorrow): POST /assistant/summary, the AI summary. Home asks for it
+ * when it opens (the assistant's bubble). The mock returns an example.
+ */
 export async function getAssistantSummary(): Promise<AssistantSummaryOut> {
   return (await call<AssistantSummaryOut>("POST", "/assistant/summary")).body;
 }
@@ -182,7 +186,14 @@ export async function runPayday(month: string): Promise<{ created: boolean; out:
   return { created: answer.status === 201, out: answer.body };
 }
 
-export type DemoScene = "first_launch" | "persona" | "over_budget" | "over_budget_now";
+export type DemoScene =
+  | "first_launch"
+  | "persona"
+  | "over_budget"
+  | "over_budget_now"
+  | "over_budget_empty_buffer"
+  | "ai_slow"
+  | "ai_failing";
 
 /** Mock only: there is no backend endpoint for scenes. */
 export async function setDemoScene(scene: DemoScene): Promise<void> {

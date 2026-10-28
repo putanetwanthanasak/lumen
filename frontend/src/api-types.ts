@@ -156,7 +156,12 @@ export type MonthInstallment = {
   is_last: boolean; // its last due month
 };
 
-export type MonthDetail = MonthRow & { installments: MonthInstallment[] };
+/**
+ * `over_by` (TODO(backend), being added to these rows only, not to the preview's
+ * MonthRow): total - budget when over_budget, else "0.00". Never negative. Home's
+ * over-budget chips show it ("+2,500.00 บาท").
+ */
+export type MonthDetail = MonthRow & { over_by: Money; installments: MonthInstallment[] };
 
 /**
  * TODO(backend, Session 15): GET /debts/months[?count=N]. Not built yet.

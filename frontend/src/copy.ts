@@ -42,6 +42,16 @@ export const VERDICT: Record<Verdict, VerdictCopy> = {
 
 export const ADVISORY_NOTE = "นี่เป็นคำแนะนำเท่านั้น คุณบันทึกรายการได้เสมอ";
 
+/** What each accent colour means (accent.ts); always shown with its icon. */
+export const ACCENT_LABEL = {
+  debt: "ภาพรวมหนี้",
+  buffer: "กันชน",
+  warn: "เกินงบ",
+  bank: "ทางเลือกจากธนาคาร",
+  ai: "ผู้ช่วย KidNee",
+  quiet: "ข้อมูลเพิ่มเติม",
+};
+
 export const NAV = {
   home: "หน้าหลัก",
   // Short labels: a quarter of 390px, one line each. Full names stay on titles and buttons.
@@ -130,12 +140,16 @@ export const HOME = {
   statusCancelledAfterReport: "ยกเลิกแล้ว หลังจากคุณแจ้งว่าไม่ใช่รายการของคุณ",
   statusDisputed: "คุณแจ้งว่าไม่ใช่รายการของคุณ",
   notCounted: "ไม่นับในยอดต่อเดือน",
-  bufferTitle: "กันชนของคุณ",
-  bufferCovers: (months: number) => `พอจ่ายค่างวดได้ประมาณ ${months} เดือน`,
-  bufferNothingOwed: "ตอนนี้ไม่มีค่างวดที่ต้องจ่าย",
-  upcomingTitle: "เดือนข้างหน้าที่ค่างวดรวมเกินงบ",
-  upcomingNone: "5 เดือนข้างหน้ายังไม่มีเดือนไหนเกินงบ",
-  upcomingRow: (total: string) => `รวม ${total}`,
+  allInBudget: (later: number) => `เดือนนี้และอีก ${later} เดือนอยู่ในงบ`,
+  overMonthsTitle: "เดือนที่ค่างวดรวมเกินงบ",
+  overBy: (amount: string) => `+${amount}`,
+  overBySpoken: (amount: string) => `เกินงบ ${amount}`,
+  useBuffer: "ใช้กันชนช่วยจ่าย ›",
+  toMonths: "ดูภาระผ่อนรายเดือน ›",
+  bufferTitle: "กันชนของคุณ ›",
+  walletCovers: (months: number) => `พอ ${months} เดือน`,
+  walletCoversNone: "ยังไม่พอ 1 เดือน",
+  walletNothingOwed: "ไม่มีค่างวด",
   thinkCta: "เช็กก่อนผ่อน",
   thinkCtaHelp: "ก่อนกดผ่อนชิ้นต่อไป ประเมินภาระผ่อนรายเดือนได้ที่นี่",
 };
@@ -266,7 +280,7 @@ export const ASSIST = {
   shortfall: (amount: string) => `ค่างวดส่วนที่เกินงบรวมทุกเดือน ${amount}`,
   covered: (balance: string) => `กันชน ${balance} พอจ่ายส่วนที่เกินได้ทั้งหมด`,
   stillShort: (balance: string, short: string) => `กันชน ${balance} ยังขาดอีก ${short}`,
-  consolidateTitle: "ควรรวมหนี้ไหม",
+  notNeeded: "ตอนนี้ยังไม่จำเป็นต้องรวมหนี้",
   notWorth: "ตอนนี้ยังไม่คุ้มที่จะรวมหนี้",
   reason: {
     NOT_NEEDED: "ยังไม่มีช่วงที่ค่างวดรวมเกินงบติดกัน 3 เดือนขึ้นไป",
@@ -280,15 +294,17 @@ export const ASSIST = {
   exampleTag: "ตัวอย่างการประมาณ",
   newMonthly: "ค่างวดใหม่ต่อเดือน",
   totalCost: "ต้นทุนรวมทั้งหมด",
+  nowColumn: "ตอนนี้",
+  ifConsolidated: "ถ้ารวมหนี้ (ตัวอย่าง)",
+  totalAll: "ยอดรวมทั้งหมด",
   terms: (months: number, rate: string) => `ผ่อน ${months} เดือน ดอกเบี้ยสมมติ ${rate}% ต่อปี (ไม่ใช่อัตราจริง)`,
-  extraCost: (extra: string, now: string) => `จ่ายรวมมากกว่าแผนเดิม ${extra} (ตอนนี้คงเหลือ ${now})`,
+  extraCost: (extra: string) => `จ่ายรวมมากกว่าแผนเดิม ${extra}`,
   interested: "สนใจรวมหนี้",
   bankWillCall: "ธนาคารจะติดต่อกลับเพื่อพิจารณา",
   bankDecides: "ธนาคารพิจารณาจากข้อมูลของธนาคารเอง ตัวเลขนี้ยังไม่ใช่ข้อเสนอ",
-  aiTitle: "ผู้ช่วย KidNee สรุปให้ฟัง",
-  aiHelp: "สรุปภาพรวมหนี้ กันชน และการรวมหนี้ในไม่กี่ประโยค",
-  aiButton: "สรุปให้ฟัง",
   aiLoading: "กำลังสรุป...",
+  aiMore: "อ่านต่อ ›",
+  aiLess: "ย่อ",
   aiExample: "ตัวอย่าง",
   aiFailed: "สรุปไม่สำเร็จ ลองอีกครั้งได้เลย",
 };
@@ -310,5 +326,8 @@ export const DEMO = {
   scenePersona: "มิ้นท์: ตั้งค่าแล้ว",
   sceneOver: "มิ้นท์: มีเดือนเกินงบ",
   sceneOverNow: "มิ้นท์: เกินงบตั้งแต่เดือนนี้",
+  sceneOverEmpty: "มิ้นท์: มีเดือนเกินงบ กันชนว่าง",
+  sceneAiSlow: "มิ้นท์: ผู้ช่วยกำลังสรุป (ตอบช้า)",
+  sceneAiFailing: "มิ้นท์: ผู้ช่วยสรุปไม่สำเร็จ",
   done: "เปลี่ยนฉากแล้ว",
 };

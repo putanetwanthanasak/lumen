@@ -5,7 +5,7 @@
  * or disputed, so the backend's OVERDUE_DEBT and DISPUTED_DEBT checks never apply here.
  */
 import type { AssistantPlanOut, ConsolidationOut, PlanMonth } from "../api-types.ts";
-import { bufferPlanLines, planLines } from "../assistantText.ts";
+import { bufferPlanLines, notConsolidatingLine, planLines } from "../assistantText.ts";
 import { ASSIST } from "../copy.ts";
 import { formatBaht, type Money } from "../money.ts";
 import { addMonths } from "../thaiMonth.ts";
@@ -178,7 +178,7 @@ export function exampleSummary(plan: AssistantPlanOut): string {
   const c = plan.consolidation;
   const consolidate =
     c.estimate === null
-      ? `${ASSIST.notWorth} ${ASSIST.reason[c.reason]}`
+      ? `${notConsolidatingLine(c.reason)} ${ASSIST.reason[c.reason]}`
       : `${ASSIST.worth} ${ASSIST.newMonthly} ${formatBaht(c.estimate.monthly_payment)} ${ASSIST.totalCost} ${formatBaht(c.estimate.total_cost)} (${ASSIST.exampleTag})`;
   // The buffer line already says every month is in budget: say it once.
   const back = plan.back_in_budget_month === null ? [] : [lines.back];

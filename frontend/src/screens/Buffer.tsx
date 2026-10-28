@@ -8,18 +8,20 @@ import { useState, type FormEvent } from "react";
 import { ApiError, getAssistantPlan, getBuffer, moveToMain } from "../api.ts";
 import { bufferPlanLines } from "../assistantText.ts";
 import type { BufferOut, MovedOut } from "../api-types.ts";
+import { ACCENT, BUFFER_METER, SOLID } from "../accent.ts";
 import { ASSIST, BUFFER, MONEY_ERRORS } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Alert, Button, Card, ErrorState, Field, Loading } from "../components/ui.tsx";
 import { afterMoveError, moveRequest, type MoveRequest } from "../bufferMove.ts";
+import { walletView, WALLET_SEGMENTS } from "../homeLayout.ts";
 import { formatBaht, parseMoneyInput } from "../money.ts";
 import { useLoad } from "../useLoad.ts";
 
 export function BufferScreen() {
   const [load, reload] = useLoad(getBuffer);
   return (
-    <Screen route="buffer" title={BUFFER.title}>
+    <Screen route="buffer" title={BUFFER.title} accent="buffer">
       {load.state === "loading" && <Loading lines={2} />}
       {load.state === "error" && <ErrorState onRetry={reload} />}
       {load.state === "ready" && <BufferBody buffer={load.data} onMoved={reload} />}
@@ -36,6 +38,7 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
   // One id per amount: a retry of the same move (lost answer) moves the money once.
   const [request, setRequest] = useState<MoveRequest | null>(null);
   const [balance, setBalance] = useState(buffer.balance);
+  const filled = walletView(buffer).filled; // months covered, at most the 6 segments
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -74,15 +77,21 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
   return (
     <>
       <p className="text-body text-ink-muted">{BUFFER.intro}</p>
-      <Card className="flex flex-col gap-2">
+      {/* The same wallet as on Home, larger: teal is the buffer on every screen. */}
+      <section className={`flex flex-col gap-2 rounded-card border-2 p-5 ${ACCENT.buffer.tint} ${ACCENT.buffer.line}`}>
         <div className="flex items-center gap-3">
-          <span className="inline-flex h-12 w-12 items-center justify-center rounded-pill bg-leaf-50 text-leaf-700">
-            <Icon name="shield" size={28} />
+          <span className={`inline-flex h-12 w-12 items-center justify-center rounded-pill ${SOLID.buffer}`}>
+            <Icon name={ACCENT.buffer.icon} size={28} />
           </span>
-          <h2 className="text-body text-ink-muted">{BUFFER.balance}</h2>
+          <h2 className={`flex-1 text-body font-semibold ${ACCENT.buffer.ink}`}>{BUFFER.balance}</h2>
+          <span aria-hidden="true" className="flex gap-1">
+            {Array.from({ length: WALLET_SEGMENTS }, (_, i) => (
+              <span key={i} className={`h-5 w-2.5 rounded-sm ${i < filled ? BUFFER_METER.on : BUFFER_METER.off}`} />
+            ))}
+          </span>
         </div>
         <p className="text-display font-bold text-ink">{formatBaht(balance)}</p>
-        <p className="text-body text-ink-muted">
+        <p className={`text-body font-semibold ${ACCENT.buffer.ink}`}>
           {buffer.months_covered === null
             ? BUFFER.nothingOwed
             : buffer.months_covered === 0
@@ -90,7 +99,7 @@ function BufferBody({ buffer, onMoved }: { buffer: BufferOut; onMoved: () => voi
               : BUFFER.covers(buffer.months_covered)}
         </p>
         <p className="text-body text-ink-muted">{BUFFER.monthlyTotal(formatBaht(buffer.monthly_total))}</p>
-      </Card>
+      </section>
 
       {/* Reloads after a move, so "covered" or "still short" matches the balance above. */}
       <BufferPlanCard key={balance} />
@@ -149,7 +158,8 @@ function BufferPlanCard() {
   return (
     <Card className="flex flex-col gap-2">
       <h2 className="text-lead font-bold text-ink">{ASSIST.bufferTitle}</h2>
-      <Alert tone={tone} title={head}>
+      {/* About the buffer: teal when it covers or is not needed, amber when still short. */}
+      <Alert tone={tone === "ok" ? "buffer" : "warn"} title={head}>
         {rest.join(" ")}
       </Alert>
     </Card>

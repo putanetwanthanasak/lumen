@@ -44,9 +44,11 @@ import { assistantPlan, exampleSummary } from "./assistant.ts";
 import { SCENARIOS } from "./persona.ts";
 import { fromSatang, sum, toSatang } from "./satang.ts";
 
-export type MockResponse = { status: number; body: unknown };
+/** `delayMs`: extra wait before the answer arrives (the Demo panel's slow assistant). */
+export type MockResponse = { status: number; body: unknown; delayMs?: number };
 
 const SAFETY_NET = toSatang("500.00");
+export const SLOW_SUMMARY_MS = 15000; // long enough to show and screenshot the loading state
 const PLATFORM_MAX = 60;
 const CONTROL = /[\u0000-\u001f]/; // L55: no control characters in text fields
 
@@ -62,6 +64,7 @@ type Store = {
   moves: Map<string, Moved>;
   paydays: Map<string, PaydayOut>;
   notifications: NotificationOut[];
+  summary: "ok" | "slow" | "failing"; // the Demo panel's assistant states
   today: Date;
 };
 
@@ -75,6 +78,7 @@ function freshStore(today: Date): Store {
     moves: new Map(),
     paydays: new Map(),
     notifications: [],
+    summary: "ok",
     today,
   };
 }
@@ -380,10 +384,13 @@ function months(path: string): MockResponse {
     if (!isInt(count, 1, 600)) return invalid("count");
   }
   const rows = count === 0 ? [] : assess(settings, store.installments, { first_due_month: from, months: count, monthly_amount: "0.00" }, false).months;
+  const budget = toSatang(settings.monthly_installment_budget);
   const out: MonthsOut = {
     months: rows.map(
       (row): MonthDetail => ({
         ...row,
+        // TODO(backend): over_by, total - budget when over budget, else 0.00.
+        over_by: row.over_budget ? fromSatang(toSatang(row.total) - budget) : "0.00",
         installments: counted
           .filter((i) => dueIn(i, row.month))
           .map((i) => ({
@@ -538,6 +545,15 @@ function demoScene(body: unknown): MockResponse {
     // consolidation is worth asking about (L70).
     resetMock(store.today, PERSONA_SETTINGS);
     recordScenario("RED", monthOf(store.today));
+  } else if (scene === "over_budget_empty_buffer") {
+    // As over_budget, but the buffer was moved out: it covers nothing.
+    resetMock(store.today, PERSONA_SETTINGS);
+    recordScenario("YELLOW", addMonths(monthOf(store.today), 1));
+    store.bufferBalance = "0.00";
+  } else if (scene === "ai_slow" || scene === "ai_failing") {
+    // The persona, with the assistant's summary slow (loading state) or failing.
+    resetMock(store.today, PERSONA_SETTINGS);
+    store.summary = scene === "ai_slow" ? "slow" : "failing";
   } else {
     return invalid("scene");
   }
@@ -594,8 +610,9 @@ export function handle(
     case "POST /assistant/summary": {
       // TODO(backend, tomorrow): the AI summary. The mock is a fixed example.
       if (store.settings === null) return SETTINGS_REQUIRED;
+      if (store.summary === "failing") return fail(503, "summary unavailable");
       const out: AssistantSummaryOut = { text: exampleSummary(planNow(store.settings)), is_example: true };
-      return ok(out);
+      return store.summary === "slow" ? { ...ok(out), delayMs: SLOW_SUMMARY_MS } : ok(out);
     }
     case "POST /demo/scene":
       return demoScene(body);

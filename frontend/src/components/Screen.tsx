@@ -3,6 +3,7 @@
  * footer (every screen), and the bottom navigation.
  */
 import type { ReactNode } from "react";
+import { ACCENT, type Accent } from "../accent.ts";
 import { getNotifications } from "../api.ts";
 import { APP_NAME, APP_NAME_TH, FOOTER, NAV } from "../copy.ts";
 import { navigate, type Route } from "../router.ts";
@@ -28,12 +29,17 @@ type ScreenProps = {
   showNav?: boolean;
   /** A bar fixed under the scrolling body, above the nav (the result screen's buttons). */
   actions?: ReactNode;
+  /** The feature's colour on the header, with its icon before the title (the buffer). */
+  accent?: Accent;
 };
 
-export function Screen({ title, back, route, children, showNav = true, actions }: ScreenProps) {
+export function Screen({ title, back, route, children, showNav = true, actions, accent }: ScreenProps) {
+  const look = accent === undefined ? null : ACCENT[accent];
   return (
     <div className="flex h-full flex-col bg-surface">
-      <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-line bg-card px-4">
+      <header
+        className={`flex min-h-16 shrink-0 items-center gap-2 border-b px-4 ${look === null ? "border-line bg-card" : `${look.line} ${look.tint}`}`}
+      >
         {back !== undefined ? (
           <button
             type="button"
@@ -46,7 +52,10 @@ export function Screen({ title, back, route, children, showNav = true, actions }
           <LogoBean size={36} />
         )}
         {title !== undefined ? (
-          <h1 className="flex-1 text-lead font-bold text-ink">{title}</h1>
+          <h1 className={`flex flex-1 items-center gap-2 text-lead font-bold ${look === null ? "text-ink" : look.ink}`}>
+            {look !== null && <Icon name={look.icon} size={22} />}
+            {title}
+          </h1>
         ) : (
           <p className="flex flex-1 items-baseline gap-2">
             <span className="text-lead font-bold text-leaf-800">{APP_NAME}</span>
@@ -133,10 +142,10 @@ function BottomNav({ current }: { current: Route }) {
                 aria-current={active ? "page" : undefined}
                 className="group flex min-h-16 flex-col items-center justify-center gap-0.5 text-center text-caption leading-tight"
               >
-                <span className={`${navIconClass(primary, active)} ${active ? "" : "group-hover:text-leaf-700"}`}>
+                <span className={navIconClass(item.route, active)}>
                   <Icon name={item.icon} size={primary ? 28 : 22} />
                 </span>
-                <span className={navLabelClass(active)}>{item.label}</span>
+                <span className={navLabelClass(item.route, active)}>{item.label}</span>
               </a>
             </li>
           );

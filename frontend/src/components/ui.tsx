@@ -4,6 +4,7 @@
  * Every tap target is at least 44px high; body text is 16px.
  */
 import { useId, type ReactNode } from "react";
+import { ACCENT, OUTLINE, type Marked } from "../accent.ts";
 import { COMMON } from "../copy.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 
@@ -12,7 +13,7 @@ import { Icon, type IconName } from "./Icon.tsx";
 type ButtonProps = {
   children: ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "secondary" | "ghost";
+  variant?: "primary" | "secondary" | "ghost" | "buffer" | "bank";
   type?: "button" | "submit";
   disabled?: boolean;
   busy?: boolean;
@@ -25,6 +26,9 @@ const BUTTON_VARIANTS = {
   secondary:
     "bg-card text-leaf-800 border-2 border-leaf-700 hover:bg-leaf-50 active:bg-leaf-100 disabled:border-line disabled:text-ink-muted",
   ghost: "bg-transparent text-leaf-800 hover:bg-leaf-50 active:bg-leaf-100 disabled:text-ink-muted",
+  // A feature's own action, in its accent (accent.ts): the buffer, the bank's offer.
+  buffer: `${OUTLINE.buffer} disabled:border-line disabled:text-ink-muted`,
+  bank: `${OUTLINE.bank} disabled:border-line disabled:text-ink-muted`,
 };
 
 export function Button({
@@ -193,10 +197,11 @@ export function Checkbox({ label, checked, onChange, error }: CheckboxProps) {
 
 // ---- Alert ----------------------------------------------------------------------
 
-export type Tone = "ok" | "warn" | "risk" | "info";
+export type Tone = "ok" | "warn" | "risk" | "info" | "buffer";
 
 const TONES: Record<Tone, { box: string; icon: IconName }> = {
   ok: { box: "bg-ok-bg border-ok-line text-ok-ink", icon: "check" },
+  buffer: { box: `${ACCENT.buffer.tint} ${ACCENT.buffer.line} ${ACCENT.buffer.ink}`, icon: ACCENT.buffer.icon },
   warn: { box: "bg-warn-bg border-warn-line text-warn-ink", icon: "alert" },
   risk: { box: "bg-risk-bg border-risk-line text-risk-ink", icon: "stop" },
   info: { box: "bg-info-bg border-info-line text-info-ink", icon: "info" },
@@ -212,6 +217,16 @@ export function Alert({ tone, title, children }: { tone: Tone; title?: string; c
         {children !== undefined && <div className="text-body">{children}</div>}
       </div>
     </div>
+  );
+}
+
+/** A coloured line: its icon and its text in the accent's ink, never colour only. */
+export function MarkedText({ item, className = "" }: { item: Marked; className?: string }) {
+  return (
+    <span className={`flex items-start gap-2 text-body ${ACCENT[item.accent].ink} ${className}`}>
+      <Icon name={item.icon} size={20} className="mt-0.5" />
+      {item.text}
+    </span>
   );
 }
 

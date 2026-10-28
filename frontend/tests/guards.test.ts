@@ -147,7 +147,8 @@ test("UI_26_the_phone_frame_never_scrolls_and_hidden_inputs_stay_in_the_scrollin
   assert.ok(inputs >= 2, `found ${inputs} hidden inputs; expected the first due and saving mode choices`);
   // Only <main> scrolls: the bars around it never shrink.
   const screen = readFileSync(join(SRC, "components", "Screen.tsx"), "utf8");
-  assert.match(screen, /<header className="[^"]*shrink-0/);
+  // (a template literal since the header can carry a feature's accent, the buffer's teal)
+  assert.match(screen, /<header\s+className=\{?[`"][^`"]*shrink-0/);
   assert.match(screen, /<main\s+tabIndex=\{0\}\s+className=\{`phone-scroll min-h-0 flex-1 overflow-y-auto/);
   assert.match(screen, /<nav aria-label=\{NAV.menu\} className="shrink-0 /);
 });
