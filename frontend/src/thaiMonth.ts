@@ -1,0 +1,57 @@
+/**
+ * Thai month names, as backend/app/notifications/copy.py shows them: a short month
+ * name and the Buddhist-era year ("2026-11" -> "พ.ย. 2569").
+ */
+
+export const THAI_MONTHS = [
+  "ม.ค.",
+  "ก.พ.",
+  "มี.ค.",
+  "เม.ย.",
+  "พ.ค.",
+  "มิ.ย.",
+  "ก.ค.",
+  "ส.ค.",
+  "ก.ย.",
+  "ต.ค.",
+  "พ.ย.",
+  "ธ.ค.",
+] as const;
+
+const BUDDHIST_ERA_OFFSET = 543;
+const MONTH = /^([0-9]{4})-(0[1-9]|1[0-2])$/;
+
+type YearMonth = { year: number; month: number }; // month 1-12
+
+export function parseMonth(value: string): YearMonth {
+  const match = MONTH.exec(value);
+  if (match === null) throw new Error(`not a month string: ${JSON.stringify(value)}`);
+  return { year: Number(match[1]), month: Number(match[2]) }; // ui-06-allow: a date, not money
+}
+
+function format({ year, month }: YearMonth): string {
+  return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}`;
+}
+
+/** "2026-11" -> "พ.ย. 2569". */
+export function thaiMonth(value: string): string {
+  const { year, month } = parseMonth(value);
+  return `${THAI_MONTHS[month - 1]} ${year + BUDDHIST_ERA_OFFSET}`;
+}
+
+/** "2026-11" -> "พ.ย." (for narrow bar labels). */
+export function thaiMonthShort(value: string): string {
+  return THAI_MONTHS[parseMonth(value).month - 1] ?? value;
+}
+
+/** "2026-12", 1 -> "2027-01". */
+export function addMonths(value: string, count: number): string {
+  const { year, month } = parseMonth(value);
+  const index = year * 12 + (month - 1) + count;
+  return format({ year: Math.floor(index / 12), month: (index % 12) + 1 }); // ui-06-allow: a date
+}
+
+/** The calendar month of a date, "YYYY-MM". */
+export function monthOf(date: Date): string {
+  return format({ year: date.getFullYear(), month: date.getMonth() + 1 });
+}

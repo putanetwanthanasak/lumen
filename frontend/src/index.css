@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+/*
+ * KidNee design tokens (DESIGN.md section 4). Tailwind v4 reads these from @theme
+ * and generates the utilities: bg-leaf-700, text-ink, text-body, rounded-card, ...
+ * Components use these tokens only, never raw hex.
+ */
+@theme {
+  /* Fonts: system Thai fonts only, nothing downloaded. */
+  --font-sans: "Sukhumvit Set", "Noto Sans Thai", "Leelawadee UI", Tahoma, sans-serif;
+
+  /* Brand green ("leaf"). White text on leaf-700 is about 6.4:1. */
+  --color-leaf-50: #eefbf3;
+  --color-leaf-100: #d6f5e3;
+  --color-leaf-200: #aee9c8;
+  --color-leaf-300: #7fd8a7;
+  --color-leaf-500: #22a565;
+  --color-leaf-600: #138a52;
+  --color-leaf-700: #0d6e42;
+  --color-leaf-800: #0b5735;
+  --color-leaf-900: #0a3f28;
+
+  /* Friendly accent for the logo and highlights, never for text. */
+  --color-sun-300: #ffd977;
+  --color-sun-400: #ffc94d;
+
+  /* Neutrals. ink on white is about 15:1, ink-muted about 7:1. */
+  --color-ink: #10231a;
+  --color-ink-muted: #4a5b52;
+  --color-line: #dce5df;
+  --color-surface: #f4f8f5;
+  --color-card: #ffffff;
+  --color-desk: #e3ebe6;
+
+  /* Verdict and alert colours. Always paired with an icon and Thai text. */
+  --color-ok-bg: #e8f7ee;
+  --color-ok-line: #9fdcb8;
+  --color-ok-ink: #0b5735;
+  --color-warn-bg: #fff6db;
+  --color-warn-line: #f5c451;
+  --color-warn-ink: #6e4500;
+  --color-risk-bg: #fdecec;
+  --color-risk-line: #f3a3a3;
+  --color-risk-ink: #9b1c1c;
+  --color-info-bg: #eaf3fb;
+  --color-info-line: #a9cbe9;
+  --color-info-ink: #1d4e7a;
+
+  /* Month bars: each at least 3:1 against the white card (WCAG 1.4.11). */
+  --color-bar-ok: #138a52;
+  --color-bar-over: #c27c00;
+  --color-bar-risk: #9b1c1c;
+
+  /* Type scale. Body is 16px and every sentence uses it. Caption (14px) is only for
+     short labels: the footer, nav labels, chart legend, "Demo" tags, list meta. */
+  --text-caption: 0.875rem;
+  --text-caption--line-height: 1.4;
+  --text-body: 1rem;
+  --text-body--line-height: 1.6;
+  --text-lead: 1.125rem;
+  --text-lead--line-height: 1.5;
+  --text-title: 1.375rem;
+  --text-title--line-height: 1.35;
+  --text-display: 2rem;
+  --text-display--line-height: 1.2;
+
+  /* Radii and shadow. */
+  --radius-field: 0.75rem;
+  --radius-card: 1.25rem;
+  --radius-pill: 999px;
+  --shadow-card: 0 1px 2px rgb(16 35 26 / 0.06), 0 4px 16px rgb(16 35 26 / 0.06);
+  --shadow-phone: 0 24px 64px rgb(16 35 26 / 0.22);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background: var(--color-desk);
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    margin: 0;
+    font-size: var(--text-body);
+    line-height: 1.6;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-leaf-500);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0ms !important;
+      animation-duration: 0ms !important;
+    }
+  }
+}
+
+/*
+ * Inside the phone frame only: hide the scrollbar but keep scrolling (wheel,
+ * touchpad, touch, keyboard). Nothing outside the frame uses this class.
+ */
+.phone-scroll {
+  scrollbar-width: none;
+}
+.phone-scroll::-webkit-scrollbar {
+  display: none;
+}
