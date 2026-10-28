@@ -11,10 +11,16 @@ gets the savings, alerts and audit rows a real user would.
     uv run python -m demo.kidnee serve         # http://127.0.0.1:8000 (build frontend first)
 
 Personas (X-Demo-User). All three have income 20,000.00, payday 25, budget 5,000.00,
-saving 10% with consent, and leftover saving on:
-- demo-mint (มิ้นท์): in budget, 3,500.00 a month;
-- demo-over: over budget this month and next (6,500.00), then back within it;
-- demo-consolidate: 9 months over budget from this month; consolidation is ELIGIBLE.
+auto-save with consent, and leftover saving on. The buffer is what their real
+auto-saves gave:
+- demo-mon (ม่อน): in budget, 3,500.00 a month; saves 10%, a modest buffer (2,700.00);
+- demo-over: over budget this month and next (6,500.00), then back within it; saves
+  10%, so the buffer (5,700.00) clearly covers the 3,000.00 over budget;
+- demo-consolidate: 9 months over budget from this month, consolidation is ELIGIBLE;
+  saves 2%, so the small buffer (1,500.00) covers little of the 10,500.00 over budget.
+
+Platform names are fictional ("ShopDemo", "RideDemo"), never a real app's; one item
+is left unnamed, as a user may leave it.
 """
 
 import argparse
@@ -57,7 +63,7 @@ SETTINGS = {
     "income": "20000.00",
     "payday": 25,
     "monthly_installment_budget": "5000.00",
-    "saving_rule": {"mode": "percent", "percent": 10},
+    # saving_rule: per persona, below.
     "auto_save_enabled": True,
     "auto_save_consent": True,
     "leftover_saving_enabled": True,
@@ -72,22 +78,31 @@ class Item:
     months: int
     monthly: str
     offset: int  # first due month, relative to this month
+    platform: str | None  # fictional only; None: not named
 
 
 def earbuds(offset: int) -> Item:
-    return Item("earbuds", "หูฟังไร้สาย", "12000.00", 6, "2000.00", offset)
+    return Item("earbuds", "หูฟังไร้สาย", "12000.00", 6, "2000.00", offset, "ShopDemo")
 
 
-FRIDGE = Item("fridge", "ตู้เย็น", "15000.00", 10, "1500.00", -1)
-LAPTOP = Item("laptop", "โน้ตบุ๊ก", "30000.00", 10, "3000.00", 0)
-MOTORBIKE = Item("motorbike", "มอเตอร์ไซค์", "48000.00", 12, "4000.00", 0)
+FRIDGE = Item("fridge", "ตู้เย็น", "15000.00", 10, "1500.00", -1, None)
+LAPTOP = Item("laptop", "โน้ตบุ๊ก", "30000.00", 10, "3000.00", 0, "ShopDemo")
+MOTORBIKE = Item("motorbike", "มอเตอร์ไซค์", "48000.00", 12, "4000.00", 0, "RideDemo")
 
-PERSONAS: dict[str, list[Item]] = {
-    "demo-mint": [earbuds(-3), FRIDGE],
+
+@dataclass(frozen=True)
+class Persona:
+    items: list[Item]
+    saving_percent: int = 10
+
+
+PERSONAS: dict[str, Persona] = {
+    "demo-mon": Persona([earbuds(-3), FRIDGE]),
     # Earbuds end next month, so only this month and next are over budget: 2 months,
     # not the 3 in a row that L70 (a) needs.
-    "demo-over": [earbuds(-4), FRIDGE, LAPTOP],
-    "demo-consolidate": [earbuds(-3), FRIDGE, MOTORBIKE],
+    "demo-over": Persona([earbuds(-4), FRIDGE, LAPTOP]),
+    # 2%: 240.00 + 300.00 + 960.00, a buffer far below the months over budget.
+    "demo-consolidate": Persona([earbuds(-3), FRIDGE, MOTORBIKE], saving_percent=2),
 }
 
 
@@ -140,6 +155,7 @@ def entry(user: str, item: Item, now: Month) -> ManualEntryIn:
         "monthly_amount": item.monthly,
         "first_due_month": str(now.plus(item.offset)),
         "item_name": item.name,
+        "platform_name": item.platform,
     }
     return ManualEntryIn.model_validate_json(json.dumps(body))
 
@@ -151,14 +167,15 @@ def seed(
     delivered, as POST /installments does it. Returns what happened per persona, for
     the console and the tests."""
     now = Month.of(day)
-    settings = SettingsIn.model_validate_json(json.dumps(SETTINGS))
     report: dict[str, list[str]] = {}
-    for user, items in PERSONAS.items():
+    for user, persona in PERSONAS.items():
+        rule = {"mode": "percent", "percent": persona.saving_percent}
+        settings = SettingsIn.model_validate_json(json.dumps(SETTINGS | {"saving_rule": rule}))
         lines = []
         created = user_settings.create(session, user, settings) is not None
         session.commit()
         lines.append("settings created" if created else "settings kept")
-        for item in items:
+        for item in persona.items:
             result = record(session, user_id=user, entry=entry(user, item, now), bank=bank)
             session.commit()
             if result.notification_id is not None:

@@ -57,6 +57,10 @@ class ManualEntryIn(BaseModel):
     monthly_amount: Annotated[MoneyStr, Field(gt=Decimal(0))]
     first_due_month: Annotated[date, BeforeValidator(parse_month)]
     item_name: Annotated[str, Field(max_length=500, pattern=NO_CONTROL_CHARS)] = ""
+    # The app the user pays it in, as they call it (Session 17). Null: not named.
+    platform_name: (
+        Annotated[str, Field(min_length=1, max_length=60, pattern=NO_CONTROL_CHARS)] | None
+    ) = None
 
     @model_validator(mode="after")
     def _schedule_fits(self) -> Self:

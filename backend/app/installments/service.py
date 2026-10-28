@@ -60,6 +60,7 @@ def record(
             client_request_id=entry.client_request_id,
             kind=entry.kind,
             item_name=entry.item_name,
+            platform_name=entry.platform_name,
             principal=entry.item_price,
             months=entry.months,
             monthly_amount=entry.monthly_amount,
@@ -127,9 +128,17 @@ def record(
 
 
 def _same(row: Installment, entry: ManualEntryIn) -> bool:
-    return (row.kind, row.item_name, row.principal, row.months, row.monthly_amount) == (
+    return (
+        row.kind,
+        row.item_name,
+        row.platform_name,
+        row.principal,
+        row.months,
+        row.monthly_amount,
+    ) == (
         entry.kind,
         entry.item_name,
+        entry.platform_name,
         entry.item_price,
         entry.months,
         entry.monthly_amount,

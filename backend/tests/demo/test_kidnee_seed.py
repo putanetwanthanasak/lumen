@@ -1,6 +1,7 @@
-"""KD-04: the KidNee demo data (`python -m demo.kidnee`) on its own test database,
-`lumen_kidnee_test`, rebuilt by Alembic. Same code path as the command: reset, then
-seed through the app's services as lumen_app. "Today" is fixed at 2026-11-10."""
+"""KD-04, KD-05: the KidNee demo data (`python -m demo.kidnee`) on its own test
+database, `lumen_kidnee_test`, rebuilt by Alembic. Same code path as the command:
+reset, then seed through the app's services as lumen_app. "Today" is fixed at
+2026-11-10. KD-05 (Session 17): each persona tells its one story."""
 
 import contextlib
 from collections.abc import Iterator
@@ -17,7 +18,7 @@ from app.assistant import service as assistant
 from app.config import get_settings
 from app.db import Base, make_engine
 from app.ledger import reconcile
-from app.models import Notification, SavingsTransaction
+from app.models import Installment, Notification, SavingsTransaction
 from app.providers.mock_bank import MockBankAccountProvider
 from app.providers.mock_push import MockPushProvider
 from demo.kidnee import KIDNEE_DB_NAME, PERSONAS, KidneeConfig, build, seed
@@ -70,7 +71,7 @@ def test_KD_04_seed_records_every_persona_with_its_savings(
     kidnee: Engine, first_seed: dict[str, list[str]]
 ) -> None:
     assert first_seed == {
-        "demo-mint": [
+        "demo-mon": [
             "settings created",
             "earbuds: created, saved 1200.00",
             "fridge: created, saved 1500.00",
@@ -83,9 +84,9 @@ def test_KD_04_seed_records_every_persona_with_its_savings(
         ],
         "demo-consolidate": [
             "settings created",
-            "earbuds: created, saved 1200.00",
-            "fridge: created, saved 1500.00",
-            "motorbike: created, saved 4800.00",
+            "earbuds: created, saved 240.00",
+            "fridge: created, saved 300.00",
+            "motorbike: created, saved 960.00",
         ],
     }
     with Session(kidnee) as session:
@@ -97,12 +98,12 @@ def test_KD_04_seed_records_every_persona_with_its_savings(
         statuses = set(session.scalars(select(Notification.delivery_status)))
         assert statuses == {"pushed"}
         assert session.scalar(select(func.sum(SavingsTransaction.amount))) == Decimal(
-            "15900.00"
-        )  # 3 x 1,200 + 3 x 1,500 + 3,000 + 4,800
+            "9900.00"
+        )  # 10%: 2 x 1,200 + 2 x 1,500 + 3,000; 2%: 240 + 300 + 960
 
 
-def test_KD_04_mint_is_in_budget_every_month(kidnee: Engine, first_seed: Any) -> None:
-    result = plan(kidnee, "demo-mint")
+def test_KD_04_mon_is_in_budget_every_month(kidnee: Engine, first_seed: Any) -> None:
+    result = plan(kidnee, "demo-mon")
     assert [str(r.total) for r in result.rows[:3]] == ["3500.00", "3500.00", "3500.00"]
     assert not any(r.over_budget for r in result.rows)
     assert result.consolidation.reason == "NOT_NEEDED"
@@ -134,7 +135,7 @@ def test_KD_04_a_second_seed_changes_nothing(kidnee: Engine, first_seed: Any) ->
     before = counts(kidnee)
     with Session(kidnee) as session:
         again = seed(session, day=DAY, bank=MockBankAccountProvider(), push=MockPushProvider())
-    assert again["demo-mint"] == [
+    assert again["demo-mon"] == [
         "settings kept",
         "earbuds: duplicate, saved 1200.00",
         "fridge: duplicate, saved 1500.00",
@@ -148,7 +149,7 @@ def test_KD_04_a_seed_in_another_month_never_overwrites(kidnee: Engine, first_se
         later = seed(
             session, day=date(2026, 12, 1), bank=MockBankAccountProvider(), push=MockPushProvider()
         )
-    assert later["demo-mint"][1] == "earbuds: seeded in another month, run reset to refresh"
+    assert later["demo-mon"][1] == "earbuds: seeded in another month, run reset to refresh"
     # Only the audit rows of the refused requests are new (as POST /installments' 409).
     after = counts(kidnee)
     assert {k: v for k, v in after.items() if v != before[k]} == {
@@ -166,5 +167,70 @@ def test_KD_04_the_served_api_reads_the_kidnee_database(
     with contextlib.closing(override()) as sessions:
         assert next(sessions).get_bind().url.database == DB_NAME
     with TestClient(served) as client:
-        response = client.get("/api/debts/summary", headers={"X-Demo-User": "demo-mint"})
+        response = client.get("/api/debts/summary", headers={"X-Demo-User": "demo-mon"})
     assert (response.status_code, response.json()["monthly_total"]) == (200, "3500.00")
+
+
+# --- KD-05: one story per persona (Session 17) ---------------------------------------------
+
+
+def shortfalls(kidnee: Engine, user: str) -> Any:
+    with Session(kidnee) as session:
+        return assistant.buffer_shortfalls(session, user, today=DAY)
+
+
+def test_KD_05_mon_is_in_budget_with_a_modest_buffer(kidnee: Engine, first_seed: Any) -> None:
+    result = shortfalls(kidnee, "demo-mon")
+    assert (result.months, result.buffer.shortfall, result.buffer.balance) == (
+        [],
+        Decimal("0.00"),
+        Decimal("2700.00"),
+    )
+
+
+def test_KD_05_over_is_over_this_month_and_its_buffer_clearly_covers_it(
+    kidnee: Engine, first_seed: Any
+) -> None:
+    result = shortfalls(kidnee, "demo-over")
+    assert str(result.months[0].month) == "2026-11"  # over budget this month
+    buffer = result.buffer
+    assert (buffer.shortfall, buffer.balance, buffer.covered) == (
+        Decimal("3000.00"),
+        Decimal("5700.00"),
+        True,
+    )
+    assert buffer.balance >= 2 * buffer.shortfall - Decimal("300.00")  # clearly, not just
+
+
+def test_KD_05_consolidate_has_a_long_run_and_a_small_buffer(
+    kidnee: Engine, first_seed: Any
+) -> None:
+    result = shortfalls(kidnee, "demo-consolidate")
+    assert len(result.months) == 9
+    buffer = result.buffer
+    assert (buffer.shortfall, buffer.balance, buffer.covered, buffer.still_short) == (
+        Decimal("10500.00"),  # 3 x 2,500 + 6 x 500
+        Decimal("1500.00"),
+        False,
+        Decimal("9000.00"),
+    )
+    estimate = plan(kidnee, "demo-consolidate").consolidation.estimate
+    assert estimate is not None
+    assert estimate.monthly_reduction > 0
+
+
+def test_KD_05_platform_names_are_fictional_and_one_item_is_unnamed(
+    kidnee: Engine, first_seed: Any
+) -> None:
+    with Session(kidnee) as session:
+        names = dict(
+            session.execute(
+                select(Installment.item_name, Installment.platform_name).distinct()
+            ).all()  # not dict(result): a Result has .keys()
+        )
+    assert names == {
+        "หูฟังไร้สาย": "ShopDemo",
+        "ตู้เย็น": None,
+        "โน้ตบุ๊ก": "ShopDemo",
+        "มอเตอร์ไซค์": "RideDemo",
+    }

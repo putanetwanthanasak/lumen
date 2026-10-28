@@ -10,11 +10,12 @@ Month totals come from affordability.months.month_totals, the same function as t
 L65 verdict, so the plan and "think before you buy" never disagree.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_UP, Decimal, localcontext
 from enum import StrEnum
 from itertools import pairwise
+from types import MappingProxyType
 
 from app.affordability.months import (
     Month,
@@ -31,6 +32,12 @@ NOISE = Decimal("1E-20")
 HORIZON_CAP = 600  # months shown, the R2 bound on a schedule (L59 6)
 SAFE_NEW_TERM = 12  # safe_new_monthly is for a new 12-month installment
 CONSOLIDATION_RUN = 3  # L70 (a): consecutive months over budget
+
+# Buffer money the user already moved to the main account for a month (Session 17:
+# POST /buffer/move-to-main with for_month), by month. A label only (L66): it never
+# changes a month's total or budget, only how much of its gap is still open.
+Prepared = Mapping[Month, Decimal]
+NOTHING_PREPARED: Prepared = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -55,9 +62,16 @@ class MonthRow:
 @dataclass(frozen=True)
 class BufferPlan:
     shortfall: Decimal  # the sum of total - budget over the months over budget
+    remaining_gap: Decimal  # shortfall minus what was already prepared for it
     balance: Decimal
     covered: bool
     still_short: Decimal
+
+
+class PreparedState(StrEnum):
+    NOT_PREPARED = "not_prepared"  # nothing moved for the month yet
+    PARTLY_PREPARED = "partly_prepared"
+    PREPARED = "prepared"  # moved at least the shortfall
 
 
 @dataclass(frozen=True)
@@ -66,9 +80,19 @@ class ShortfallMonth:
 
     month: Month
     total: Decimal
-    shortfall: Decimal  # total - budget
-    covered_by_buffer: Decimal  # min(what is left of the buffer, shortfall)
-    still_short: Decimal  # shortfall - covered_by_buffer
+    shortfall: Decimal  # total - budget; a move never changes it
+    prepared: Decimal  # moved to the main account for this month (Session 17)
+    remaining_gap: Decimal  # max(0, shortfall - prepared)
+    covered_by_buffer: Decimal  # min(what is left of the buffer, remaining_gap)
+    still_short: Decimal  # remaining_gap - covered_by_buffer
+
+    @property
+    def state(self) -> PreparedState:
+        if self.prepared == ZERO:
+            return PreparedState.NOT_PREPARED
+        if self.remaining_gap == ZERO:
+            return PreparedState.PREPARED
+        return PreparedState.PARTLY_PREPARED
 
 
 @dataclass(frozen=True)
@@ -104,6 +128,17 @@ class Estimate:
     monthly_payment: Decimal
     total_cost: Decimal
     current_remaining_total: Decimal  # what is left on the plans as they are now
+    # What the plans cost this month: the current month's total (L65), the same row as
+    # GET /debts/months and Home. Not the L43 sum, which also holds plans not due this
+    # month (a manual entry that ended, one that starts later) and so would overstate
+    # what the loan saves (Session 17 review F2).
+    current_monthly_total: Decimal
+
+    @property
+    def monthly_reduction(self) -> Decimal:
+        """How much less a month costs with the loan than this month does now; 0.00
+        when the loan costs as much or more (the run over budget may come later)."""
+        return max(ZERO, self.current_monthly_total - self.monthly_payment)
 
     @property
     def extra_cost(self) -> Decimal:
@@ -178,37 +213,70 @@ def rows_of(totals: Sequence[MonthTotal], budget: Decimal) -> list[MonthRow]:
     ]
 
 
-def buffer_plan(over: Sequence[Span], budget: Decimal, balance: Decimal) -> BufferPlan:
-    """How far the buffer covers the months over budget, all of them together."""
+def remaining_gap(gap: Decimal, prepared: Decimal) -> Decimal:
+    return max(ZERO, gap - prepared)
+
+
+def buffer_plan(
+    over: Sequence[Span],
+    budget: Decimal,
+    balance: Decimal,
+    prepared: Prepared = NOTHING_PREPARED,
+) -> BufferPlan:
+    """How far the buffer covers the months over budget, all of them together, after
+    what was already prepared for each. A month is only counted inside the spans, so
+    money prepared for a past month or a month within budget closes no gap."""
     shortfall = sum(((span.total - budget) * span.months for span in over), ZERO)
+    closed = sum(
+        (
+            (span.total - budget) - remaining_gap(span.total - budget, amount)
+            for month, amount in prepared.items()
+            for span in over
+            if span.first.index <= month.index < span.after.index
+        ),
+        ZERO,
+    )
+    gap = shortfall - closed
     return BufferPlan(
         shortfall=shortfall,
+        remaining_gap=gap,
         balance=balance,
-        covered=balance >= shortfall,
-        still_short=max(ZERO, shortfall - balance),
+        covered=balance >= gap,
+        still_short=max(ZERO, gap - balance),
     )
 
 
 def shortfalls(
-    schedules: Sequence[Scheduled], *, now: Month, budget: Decimal, balance: Decimal
+    schedules: Sequence[Scheduled],
+    *,
+    now: Month,
+    budget: Decimal,
+    balance: Decimal,
+    prepared: Prepared = NOTHING_PREPARED,
 ) -> Shortfalls:
-    """Every month over budget from now on, the buffer spent on them in date order
-    (Session 15A). The rows stop at HORIZON_CAP months over budget; the totals are
-    buffer_plan's, over every month, the same numbers GET /assistant/plan shows."""
+    """Every month over budget from now on, less what was already prepared for it,
+    the buffer spent on the remaining gaps in date order (Session 15A, Session 17).
+    The rows stop at HORIZON_CAP months over budget; the totals are buffer_plan's,
+    over every month, the same numbers GET /assistant/plan shows."""
     over = [span for span in spans(schedules, now) if over_budget(span.total, budget)]
     rows: list[ShortfallMonth] = []
     left = balance
     for span in over:
         gap = span.total - budget
         for k in range(min(span.months, HORIZON_CAP - len(rows))):
-            covered = min(left, gap)
+            month = span.first.plus(k)
+            moved = prepared.get(month, ZERO)
+            rest = remaining_gap(gap, moved)
+            covered = min(left, rest)
             left -= covered
-            rows.append(ShortfallMonth(span.first.plus(k), span.total, gap, covered, gap - covered))
+            rows.append(
+                ShortfallMonth(month, span.total, gap, moved, rest, covered, rest - covered)
+            )
     return Shortfalls(
         budget=budget,
         months=rows,
         months_truncated=len(rows) < sum(span.months for span in over),
-        buffer=buffer_plan(over, budget, balance),
+        buffer=buffer_plan(over, budget, balance, prepared),
     )
 
 
@@ -296,6 +364,7 @@ def consolidation(
     # third is not RED; compared without division.
     if payment * 3 > income:
         return Consolidation(Reason.PAYMENT_ABOVE_ONE_THIRD_OF_INCOME, None)
+    [this_month] = month_totals([d.schedule for d in debts], first=now, count=1)
     return Consolidation(
         Reason.ELIGIBLE,
         Estimate(
@@ -306,6 +375,7 @@ def consolidation(
             monthly_payment=payment,
             total_cost=total_cost,
             current_remaining_total=principal,
+            current_monthly_total=this_month.total,
         ),
     )
 
@@ -319,6 +389,7 @@ def build(
     buffer_balance: Decimal,
     annual_rate: Decimal,
     term: int,
+    prepared: Prepared = NOTHING_PREPARED,
 ) -> Plan:
     schedules = [d.schedule for d in debts]
     every = spans(schedules, now)
@@ -341,7 +412,7 @@ def build(
             min(headroom(t.total, budget), third_headroom(t.total, income)) for t in window
         ),
         safe_new_from=safe_from,
-        buffer=buffer_plan(over, budget, buffer_balance),
+        buffer=buffer_plan(over, budget, buffer_balance, prepared),
         consolidation=consolidation(
             debts,
             over,

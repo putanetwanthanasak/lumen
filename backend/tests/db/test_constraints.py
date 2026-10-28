@@ -614,3 +614,69 @@ def test_LO_08_one_leftover_save_per_user_per_month(db_session: Session) -> None
     assert_accepted(db_session, leftover_save(payday_month=date(2026, 12, 1)))
     assert_accepted(db_session, leftover_save(user_id="user-2"))
     assert_rejected(db_session, leftover_save(), "uq_savings_transactions_leftover_save_month")
+
+
+# --- Session 17: for_month on a move, platform_name on a manual row -----------------------
+
+
+def test_BF_11_a_withdrawal_may_name_its_month(db_session: Session) -> None:
+    for n, month in enumerate([date(2026, 11, 1), None]):
+        assert_accepted(
+            db_session,
+            savings_tx(
+                type="withdrawal",
+                source_vendor=None,
+                source_event_id=None,
+                client_request_id=f"move-{n}",
+                for_month=month,
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        lambda _: savings_tx(
+            type="leftover_save",
+            source_vendor=None,
+            source_event_id=None,
+            payday_month=date(2026, 11, 1),
+            for_month=date(2026, 11, 1),
+        ),
+        lambda installment_id: savings_tx(
+            type="auto_save", installment_id=installment_id, for_month=date(2026, 11, 1)
+        ),
+    ],
+    ids=["leftover_save", "auto_save"],
+)
+def test_BF_11_only_a_withdrawal_names_a_month(db_session: Session, row: Any) -> None:
+    installment_id = add_auto_save_parents(db_session)
+    assert_rejected(
+        db_session, row(installment_id), "ck_savings_transactions_for_month_on_withdrawal_only"
+    )
+
+
+@pytest.mark.parametrize("name", ["ShopDemo", "ก" * 60])
+def test_MI_13_a_manual_row_may_name_its_app(db_session: Session, name: str) -> None:
+    # 60 characters, counted as characters (Thai is 3 bytes each in UTF-8).
+    assert_accepted(db_session, manual_installment(platform_name=name))
+
+
+@pytest.mark.parametrize(
+    ("row", "constraint"),
+    [
+        (
+            lambda: manual_installment(platform_name="ก" * 61),
+            "ck_installments_platform_name_length",
+        ),
+        (
+            lambda: installment(platform_name="ShopDemo"),
+            "ck_installments_platform_name_manual_only",
+        ),
+    ],
+    ids=["61_characters", "platform_row"],
+)
+def test_MI_13_platform_name_is_manual_only_and_at_most_60(
+    db_session: Session, row: Any, constraint: str
+) -> None:
+    assert_rejected(db_session, row(), constraint)

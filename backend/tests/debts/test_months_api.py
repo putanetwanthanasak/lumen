@@ -1,5 +1,6 @@
-"""DM-01 to DM-07: GET /debts/months, each month from now with its total, its L65
-flags and the installments due in it. "Today" is 2026-11-10 (the plan_api fixture)."""
+"""DM-01 to DM-08: GET /debts/months, each month from now with its total, its L65
+flags and the installments due in it. "Today" is 2026-11-10 (the plan_api fixture).
+DM-08 (Session 17): over_by, each line's last month and its platform_name."""
 
 import itertools
 import uuid
@@ -65,14 +66,16 @@ def get_months(api: Api, query: str = "", user: str | None = USER) -> Any:
     return api.call("GET", f"/debts/months{query}", user=user)
 
 
-def line(id_: uuid.UUID, name: str, monthly: str, no: int, of: int) -> dict[str, Any]:
+def line(id_: uuid.UUID, name: str, monthly: str, no: int, of: int, last: str) -> dict[str, Any]:
     return {
         "installment_id": str(id_),
         "item_name": name,
+        "platform_name": None,
         "monthly_amount": monthly,
         "installment_no": no,
         "installments_total": of,
         "is_last": no == of,
+        "last_month": last,
     }
 
 
@@ -82,6 +85,7 @@ def row(month: str, total: str, lines: list[dict[str, Any]], **flags: bool) -> d
         "total": total,
         "budget": "9000.00",
         "over_budget": flags.get("over_budget", False),
+        "over_by": "0.00",
         "over_one_third": flags.get("over_one_third", False),
         "installments": lines,
     }
@@ -103,13 +107,16 @@ def test_DM_01_DM_02_rows_run_from_this_month_to_the_last_month_due(plan_api: Ap
     assert response.status_code == 200
     assert response.json() == {
         "months": [
-            row("2026-11", "500.00", [line(phone, "phone", "500.00", 3, 4)]),
+            row("2026-11", "500.00", [line(phone, "phone", "500.00", 3, 4, "2026-12")]),
             row(
                 "2026-12",
                 "800.00",
-                [line(phone, "phone", "500.00", 4, 4), line(bag, "bag", "300.00", 1, 2)],
+                [
+                    line(phone, "phone", "500.00", 4, 4, "2026-12"),
+                    line(bag, "bag", "300.00", 1, 2, "2027-01"),
+                ],
             ),
-            row("2027-01", "300.00", [line(bag, "bag", "300.00", 2, 2)]),
+            row("2027-01", "300.00", [line(bag, "bag", "300.00", 2, 2, "2027-01")]),
         ],
         "months_truncated": False,
     }
@@ -150,7 +157,7 @@ def test_DM_02_a_one_month_installment_is_first_and_last(plan_api: Api) -> None:
     configure(api)
     once = manual(api, "250.00", 1, date(2026, 11, 1), "once")
     assert get_months(api).json()["months"] == [
-        row("2026-11", "250.00", [line(once, "once", "250.00", 1, 1)])
+        row("2026-11", "250.00", [line(once, "once", "250.00", 1, 1, "2026-11")])
     ]
 
 
@@ -327,3 +334,46 @@ def test_DM_07_exactly_600_months_is_not_truncated(plan_api: Api) -> None:
     body = get_months(api).json()
     assert (len(body["months"]), body["months_truncated"]) == (600, False)
     assert body["months"][-1]["installments"][0]["is_last"] is True
+
+
+# --- DM-08: over_by, last_month and platform_name (Session 17) -----------------------------
+
+
+@pytest.mark.parametrize(
+    ("monthly", "over_by"),
+    [
+        ("3999.99", "0.00"),  # under the budget
+        ("4000.00", "0.00"),  # exactly the budget is not over
+        ("4000.01", "0.01"),
+        ("6500.00", "2500.00"),
+    ],
+)
+def test_DM_08_over_by_is_total_minus_budget_only_when_over(
+    plan_api: Api, monthly: str, over_by: str
+) -> None:
+    configure(plan_api, budget="4000.00")
+    manual(plan_api, monthly, 1, date(2026, 11, 1))
+    [month] = get_months(plan_api).json()["months"]
+    assert month["over_by"] == over_by
+    assert month["over_budget"] is (over_by != "0.00")
+
+
+def test_DM_08_a_month_with_nothing_due_is_not_over(plan_api: Api) -> None:
+    configure(plan_api, budget="0.00")
+    months = get_months(plan_api, "?count=2").json()["months"]
+    assert [(m["total"], m["over_by"]) for m in months] == [("0.00", "0.00"), ("0.00", "0.00")]
+
+
+def test_DM_08_each_line_names_its_last_month_and_its_app(plan_api: Api) -> None:
+    api = plan_api
+    configure(api)
+    phone = manual(api, "500.00", 14, date(2026, 9, 1), "phone", platform_name="ShopDemo")
+    bag = manual(api, "300.00", 2, date(2026, 12, 1), "bag")
+    months = get_months(api, "?count=2").json()["months"]
+    assert [
+        [(i["installment_id"], i["platform_name"], i["last_month"]) for i in m["installments"]]
+        for m in months
+    ] == [
+        [(str(phone), "ShopDemo", "2027-10")],
+        [(str(phone), "ShopDemo", "2027-10"), (str(bag), None, "2027-01")],
+    ]

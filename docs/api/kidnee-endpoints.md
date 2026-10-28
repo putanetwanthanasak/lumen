@@ -1,6 +1,6 @@
 # KidNee screens: the backend API
 
-Every endpoint the KidNee screens use, with request and response JSON. Each example was captured from the real app on 2026-10-28. The capture used the test database, with the clock fixed at 2026-11-10 and every write rolled back afterwards. Ids and timestamps differ per run. Where a list was long, it is shortened and marked `(shortened)`. Every key is shown.
+Every endpoint the KidNee screens use, with request and response JSON. Each example was captured from the real app on 2026-10-28. The capture used the test database, with the clock fixed at 2026-11-10 and every write rolled back afterwards. The Session 17 fields (marked "(Session 17)") were added to those examples by hand from the models, then checked against the one-server demo on `lumen_kidnee` on 2026-10-29. Ids and timestamps differ per run. Where a list was long, it is shortened and marked `(shortened)`. Every key is shown.
 
 Source of truth: the pydantic models named under each endpoint. If this file and the code disagree, the code wins. Report the difference as a bug.
 
@@ -21,8 +21,13 @@ Source of truth: the pydantic models named under each endpoint. If this file and
 ## Changes the frontend must make against the mock (`frontend/src/api-types.ts`)
 | Mock today | Backend | What to change |
 |---|---|---|
-| `ManualEntryIn.platform_name` | Not accepted: a 422 (`extra_forbidden`) | Do not send it. The storage is carry-over. |
-| `InstallmentLine.platform_name`, `MonthInstallment.platform_name` | Not returned | Treat as absent: group everything under "ไม่ระบุแอป". |
+| `ManualEntryIn.platform_name` | Accepted (Session 17): optional, 1 to 60 characters, no control characters | Send it, or `null` when the field is blank. `""` is a 422. |
+| `InstallmentLine.platform_name`, `MonthInstallment.platform_name` | Returned (Session 17); `null` when not named | Group `null` under "ไม่ระบุแอป". |
+| `MonthDetail.over_by` | Returned (Session 17) | Remove its `TODO(backend)`. |
+| `MonthInstallment.last_month` | New (Session 17) | Optional: the line's last due month. |
+| `EstimateOut.monthly_reduction`, `current_monthly_total` | Returned (Session 17) | Remove its `TODO(backend)`. Show `current_monthly_total` as the offer's "ตอนนี้", so both of the card's figures come from the same month as the hero. |
+| `POST /buffer/move-to-main` `for_month` | New (Session 17) | Send it from "ใช้กันชนจ่ายส่วนที่เกิน"; leave it out for "ย้ายกลับบัญชีหลัก". |
+| `GET /buffer/shortfalls` rows | Add `prepared`, `remaining_gap`, `state` (Session 17) | Show the prepared state from `state`; never compute it. |
 | `NotificationsOut.unread_count`, `NotificationOut.read`, `POST /notifications/read` | No read state; `count` = every alert the user has | Use `count`; drop the unread badge logic and the mark-read call. |
 | `NotificationOut` | Adds `installment_id` (null for payday alerts) | Add the field. |
 | `NotificationKind` | Adds `consolidation_loan` | Add it to the union. |
@@ -90,6 +95,7 @@ Model: `debts/service.py` (`DebtSummary`). Every installment of the user, with t
       "contract_id": "db0a92b4-24bc-4079-b548-f5c125ea9e0b",
       "kind": "purchase",
       "item_name": "ตู้เย็น",
+      "platform_name": null,
       "principal": "15000.00",
       "monthly_amount": "1500.00",
       "months": 10,
@@ -109,6 +115,7 @@ Model: `debts/service.py` (`DebtSummary`). Every installment of the user, with t
 - `status` is one of `active`, `paid_off`, `cancelled`, `disputed` or `consolidated`.
 - `owed` is false for lines that do not count toward the totals.
 - Entries the user records (`vendor: "manual"`) never receive payments, so `paid_amount` stays `"0.00"`.
+- `platform_name` (Session 17) is the app the user named for a manual entry, or `null`. Platform rows always have `null`: their `vendor` names them.
 
 ### `GET /debts/months[?count=N]` (new)
 Model: `debts/months.py` (`MonthsOut`). This feeds the monthly view and Home's month card.
@@ -116,11 +123,14 @@ Model: `debts/months.py` (`MonthsOut`). This feeds the monthly view and Home's m
 - Without `count`, rows run to the last month an owed installment is due: at least one row and at most 600, with `months_truncated`. With `count` (1 to 600), there are exactly N rows, and months with nothing due have `"total": "0.00"` and `"installments": []`.
 - Totals use the L43 owed set at the full monthly amount in every scheduled month, the same as `POST /installments/preview` and `GET /assistant/plan`.
 - `over_budget` is `total > budget`.
+- `over_by` (Session 17) is `total - budget` when over budget, else `"0.00"`. Exactly the budget gives `"0.00"`.
 - `over_one_third` is `total * 3 > income` (Bank of Thailand financial-literacy guidance, not a regulation). Exactly the budget, or exactly a third, is not flagged.
 - Each row's `installments` lists what is due that month, in the order recorded:
   - `installment_no` is 1 in the item's first due month;
   - `installments_total` is its months;
-  - `is_last` marks its last due month.
+  - `is_last` marks its last due month;
+  - `last_month` (Session 17) is that last due month, `"YYYY-MM"`;
+  - `platform_name` (Session 17) is as in `GET /debts/summary`.
 
 `GET /debts/months?count=3`:
 ```json
@@ -131,10 +141,11 @@ Model: `debts/months.py` (`MonthsOut`). This feeds the monthly view and Home's m
       "total": "3500.00",
       "budget": "5000.00",
       "over_budget": false,
+      "over_by": "0.00",
       "over_one_third": false,
       "installments": [
-        {"installment_id": "3cc1d482-8891-4727-9ba7-2314e3f0291b", "item_name": "ตู้เย็น", "monthly_amount": "1500.00", "installment_no": 2, "installments_total": 10, "is_last": false},
-        {"installment_id": "b0a917e0-f9fe-4797-81fd-5e5e72369092", "item_name": "หูฟังไร้สาย", "monthly_amount": "2000.00", "installment_no": 4, "installments_total": 6, "is_last": false}
+        {"installment_id": "3cc1d482-8891-4727-9ba7-2314e3f0291b", "item_name": "ตู้เย็น", "platform_name": null, "monthly_amount": "1500.00", "installment_no": 2, "installments_total": 10, "is_last": false, "last_month": "2027-07"},
+        {"installment_id": "b0a917e0-f9fe-4797-81fd-5e5e72369092", "item_name": "หูฟังไร้สาย", "platform_name": null, "monthly_amount": "2000.00", "installment_no": 4, "installments_total": 6, "is_last": false, "last_month": "2027-01"}
       ]
     },
     {
@@ -142,10 +153,11 @@ Model: `debts/months.py` (`MonthsOut`). This feeds the monthly view and Home's m
       "total": "3500.00",
       "budget": "5000.00",
       "over_budget": false,
+      "over_by": "0.00",
       "over_one_third": false,
       "installments": [
-        {"installment_id": "3cc1d482-8891-4727-9ba7-2314e3f0291b", "item_name": "ตู้เย็น", "monthly_amount": "1500.00", "installment_no": 3, "installments_total": 10, "is_last": false},
-        {"installment_id": "b0a917e0-f9fe-4797-81fd-5e5e72369092", "item_name": "หูฟังไร้สาย", "monthly_amount": "2000.00", "installment_no": 5, "installments_total": 6, "is_last": false}
+        {"installment_id": "3cc1d482-8891-4727-9ba7-2314e3f0291b", "item_name": "ตู้เย็น", "platform_name": null, "monthly_amount": "1500.00", "installment_no": 3, "installments_total": 10, "is_last": false, "last_month": "2027-07"},
+        {"installment_id": "b0a917e0-f9fe-4797-81fd-5e5e72369092", "item_name": "หูฟังไร้สาย", "platform_name": null, "monthly_amount": "2000.00", "installment_no": 5, "installments_total": 6, "is_last": false, "last_month": "2027-01"}
       ]
     },
     {
@@ -153,10 +165,11 @@ Model: `debts/months.py` (`MonthsOut`). This feeds the monthly view and Home's m
       "total": "3500.00",
       "budget": "5000.00",
       "over_budget": false,
+      "over_by": "0.00",
       "over_one_third": false,
       "installments": [
-        {"installment_id": "3cc1d482-8891-4727-9ba7-2314e3f0291b", "item_name": "ตู้เย็น", "monthly_amount": "1500.00", "installment_no": 4, "installments_total": 10, "is_last": false},
-        {"installment_id": "b0a917e0-f9fe-4797-81fd-5e5e72369092", "item_name": "หูฟังไร้สาย", "monthly_amount": "2000.00", "installment_no": 6, "installments_total": 6, "is_last": true}
+        {"installment_id": "3cc1d482-8891-4727-9ba7-2314e3f0291b", "item_name": "ตู้เย็น", "platform_name": null, "monthly_amount": "1500.00", "installment_no": 4, "installments_total": 10, "is_last": false, "last_month": "2027-07"},
+        {"installment_id": "b0a917e0-f9fe-4797-81fd-5e5e72369092", "item_name": "หูฟังไร้สาย", "platform_name": null, "monthly_amount": "2000.00", "installment_no": 6, "installments_total": 6, "is_last": true, "last_month": "2027-01"}
       ]
     }
   ],
@@ -192,11 +205,13 @@ Request (the same body as `POST /installments`):
   "months": 10,
   "monthly_amount": "1200.00",
   "first_due_month": "2026-12",
-  "item_name": "โทรศัพท์"
+  "item_name": "โทรศัพท์",
+  "platform_name": "ShopDemo"
 }
 ```
 - `kind` is `purchase`, `cash_withdrawal` or `cash_loan`.
 - `item_name` is optional, at most 500 characters, and defaults to `""`.
+- `platform_name` (Session 17) is optional: the app the user pays it in, as they call it. 1 to 60 characters, no control characters (U+0000 to U+001F), or `null`. `""` is a 422 (`string_too_short`), so send `null` for a blank field. It is part of the same-request comparison below.
 - `months` is 1 to 600.
 
 Response 200 (`months` shortened: every month of the term is listed, here 2026-12 to 2027-09):
@@ -242,7 +257,7 @@ Response 201 for a new entry, or 200 with `"status": "duplicate"` and the first 
 }
 ```
 - `warnings` has no `saving_if_recorded`. The saving is `saved_amount`.
-- The same `client_request_id` with other fields is `409 {"detail": "client_request_id reused with other fields"}`.
+- The same `client_request_id` with other fields (`platform_name` included) is `409 {"detail": "client_request_id reused with other fields"}`.
 - 409 `SETTINGS_REQUIRED`.
 
 ## กันชน (L66, L67)
@@ -254,38 +269,52 @@ Model: `buffer/schemas.py` (`BufferOut`).
 `months_covered` is the whole months of current installments the buffer covers. It is null when nothing is owed.
 
 ### `GET /buffer/shortfalls` (new)
-Model: `buffer/schemas.py` (`ShortfallsOut`). Each month over budget from this month on, with the buffer spent on the months in date order. It is advice only: nothing moves.
-- The top-level `shortfall`, `balance`, `covered` and `still_short` are exactly `GET /assistant/plan` `buffer_plan`.
+Model: `buffer/schemas.py` (`ShortfallsOut`). Each month over budget from this month on, less what the user already moved for it, with the buffer spent on what is left in date order. It is advice only: nothing moves.
+- Per month (Session 17):
+  - `total`, `budget` and `shortfall` (`total - budget`) never change after a move;
+  - `prepared` is what the user moved to the main account for that month (`POST /buffer/move-to-main` with `for_month`), summed;
+  - `remaining_gap` is `max(0, shortfall - prepared)`: money moved beyond a month's gap never closes another month's;
+  - `state` is `not_prepared` (nothing moved), `partly_prepared`, or `prepared` (`prepared >= shortfall`);
+  - `covered_by_buffer` and `still_short` split the `remaining_gap`.
+- A move for a past month, or for a month within budget, prepares nothing here.
+- The top-level `shortfall`, `remaining_gap`, `balance`, `covered` and `still_short` are exactly `GET /assistant/plan` `buffer_plan`. `covered` is `balance >= remaining_gap`, and `still_short` is `max(0, remaining_gap - balance)`.
 - `months` stops at 600 rows (`months_truncated`); the totals cover every month.
+
+`demo-over` after moving 1,500.00 for 2026-10 and 600.00 for 2026-11 (checked on `lumen_kidnee`, "today" 2026-10-29):
 ```json
 {
-  "balance": "5200.00",
-  "shortfall": "4500.00",
+  "balance": "3600.00",
+  "shortfall": "3000.00",
+  "remaining_gap": "900.00",
   "covered": true,
   "still_short": "0.00",
   "months": [
-    {"month": "2026-11", "total": "6500.00", "budget": "5000.00", "shortfall": "1500.00", "covered_by_buffer": "1500.00", "still_short": "0.00"},
-    {"month": "2026-12", "total": "6500.00", "budget": "5000.00", "shortfall": "1500.00", "covered_by_buffer": "1500.00", "still_short": "0.00"},
-    {"month": "2027-01", "total": "6500.00", "budget": "5000.00", "shortfall": "1500.00", "covered_by_buffer": "1500.00", "still_short": "0.00"}
+    {"month": "2026-10", "total": "6500.00", "budget": "5000.00", "shortfall": "1500.00", "prepared": "1500.00", "remaining_gap": "0.00", "state": "prepared", "covered_by_buffer": "0.00", "still_short": "0.00"},
+    {"month": "2026-11", "total": "6500.00", "budget": "5000.00", "shortfall": "1500.00", "prepared": "600.00", "remaining_gap": "900.00", "state": "partly_prepared", "covered_by_buffer": "900.00", "still_short": "0.00"}
   ],
   "months_truncated": false
 }
 ```
-- Nothing over budget gives `"months": []`, `"shortfall": "0.00"` and `"covered": true`.
+- Nothing over budget gives `"months": []`, `"shortfall": "0.00"`, `"remaining_gap": "0.00"` and `"covered": true`.
 - 409 `SETTINGS_REQUIRED`.
 
 ### `POST /buffer/move-to-main`
 Model: `buffer/schemas.py` (`MoveIn`, `MovedOut`). The user moves buffer money back to the main account. It is never blocked (L66).
 
-Request: `{"client_request_id": "move-1", "amount": "500.00"}`
+Request: `{"client_request_id": "move-1", "amount": "1500.00", "for_month": "2026-10"}`
+- `for_month` (Session 17) is optional, `"YYYY-MM"`: the month this money is for. Send it from "ใช้กันชนจ่ายส่วนที่เกิน" (prefilled with the month's `remaining_gap`); leave it out, or send `null`, for a free move ("ย้ายกลับบัญชีหลัก").
+- It is a label only: any valid month is accepted, and it never limits or blocks the move (L66).
 
 Response 201, or 200 with `"status": "duplicate"` for a repeat:
 ```json
-{"transaction_id": "b7be5e73-3fc3-4392-99f7-3e46b399e697", "status": "created", "amount": "500.00", "balance": "2200.00"}
+{"transaction_id": "82f9f2ba-8e4f-4a96-bca5-36395bd64cea", "status": "created", "amount": "1500.00", "for_month": "2026-10", "balance": "4200.00"}
 ```
+- `for_month` is `null` for a free move.
+
 Errors:
 - An amount above the buffer: `422 {"detail": {"code": "AMOUNT_ABOVE_BALANCE", "message": "the buffer holds less than this amount"}}`.
-- The same id with another amount: 409.
+- A bad month (`"2026-13"`, `"2026-1"`, `"2026-11-01"`, a number): `422 {"detail": [{"type": "value_error", "loc": ["for_month"]}]}`.
+- The same id with another amount or another `for_month` (also one added or dropped): `409 {"detail": "client_request_id reused with another amount or month"}`. A double tap with the same body is the 200 duplicate, so the money moves once.
 
 ## Home: "ควรรวมหนี้ไหม" and the monthly plan (L69, L70)
 ### `GET /assistant/plan`
@@ -301,7 +330,7 @@ Model: `assistant/schemas.py` (`PlanOut`). It writes nothing; the UI never calls
   "safe_new_monthly": "1500.00",
   "safe_new_from": "2026-11",
   "safe_new_months": 12,
-  "buffer_plan": {"shortfall": "0.00", "balance": "2700.00", "covered": true, "still_short": "0.00"},
+  "buffer_plan": {"shortfall": "0.00", "remaining_gap": "0.00", "balance": "2700.00", "covered": true, "still_short": "0.00"},
   "consolidation": {"eligible": false, "reason": "NOT_NEEDED", "estimate": null}
 }
 ```
@@ -314,7 +343,10 @@ Model: `assistant/schemas.py` (`PlanOut`). It writes nothing; the UI never calls
   - `PAYMENT_ABOVE_BUDGET`
   - `PAYMENT_ABOVE_ONE_THIRD_OF_INCOME`
   - `ELIGIBLE`
-- When eligible, `estimate` holds `principal`, `annual_rate`, `rate_is_example: true`, `rate_note: "example, not a real rate"`, `term_months`, `first_due_month`, `monthly_payment`, `total_cost`, `current_remaining_total` and `extra_cost`.
+- When eligible, `estimate` holds `principal`, `annual_rate`, `rate_is_example: true`, `rate_note: "example, not a real rate"`, `term_months`, `first_due_month`, `monthly_payment`, `total_cost`, `current_remaining_total`, `extra_cost`, `current_monthly_total` and `monthly_reduction`.
+- `current_monthly_total` (Session 17) is what the plans cost this month: the current month's total, the same as the first row of `GET /debts/months` (Home's hero). It is not `GET /debts/summary` `monthly_total` (L43), which also holds plans not due this month, for example one that starts later.
+- `monthly_reduction` (Session 17) is `max(0, current_monthly_total - monthly_payment)`. It is `"0.00"` when the loan costs as much as this month or more, which can happen when the run over budget comes later; the card then leaves out its benefit line. Show both figures as sent; never compute them. `demo-consolidate` on 2026-10-29: `"current_monthly_total": "7500.00"`, `"monthly_payment": "3369.88"`, `"monthly_reduction": "4130.12"`.
+- `buffer_plan.remaining_gap` (Session 17): see `GET /buffer/shortfalls`.
 - 409 `SETTINGS_REQUIRED`.
 
 ## Notifications
@@ -356,6 +388,17 @@ Request: `{"month": "2026-11"}`. The response is 201 for the month's first run, 
 ```
 - `outcome` is one of `over_budget`, `leftover_saved`, `no_leftover`, `leftover_off` or `safety_net`.
 - 409 `SETTINGS_REQUIRED`.
+
+### The seeded personas (`X-Demo-User`, `lumen_kidnee` only)
+`python -m demo.kidnee reset --yes` rebuilds them; months are relative to today. All have income 20,000.00, payday 25 and budget 5,000.00.
+
+| Persona | Story | Saving rule | Buffer after seeding |
+|---|---|---|---|
+| `demo-mon` ("ม่อน") | In budget: 3,500.00 a month | 10% | 2,700.00 |
+| `demo-over` | 6,500.00 this month and next (3,000.00 over), then within budget; `NOT_NEEDED` | 10% | 5,700.00, which covers it |
+| `demo-consolidate` | 9 months over budget from this month (10,500.00 in all); `ELIGIBLE` | 2% | 1,500.00, still short 9,000.00 |
+
+Platform names are fictional ("ShopDemo", "RideDemo"); the fridge is left unnamed.
 
 ---
 

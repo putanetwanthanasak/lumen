@@ -354,3 +354,18 @@ def test_CO_05_consolidation_requests_downgrade_refuses_while_requests_exist(
     finally:
         with migration_engine.begin() as conn:
             conn.execute(text("DELETE FROM consolidation_requests WHERE user_id = 'mig-user'"))
+
+
+def test_BF_11_MI_13_for_month_and_platform_name_downgrade_one_step(
+    migration_engine: Engine,
+) -> None:
+    with migration_engine.begin() as conn:
+        command.downgrade(alembic_config(conn), "0663a31734bc")
+    with migration_engine.connect() as conn:
+        assert "for_month" not in _columns(conn, "savings_transactions")
+        assert "platform_name" not in _columns(conn, "installments")
+    with migration_engine.begin() as conn:
+        command.upgrade(alembic_config(conn), "head")
+    with migration_engine.connect() as conn:
+        assert "for_month" in _columns(conn, "savings_transactions")
+        assert "platform_name" in _columns(conn, "installments")

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.affordability.months import Month
 from app.affordability.service import counted_installments, require_profile, schedule_of
 from app.assistant.plan import Debt, Plan, Shortfalls, build, shortfalls
-from app.buffer.service import balance
+from app.buffer.service import balance, prepared_by_month
 from app.config import Settings
 from app.debts.service import remaining
 from app.models import CONSOLIDATION_VENDOR, MANUAL_VENDOR, Installment, InstallmentStatus
@@ -39,6 +39,7 @@ def plan(session: Session, user_id: str, *, today: date, settings: Settings) -> 
     """Raises affordability.service.SettingsRequiredError without an income and
     budget: the plan never guesses them."""
     profile = require_profile(session, user_id)
+    prepared = prepared_by_month(session, user_id, since=Month.of(today))  # before balance
     return build(
         debts(session, user_id),
         now=Month.of(today),
@@ -47,15 +48,23 @@ def plan(session: Session, user_id: str, *, today: date, settings: Settings) -> 
         buffer_balance=balance(session, user_id),
         annual_rate=settings.consolidation_example_annual_rate,
         term=settings.consolidation_example_term_months,
+        prepared=prepared,
     )
 
 
 def buffer_shortfalls(session: Session, user_id: str, *, today: date) -> Shortfalls:
-    """As plan: raises SettingsRequiredError without an income and budget."""
+    """As plan: raises SettingsRequiredError without an income and budget.
+
+    What was prepared is read before the balance (review R2-F1). The two are separate
+    statements at READ COMMITTED: a move committed in between then shows as a lower
+    balance with its month not yet prepared, which understates the coverage for one
+    response. The other order would count the move twice and overstate it."""
     profile = require_profile(session, user_id)
+    prepared = prepared_by_month(session, user_id, since=Month.of(today))
     return shortfalls(
         [d.schedule for d in debts(session, user_id)],
         now=Month.of(today),
         budget=profile.budget,
         balance=balance(session, user_id),
+        prepared=prepared,
     )

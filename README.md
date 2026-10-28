@@ -102,8 +102,9 @@ uv run python -m demo.kidnee serve              # http://127.0.0.1:8000
 ```
 
 `seed` instead of `reset` migrates and adds the personas without dropping anything; it is
-safe to run again. The personas (`X-Demo-User`) are `demo-mint` (in budget),
-`demo-over` (over budget this month and next) and `demo-consolidate` (eligible for the
+safe to run again. The personas (`X-Demo-User`) are `demo-mon` (in budget, a modest
+buffer), `demo-over` (over budget this month and next, and the buffer covers it) and
+`demo-consolidate` (a long run over budget and a small buffer: eligible for the
 consolidation card). The browser calls `/api/...`; the server mounts the API at `/api`
 and the build at `/`, and binds `127.0.0.1` only. The API and its exact JSON are in
 `docs/api/kidnee-endpoints.md`.

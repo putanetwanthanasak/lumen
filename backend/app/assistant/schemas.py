@@ -28,9 +28,10 @@ class PlanMonth(_Out):
 
 class BufferPlanOut(_Out):
     shortfall: Decimal = Field(description="Sum of total - budget over the months over budget.")
+    remaining_gap: Decimal = Field(description="shortfall minus what was prepared for it.")
     balance: Decimal = Field(description="The buffer (savings balance, L66).")
-    covered: bool = Field(description="The buffer covers the whole shortfall.")
-    still_short: Decimal = Field(description="max(0, shortfall - balance).")
+    covered: bool = Field(description="The buffer covers the whole remaining gap.")
+    still_short: Decimal = Field(description="max(0, remaining_gap - balance).")
 
 
 class EstimateOut(_Out):
@@ -46,6 +47,12 @@ class EstimateOut(_Out):
         description="What is left to pay on the current plans, for comparison."
     )
     extra_cost: Decimal = Field(description="total_cost - current_remaining_total.")
+    current_monthly_total: Decimal = Field(
+        description="What the plans cost this month: the current month's total (L65)."
+    )
+    monthly_reduction: Decimal = Field(
+        description="max(0, current_monthly_total - monthly_payment)."
+    )
 
     @classmethod
     def of(cls, estimate: Estimate) -> Self:
@@ -58,6 +65,8 @@ class EstimateOut(_Out):
             total_cost=estimate.total_cost,
             current_remaining_total=estimate.current_remaining_total,
             extra_cost=estimate.extra_cost,
+            current_monthly_total=estimate.current_monthly_total,
+            monthly_reduction=estimate.monthly_reduction,
         )
 
 
@@ -111,6 +120,7 @@ class PlanOut(_Out):
             safe_new_from=str(plan.safe_new_from),
             buffer_plan=BufferPlanOut(
                 shortfall=plan.buffer.shortfall,
+                remaining_gap=plan.buffer.remaining_gap,
                 balance=plan.buffer.balance,
                 covered=plan.buffer.covered,
                 still_short=plan.buffer.still_short,
