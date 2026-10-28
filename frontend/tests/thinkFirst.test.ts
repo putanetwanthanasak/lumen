@@ -1,9 +1,9 @@
 /**
  * The เช็กก่อนผ่อน form and its stages (screen 3): UI-16 (review round 2, F2, F3,
  * F5), UI-18 (first due month, the 0% suggestion), UI-19 (the app), UI-21 (saving),
- * UI-37 (the field order, the folded details and cash kinds, the keyboards, the month
- * picks, and the check in the bar above the nav, disabled until the four required
- * fields are valid; critical where it gates money). UI-37's markup is the screen's
+ * UI-37 (the field order with every field in view, the cash kinds behind a link, the
+ * keyboards, the month picks, and the check in the bar above the nav, disabled until
+ * the four required fields are valid; critical where it gates money). UI-37's markup is the screen's
  * own, rendered with react-dom/server: no browser, no extra package.
  */
 import assert from "node:assert/strict";
@@ -215,7 +215,7 @@ test("UI_21_preview_says_what_recording_would_save_and_recording_saves_that", ()
   assert.equal(skipped.saved_amount, belowNet.saving_if_recorded);
 });
 
-// ---- UI-37: the form's order, its folded parts, and the check in the bar ------------
+// ---- UI-37: the form's order, the cash kinds behind a link, and the check in the bar --
 
 /** The screen as it draws a form state (kept as a draft, as after "แก้ไข"). */
 function render(form: Form): string {
@@ -257,7 +257,7 @@ test("UI_37_the_check_stays_disabled_until_every_required_field_is_valid", () =>
     ["firstDue", ""],
   ];
   for (const [field, value] of blocked) assert.equal(canPreview({ ...FORM, [field]: value }), false, `${field}=${value}`);
-  // The optional details never block it, and a cash item needs the same four.
+  // The optional name and app never block it, and a cash item needs the same four.
   assert.equal(canPreview({ ...FORM, name: "", platform: "" }), true);
   assert.equal(canPreview({ ...FORM, kind: "cash_loan" }), true);
 });
@@ -291,20 +291,30 @@ test("UI_37_a_field_shows_its_error_once_left_with_something_typed", () => {
   assert.deepEqual(shownErrors(FORM, "all"), {});
 });
 
-test("UI_37_the_four_required_fields_come_first_and_the_details_fold_under_them", () => {
+test("UI_37_every_field_is_in_view_name_and_app_first_then_the_four_the_check_needs", () => {
   const html = render(emptyForm());
-  const order = [">ราคาสินค้า</label>", ">จำนวนเดือนที่ผ่อน</label>", ">ค่างวดต่อเดือน</label>", ">เริ่มจ่ายงวดแรก</legend>", `>${THINK.details}`];
+  // In this order. The cash link sits just above the price, whose label it changes.
+  const order = [
+    `>${THINK.itemName}</label>`,
+    `>${THINK.platform}</label>`,
+    `>${THINK.cashLink}</button>`,
+    `>${THINK.price}</label>`,
+    `>${THINK.months}</label>`,
+    `>${THINK.monthly}</label>`,
+    `>${THINK.firstDue}</legend>`,
+  ];
   const places = order.map((text) => at(html, text));
   assert.deepEqual([...places].sort((a, b) => a - b), places, "in this order");
-  assert.match(html, new RegExp(`aria-expanded="false"[^>]*>${esc(THINK.details)}`));
-  // Folded: the item name and the app are not drawn until the user opens them.
-  assert.ok(!html.includes(">ชื่อสินค้า</label>") && !html.includes(">แอปที่ผ่อน</label>"));
-  // A draft with a name opens them, below the four (back from the result screen).
-  const open = render({ ...FORM, name: "โทรศัพท์", platform: "ShopDemo" });
-  assert.match(open, new RegExp(`aria-expanded="true"[^>]*>${esc(THINK.details)}`));
-  assert.ok(at(open, ">เริ่มจ่ายงวดแรก</legend>") < at(open, ">ชื่อสินค้า</label>"));
-  assert.ok(at(open, ">ชื่อสินค้า</label>") < at(open, ">แอปที่ผ่อน</label>"));
-  assert.equal(THINK.details, "รายละเอียดเพิ่มเติม (ไม่บังคับ)");
+  // The two optional fields say so in their labels.
+  assert.deepEqual([THINK.itemName, THINK.platform], ["ชื่อสินค้า (ไม่บังคับ)", "แอปที่ผ่อน (ไม่บังคับ)"]);
+  // Nothing folded: both take typing from the start, and nothing in the form opens or closes.
+  inputFor(html, THINK.itemName);
+  inputFor(html, THINK.platform);
+  assert.ok(!html.slice(at(html, "<form"), at(html, "</form>")).includes("aria-expanded"), "no fold");
+  // A cash kind keeps the order: the name and the app, the kinds, then ยอดเงิน.
+  const cash = render({ ...FORM, kind: "cash_loan" });
+  assert.ok(at(cash, `>${THINK.platform}</label>`) < at(cash, `>${THINK.kindTitle}</legend>`));
+  assert.ok(at(cash, `>${THINK.kindTitle}</legend>`) < at(cash, `>${THINK.cashAmount}</label>`));
 });
 
 test("UI_37_purchase_is_preselected_and_the_cash_kinds_wait_behind_a_link", () => {

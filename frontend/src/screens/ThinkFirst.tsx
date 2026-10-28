@@ -1,12 +1,12 @@
 /**
  * Screen 3: เช็กก่อนผ่อน, the form (DESIGN.md section 7.3, UI-37).
- * The four fields the preview needs, in this order: the price (ยอดเงิน for a cash
- * item), the months (with quick picks), the monthly amount (prefilled with the API's
- * 0% suggestion until the user edits it) and the first due month (no default). The
- * kind is ผ่อนสินค้า unless the user opens "เป็นรายการเงินสด?"; the item name and the
- * app come last, folded. The check sits in the bar above the nav, always in view,
- * disabled until the four are valid. The preview opens the result screen
- * (screens/Result.tsx); the form survives the trip.
+ * Every field in view, in this order: the item name and the app (both optional), the
+ * price (ยอดเงิน for a cash item), the months (with quick picks), the monthly amount
+ * (prefilled with the API's 0% suggestion until the user edits it) and the first due
+ * month (no default). The kind is ผ่อนสินค้า unless the user opens "เป็นรายการเงินสด?",
+ * just above the price whose label it changes. The check sits in the bar above the
+ * nav, always in view, disabled until the four required fields are valid. The preview
+ * opens the result screen (screens/Result.tsx); the form survives the trip.
  */
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { ApiError, getAssistantPlan, getSettings, previewInstallment, suggestMonthly } from "../api.ts";
@@ -95,13 +95,11 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
   const [problem, setProblem] = useState<"failed" | "settings" | null>(null);
   // A cash item is the exception: its kinds open on request, and stay open while one is chosen.
   const [kindsOpen, setKindsOpen] = useState(() => form.kind !== "purchase");
-  const [detailsOpen, setDetailsOpen] = useState(() => form.name !== "" || form.platform !== "");
   const pending = useRef<string | null>(null); // the preview request still waited for
   const focusKind = useRef(false);
   const deepLinked = useRef(false);
   const formId = useId();
   const kindsId = useId();
-  const detailsId = useId();
   const needsId = useId();
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => {
@@ -137,7 +135,6 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
 
   function fill(scenario: Scenario) {
     setForm((f) => formFor(scenario, f));
-    setDetailsOpen(true); // the example fills the item name and the app too: show them
     setTouched(new Set());
     pending.current = null;
     setStage({ name: "form" });
@@ -244,6 +241,22 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
 
       <form id={formId} noValidate onSubmit={check}>
         <Card className="flex flex-col gap-5">
+          <Field
+            label={THINK.itemName}
+            value={form.name}
+            onChange={(v) => set("name", v)}
+            placeholder={THINK.itemNamePlaceholder}
+            maxLength={100}
+          />
+          <Field
+            label={THINK.platform}
+            value={form.platform}
+            onChange={(v) => set("platform", v)}
+            onBlur={() => leave("platform")}
+            placeholder={THINK.platformPlaceholder}
+            maxLength={PLATFORM_MAX}
+            error={errors.platform ?? null}
+          />
           {kindsOpen || cash ? (
             <>
               <Choice
@@ -304,38 +317,6 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
             error={errors.monthly ?? null}
           />
           <FirstDue value={form.firstDue} onChange={(v) => set("firstDue", v)} error={errors.firstDue ?? null} />
-          <div className="flex flex-col gap-4 border-t border-line pt-3">
-            <button
-              type="button"
-              aria-expanded={detailsOpen}
-              aria-controls={detailsId}
-              onClick={() => setDetailsOpen((o) => !o)}
-              className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 text-left text-body font-semibold text-ink"
-            >
-              {THINK.details}
-              <Icon name="down" size={20} className={detailsOpen ? "rotate-180" : ""} />
-            </button>
-            {detailsOpen && (
-              <div id={detailsId} className="flex flex-col gap-5">
-                <Field
-                  label={THINK.itemName}
-                  value={form.name}
-                  onChange={(v) => set("name", v)}
-                  placeholder={THINK.itemNamePlaceholder}
-                  maxLength={100}
-                />
-                <Field
-                  label={THINK.platform}
-                  value={form.platform}
-                  onChange={(v) => set("platform", v)}
-                  onBlur={() => leave("platform")}
-                  placeholder={THINK.platformPlaceholder}
-                  maxLength={PLATFORM_MAX}
-                  error={errors.platform ?? null}
-                />
-              </div>
-            )}
-          </div>
         </Card>
       </form>
     </Screen>
