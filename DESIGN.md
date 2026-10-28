@@ -573,7 +573,9 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
   (teal) or "กันชน {balance} ยังขาดอีก {still_short}" (amber); with no month over,
   "ทุกเดือนอยู่ในงบ ยังไม่ต้องใช้กันชน". It reloads after a move, so it always matches
   the balance above it. Its `covered` and `still_short` are measured against the
-  `remaining_gap`, what the moves made for each month have not yet prepared.
+  `remaining_gap`, what the moves made for each month have not yet prepared, so once
+  some is prepared a line "ยังไม่ได้เตรียม {remaining_gap}" sits between them, and with
+  every month prepared the card says "เตรียมเงินจากกันชนครบทุกเดือนที่เกินงบแล้ว".
 - **"เดือนที่ค่างวดเกินงบ"**: one card per month over budget (`GET /buffer/shortfalls`,
   UI-47), opened scrolled to the month that Home or 7.2b asked for. The state line,
   then, while the month is not prepared, three numbered steps:
@@ -592,9 +594,11 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
 - "ย้ายกลับบัญชีหลัก": an amount and an outlined button (the month's move is the
   primary), always enabled (L66: the user's own action, never automatic, never
   blocked); it sends no `for_month`. Every move keeps one `client_request_id` per
-  amount and month, reused on a retry, and a second press while a move is out is
-  ignored (`mover` in `bufferMove.ts`), so a double tap moves the money once
-  (UI-13, UI-47).
+  amount and month, reused on a retry. All moves on the screen share one lock
+  (`mover` in `bufferMove.ts`): while one is out, every other move button is disabled
+  and a press is ignored, so a double tap, or two months pressed together, moves the
+  money once. "Before" is the balance the API last gave, and only the newest
+  `GET /buffer` answer is shown (UI-13, UI-47).
 - 422 `AMOUNT_ABOVE_BALANCE` is a field error that names the balance. Any other
   failure is an unknown outcome: the screen never says where the money is, reads
   the balance again, and asks to press again with the same amount (same id, so it
