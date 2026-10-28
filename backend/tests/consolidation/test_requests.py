@@ -49,9 +49,12 @@ def configure(co: Co, user: str = USER) -> None:
     co.api.session.flush()
 
 
-def manual(co: Co, monthly: str, months: int = 3, user: str = USER) -> uuid.UUID:
+def manual(
+    co: Co, monthly: str, months: int = 3, user: str = USER, platform_name: str | None = None
+) -> uuid.UUID:
     row = manual_installment(
         user_id=user,
+        platform_name=platform_name,
         client_request_id=str(uuid.uuid4()),
         principal=Decimal(monthly) * months,
         monthly_amount=Decimal(monthly),
@@ -89,8 +92,11 @@ def payout_out(co: Co, installment_id: uuid.UUID, amount: str) -> dict[str, str]
     row = co.api.session.get_one(Installment, installment_id)
     return {
         "installment_id": str(installment_id),
-        # A manual entry is paid at an unnamed platform, never "manual" (open question 16).
-        "vendor": "unnamed_platform" if row.vendor == "manual" else row.vendor,
+        # A manual entry is paid at the app the user named, else at an unnamed platform,
+        # never "manual" (open question 16, L72).
+        "vendor": (row.platform_name or "unnamed_platform")
+        if row.vendor == "manual"
+        else row.vendor,
         "contract_id": row.contract_id,
         "amount": amount,
     }
@@ -929,3 +935,21 @@ def test_CO_07_requested_amounts_that_make_a_month_red_are_409(co: Co) -> None:
 def test_CO_13_a_payout_goes_to_the_platform_or_to_an_unnamed_one_for_a_manual_entry() -> None:
     assert service.recipient(installment(vendor="shopdemo")) == "shopdemo"
     assert service.recipient(manual_installment()) == "unnamed_platform"
+    # L72: once the user names the app (Session 17), the payout goes there.
+    assert service.recipient(manual_installment(platform_name="ShopDemo")) == "ShopDemo"
+
+
+def test_CO_13_a_named_manual_entry_is_paid_at_the_app_the_user_named(co: Co) -> None:
+    configure(co)
+    a = manual(co, "6000.00", platform_name="ShopDemo")
+    b = manual(co, "4000.00")
+    response = submit(co, body((a, b)))
+    assert response.status_code == 201
+    assert sorted((p.vendor, p.amount) for p in co.bank.payouts) == [
+        ("ShopDemo", Decimal("18000.00")),
+        ("unnamed_platform", Decimal("12000.00")),
+    ]
+    assert sorted((p["vendor"], p["amount"]) for p in response.json()["payouts"]) == [
+        ("ShopDemo", "18000.00"),
+        ("unnamed_platform", "12000.00"),
+    ]

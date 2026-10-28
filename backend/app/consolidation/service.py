@@ -66,9 +66,8 @@ from app.providers.base import Application, ConsolidationBankProvider, Payoff
 logger = logging.getLogger(__name__)
 
 PAYOFFS_DO_NOT_MATCH_PLAN = "PAYOFFS_DO_NOT_MATCH_PLAN"
-# Who a manual entry's payout goes to (Session 14, open question 16). The user has not
-# named the app yet (platform_name comes in the next session), and "manual" is not a
-# platform anyone could be paid at.
+# Who a manual entry's payout goes to when the user did not name its app (Session 14,
+# open question 16; L72): "manual" is not a platform anyone could be paid at.
 UNNAMED_PLATFORM = "unnamed_platform"
 LOAN_NAME = "สินเชื่อรวมหนี้"
 MONTHLY_RATE = Decimal("0.000001")  # Numeric(7,6): the loan row's rate, for display
@@ -94,8 +93,11 @@ class NotEligible:
 
 
 def recipient(row: Installment) -> str:
-    """The platform a payout for this installment goes to."""
-    return UNNAMED_PLATFORM if row.vendor == MANUAL_VENDOR else row.vendor
+    """The platform a payout for this installment goes to: for a manual entry, the
+    app the user named (platform_name, Session 17), else an unnamed one (L72)."""
+    if row.vendor == MANUAL_VENDOR:
+        return row.platform_name or UNNAMED_PLATFORM
+    return row.vendor
 
 
 def request_key(user_id: str, body: ConsolidationRequestIn) -> str:

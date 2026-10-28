@@ -193,3 +193,11 @@ def test_L43_pushed_total_equals_the_summary_at_that_moment(webhook: Webhook) ->
 )
 def test_OR_04_last_due_date_month_arithmetic(start: date, months: int, end: date) -> None:
     assert add_months(start, months) == end
+
+
+def test_MI_13_a_platform_row_has_no_platform_name(webhook: Webhook) -> None:
+    # Review F3: platform_name is the user's name for a manual entry's app (Session 17);
+    # a platform row is named by its vendor, so its platform_name is null.
+    open_debt(webhook, 1)
+    [line] = summary(webhook)["installments"]
+    assert (line["vendor"], line["platform_name"]) == ("shopdemo", None)

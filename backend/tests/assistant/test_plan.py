@@ -9,7 +9,7 @@ from decimal import Decimal
 from fractions import Fraction
 
 import pytest
-from hypothesis import event, given, settings
+from hypothesis import event, example, given, settings
 from hypothesis import strategies as st
 
 from app.affordability.months import Month, Scheduled, Verdict, month_totals, month_verdict
@@ -614,7 +614,7 @@ def test_AS_05_a_principal_beyond_numeric_12_2_is_too_large_before_any_payment_m
 # --- AS-11: monthly_reduction (Session 17) -----------------------------------------------
 
 
-def test_AS_11_monthly_reduction_is_the_monthly_total_minus_the_payment() -> None:
+def test_AS_11_monthly_reduction_is_this_months_total_minus_the_payment() -> None:
     estimate = plan([debt("3700.00", 3), debt("2000.00", 3)]).consolidation.estimate
     assert estimate is not None
     assert estimate.current_monthly_total == Decimal("5700.00")
@@ -622,14 +622,28 @@ def test_AS_11_monthly_reduction_is_the_monthly_total_minus_the_payment() -> Non
     assert type(estimate.monthly_reduction) is Decimal
 
 
-def test_AS_11_a_plan_that_starts_later_is_in_the_monthly_total() -> None:
-    # L43: every counted plan's monthly amount, also one that is not due yet, the
-    # same figure as GET /debts/summary monthly_total.
-    debts = [debt("6000.00", 3), debt("1000.00", 2, offset=6)]
-    estimate = plan(debts).consolidation.estimate
+@pytest.mark.parametrize(
+    "other",
+    [
+        debt("1000.00", 2, offset=6),  # starts later
+        debt("3000.00", 3, offset=-6),  # a manual entry that ended, still counted (L43)
+    ],
+    ids=["starts_later", "ended_manual_entry"],
+)
+def test_AS_11_a_plan_not_due_this_month_is_not_in_its_total(other: Debt) -> None:
+    # Review F2: the L43 sum would hold it and overstate what the loan saves.
+    estimate = plan([debt("6000.00", 3), other]).consolidation.estimate
     assert estimate is not None
-    assert estimate.current_monthly_total == Decimal("7000.00")
-    assert estimate.monthly_reduction == Decimal("7000.00") - estimate.monthly_payment
+    assert estimate.current_monthly_total == Decimal("6000.00")
+    assert estimate.monthly_reduction == Decimal("6000.00") - estimate.monthly_payment
+
+
+def test_AS_11_a_loan_that_costs_more_than_this_month_reduces_nothing() -> None:
+    # This month is 100.00; the run over budget is January to March.
+    estimate = plan([debt("100.00", 1), debt("6000.00", 3, offset=2)]).consolidation.estimate
+    assert estimate is not None
+    assert estimate.monthly_payment > Decimal("100.00")
+    assert estimate.monthly_reduction == Decimal("0.00")
 
 
 @st.composite
@@ -675,7 +689,9 @@ def mostly_eligible(draw: st.DrawFn) -> tuple[list[Debt], Decimal, Decimal]:
         mostly_eligible(),
     ),
 )
-def test_AS_11_monthly_reduction_is_above_zero_whenever_there_is_an_estimate(
+# Review F4: at least this case has an estimate, whatever the strategies draw.
+@example(case=([debt("3700.00", 3), debt("2000.00", 3)], Decimal("5000.00"), INCOME))
+def test_AS_11_monthly_reduction_is_this_months_total_minus_the_payment_never_below_zero(
     case: tuple[list[Debt], Decimal, Decimal],
 ) -> None:
     debts, budget, income = case
@@ -692,6 +708,6 @@ def test_AS_11_monthly_reduction_is_above_zero_whenever_there_is_an_estimate(
     event(f"estimate: {estimate is not None}")  # --hypothesis-show-statistics
     if estimate is None:
         return
-    monthly_total = sum((d.schedule.monthly_amount for d in debts), Decimal("0.00"))
-    assert estimate.monthly_reduction == monthly_total - estimate.monthly_payment
-    assert estimate.monthly_reduction > 0
+    this_month = full_totals(debts)[0]
+    assert estimate.current_monthly_total == this_month
+    assert estimate.monthly_reduction == max(Decimal("0.00"), this_month - estimate.monthly_payment)

@@ -128,14 +128,17 @@ class Estimate:
     monthly_payment: Decimal
     total_cost: Decimal
     current_remaining_total: Decimal  # what is left on the plans as they are now
-    current_monthly_total: Decimal  # the counted plans' monthly amounts (L43)
+    # What the plans cost this month: the current month's total (L65), the same row as
+    # GET /debts/months and Home. Not the L43 sum, which also holds plans not due this
+    # month (a manual entry that ended, one that starts later) and so would overstate
+    # what the loan saves (Session 17 review F2).
+    current_monthly_total: Decimal
 
     @property
     def monthly_reduction(self) -> Decimal:
-        """How much less a month costs with the loan than the plans' monthly total.
-        Above 0 whenever there is an estimate: some month is over budget, so the
-        monthly total is above the budget, and the payment is within it (L70 b)."""
-        return self.current_monthly_total - self.monthly_payment
+        """How much less a month costs with the loan than this month does now; 0.00
+        when the loan costs as much or more (the run over budget may come later)."""
+        return max(ZERO, self.current_monthly_total - self.monthly_payment)
 
     @property
     def extra_cost(self) -> Decimal:
@@ -371,7 +374,9 @@ def consolidation(
             monthly_payment=payment,
             total_cost=total_cost,
             current_remaining_total=principal,
-            current_monthly_total=sum((d.schedule.monthly_amount for d in debts), ZERO),
+            current_monthly_total=month_totals([d.schedule for d in debts], first=now, count=1)[
+                0
+            ].total,
         ),
     )
 

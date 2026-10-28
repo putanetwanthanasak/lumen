@@ -153,6 +153,7 @@ def test_AS_05_eligible_plan_returns_the_estimate_labelled_as_an_example(plan_ap
             "total_cost": "20489.04",
             "current_remaining_total": "17100.00",
             "extra_cost": "3389.04",
+            "current_monthly_total": "5700.00",
             "monthly_reduction": "4846.29",
         },
     }

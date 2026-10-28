@@ -47,8 +47,11 @@ class EstimateOut(_Out):
         description="What is left to pay on the current plans, for comparison."
     )
     extra_cost: Decimal = Field(description="total_cost - current_remaining_total.")
+    current_monthly_total: Decimal = Field(
+        description="What the plans cost this month: the current month's total (L65)."
+    )
     monthly_reduction: Decimal = Field(
-        description="The counted plans' monthly total (L43) - monthly_payment; above 0."
+        description="max(0, current_monthly_total - monthly_payment)."
     )
 
     @classmethod
@@ -62,6 +65,7 @@ class EstimateOut(_Out):
             total_cost=estimate.total_cost,
             current_remaining_total=estimate.current_remaining_total,
             extra_cost=estimate.extra_cost,
+            current_monthly_total=estimate.current_monthly_total,
             monthly_reduction=estimate.monthly_reduction,
         )
 
