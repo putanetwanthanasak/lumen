@@ -12,6 +12,7 @@ permissions:
 env:
   PYTHON_VERSION: "3.14"
   UV_VERSION: "0.12.20"
+  NODE_VERSION: "22.22.1"  # as on the laptop; package.json engines needs >= 22.18.0
 
 jobs:
   test:
@@ -78,6 +79,29 @@ jobs:
         run: uv run coverage report --include='app/savings/*' --fail-under=90
       - name: Coverage gate app/ledger (90% floor)
         run: uv run coverage report --include='app/ledger/*' --fail-under=90
+
+  # The KidNee screens (frontend/): the same checks the UI sessions ran locally.
+  frontend:
+    name: Frontend type-check, test, build, audit
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install dependencies (from lock, no scripts)
+        run: npm ci --ignore-scripts
+      - name: Type-check
+        run: npx --no-install tsc --noEmit
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: npm audit
+        run: npm audit
 
   pip-audit:
     name: Dependency audit
