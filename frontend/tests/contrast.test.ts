@@ -76,9 +76,10 @@ const GRAPHICS: [string, string][] = [
   ["bar-over", "card"],
   ["bar-risk", "card"],
   ["risk-ink", "card"], // the ⚠ above a bar over one third of income
-  ["leaf-100", "bar-ok"], // this item's pale share against the rest of its bar
-  ["warn-bg", "bar-over"],
-  ["risk-bg", "bar-risk"],
+  ["card", "bar-ok"], // the new item's white top against the rest of its bar
+  ["card", "bar-over"],
+  ["card", "bar-risk"],
+  ["ink-muted", "card"], // the legend's part swatches: the solid square and the outline
   ["teal-700", "teal-50"], // the wallet's filled segment and icon
   ["teal-700", "teal-200"], // filled against empty segments
   ["bank-700", "bank-50"], // the offer's button border
