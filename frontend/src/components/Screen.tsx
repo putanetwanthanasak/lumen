@@ -10,15 +10,7 @@ import { navigate, type Route } from "../router.ts";
 import { DemoButton } from "./DemoPanel.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { LogoBean } from "./Logo.tsx";
-import {
-  NAV_TABS,
-  navActive,
-  navIconClass,
-  navLabelClass,
-  SCROLL_PAD_WITH_NAV,
-  SCROLL_PAD_WITHOUT_NAV,
-  type NavTab,
-} from "../navStyle.ts";
+import { bottomPads, NAV_TABS, navActive, navIconClass, navLabelClass, type NavTab } from "../navStyle.ts";
 import { useLoad } from "../useLoad.ts";
 
 type ScreenProps = {
@@ -27,7 +19,7 @@ type ScreenProps = {
   route: Route;
   children: ReactNode;
   showNav?: boolean;
-  /** A bar fixed under the scrolling body, above the nav (the result screen's buttons). */
+  /** A bar fixed under the scrolling body, above the nav (the result's buttons, the form's check). */
   actions?: ReactNode;
   /** The feature's colour on the header, with its icon before the title (the buffer). */
   accent?: Accent;
@@ -35,6 +27,7 @@ type ScreenProps = {
 
 export function Screen({ title, back, route, children, showNav = true, actions, accent }: ScreenProps) {
   const look = accent === undefined ? null : ACCENT[accent];
+  const pads = bottomPads(showNav, actions !== undefined);
   return (
     <div className="flex h-full flex-col bg-surface">
       <header
@@ -68,12 +61,12 @@ export function Screen({ title, back, route, children, showNav = true, actions, 
           still scrolls by wheel, touchpad, touch and keyboard (it takes focus). */}
       <main
         tabIndex={0}
-        className={`phone-scroll min-h-0 flex-1 overflow-y-auto px-4 pt-4 ${showNav ? SCROLL_PAD_WITH_NAV : SCROLL_PAD_WITHOUT_NAV} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-leaf-600`}
+        className={`phone-scroll min-h-0 flex-1 overflow-y-auto px-4 pt-4 ${pads.main} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-leaf-600`}
       >
         <div className="flex flex-col gap-4">{children}</div>
         <Footer />
       </main>
-      {actions !== undefined && <div className="shrink-0 border-t border-line bg-card px-4 py-3 shadow-card">{actions}</div>}
+      {actions !== undefined && <div className={`shrink-0 border-t border-line bg-card px-4 pt-3 shadow-card ${pads.actions}`}>{actions}</div>}
       {showNav && <BottomNav current={route} />}
     </div>
   );

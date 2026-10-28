@@ -19,6 +19,10 @@ type ButtonProps = {
   busy?: boolean;
   size?: "md" | "lg";
   icon?: IconName;
+  /** The form it submits when it sits outside it (the action bar). */
+  form?: string;
+  /** The id of the text that says why it is disabled. */
+  describedBy?: string | undefined;
 };
 
 const BUTTON_VARIANTS = {
@@ -40,13 +44,17 @@ export function Button({
   busy = false,
   size = "md",
   icon,
+  form,
+  describedBy,
 }: ButtonProps) {
   const height = size === "lg" ? "min-h-14 text-lead" : "min-h-12 text-body";
   return (
     <button
       type={type}
+      form={form}
       onClick={onClick}
       disabled={disabled || busy}
+      aria-describedby={describedBy}
       aria-busy={busy}
       className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-pill px-5 font-semibold transition-colors duration-200 disabled:cursor-not-allowed ${height} ${BUTTON_VARIANTS[variant]}`}
     >
@@ -72,6 +80,8 @@ type FieldProps = {
   error?: string | null;
   suffix?: string;
   inputMode?: "decimal" | "numeric" | "text";
+  /** Leaving the field: the form shows its error from then on (เช็กก่อนผ่อน, UI-37). */
+  onBlur?: () => void;
   placeholder?: string;
   maxLength?: number;
 };
@@ -90,6 +100,7 @@ export function Field({
   inputMode = "text",
   placeholder,
   maxLength,
+  onBlur,
 }: FieldProps) {
   const id = useId();
   const helpId = `${id}-help`;
@@ -114,6 +125,7 @@ export function Field({
           placeholder={placeholder}
           maxLength={maxLength}
           onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy === "" ? undefined : describedBy}
           className="min-w-0 flex-1 bg-transparent py-2 text-lead text-ink outline-none placeholder:text-ink-muted/70"

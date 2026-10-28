@@ -78,6 +78,9 @@ function consolidation(
   if (principal > MONEY_MAX) return no("ESTIMATE_TOO_LARGE");
   const payment = amortisedPayment(principal, annualRate, term);
   const total = payment * BigInt(term);
+  // What the loan replaces each month: every counted installment's monthly amount, the
+  // L43 monthly total ("ตอนนี้" on Home's card). TODO(backend): monthly_reduction.
+  const replaced = debts.reduce((acc, d) => acc + toSatang(d.monthly_amount), 0n);
   if (total > MONEY_MAX) return no("ESTIMATE_TOO_LARGE");
   // The loan replaces every counted installment, so it is the only plan due (b).
   if (payment > budget) return no("PAYMENT_ABOVE_BUDGET");
@@ -99,6 +102,7 @@ function consolidation(
       total_cost: fromSatang(total),
       current_remaining_total: fromSatang(principal),
       extra_cost: fromSatang(total - principal),
+      monthly_reduction: fromSatang(max0(replaced - payment)),
     },
   };
 }

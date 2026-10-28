@@ -39,6 +39,9 @@
   --color-warn-bg: #fff6db;
   --color-warn-line: #f5c451;
   --color-warn-ink: #6e4500;
+  /* The edge of an amber region that meets the page (the over-budget strip): at
+     least 3:1 against surface and card (WCAG 1.4.11, UI-35). */
+  --color-warn-edge: #b07400;
   --color-risk-bg: #fdecec;
   --color-risk-line: #f3a3a3;
   --color-risk-ink: #9b1c1c;
@@ -71,10 +74,12 @@
   --color-ai-to: #e8f4fd;
   --color-ai-line: #d6ccf6;
   --color-ai-ink: #4b3699;
+  --color-ai-edge: #8a76d6; /* the panel's edge against the page, at least 3:1 */
   /* Grey-blue: a low-emphasis note with nothing to act on. */
   --color-quiet-bg: #eef2f6;
   --color-quiet-line: #d3dce6;
   --color-quiet-ink: #3f5166;
+  --color-quiet-edge: #7a8a9d; /* the banner's edge against the page, at least 3:1 */
 
   /* Type scale. Body is 16px and every sentence uses it. Caption (14px) is only for
      short labels: the footer, nav labels, chart legend, "Demo" tags, list meta. */

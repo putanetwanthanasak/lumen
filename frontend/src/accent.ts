@@ -35,10 +35,23 @@ export const ACCENT: Record<Accent, AccentLook> = {
   quiet: { icon: "info", label: ACCENT_LABEL.quiet, ink: "text-quiet-ink", tint: "bg-quiet-bg", line: "border-quiet-line" },
 };
 
-/** Filled: a selected nav tab, the wallet's icon. White text on it. */
+/** Filled: a selected nav tab, the wallet's icon, the bank offer's header band. White text on it. */
 export const SOLID = {
   debt: "border-leaf-700 bg-leaf-700 text-white",
   buffer: "border-teal-700 bg-teal-700 text-white",
+  bank: "border-bank-700 bg-bank-700 text-white",
+} as const satisfies Partial<Record<Accent, string>>;
+
+/**
+ * The edge of a tinted card where it meets the page, at least 3:1 against the page
+ * (WCAG 1.4.11; UI-35 measures each): without it the light tints blend into the
+ * page. The bank's offer is a white card framed in its own blue.
+ */
+export const EDGE = {
+  warn: "border-2 border-warn-edge",
+  bank: "border-2 border-bank-700",
+  ai: "border border-ai-edge",
+  quiet: "border border-quiet-edge",
 } as const satisfies Partial<Record<Accent, string>>;
 
 /** A feature's own button, drawn as an outline (green uses Button's secondary). */

@@ -125,13 +125,26 @@ export function walletFor(buffer: BufferOut, balance: Money): WalletView | null 
 
 export type ConsolidationView =
   | { kind: "banner"; line: Marked; reason: string }
-  | { kind: "offer"; title: Marked; estimate: EstimateOut; currentMonthly: Money };
+  | { kind: "offer"; title: Marked; estimate: EstimateOut; currentMonthly: Money; benefit: string | null };
 
-/** Not offered (L70): a one-line banner whose reason expands. Offered: the bank's card. */
+/**
+ * Not offered (L70): a one-line banner whose reason expands. Offered: the bank's card,
+ * with one benefit line from the API's `monthly_reduction` (never worked out here),
+ * left out unless it is above zero. "ทุกเดือนกลับมาอยู่ในงบ" holds for every offer:
+ * the plan offers only a loan that brings every month back within budget (L70 b).
+ */
 export function consolidationView(c: ConsolidationOut, currentMonthly: Money): ConsolidationView {
-  return c.estimate === null
-    ? { kind: "banner", line: { accent: "quiet", icon: "info", text: notConsolidatingLine(c.reason) }, reason: ASSIST.reason[c.reason] }
-    : { kind: "offer", title: { accent: "bank", icon: ACCENT.bank.icon, text: ACCENT.bank.label }, estimate: c.estimate, currentMonthly };
+  if (c.estimate === null) {
+    return { kind: "banner", line: { accent: "quiet", icon: "info", text: notConsolidatingLine(c.reason) }, reason: ASSIST.reason[c.reason] };
+  }
+  const reduction = c.estimate.monthly_reduction;
+  return {
+    kind: "offer",
+    title: { accent: "bank", icon: ACCENT.bank.icon, text: ACCENT.bank.label },
+    estimate: c.estimate,
+    currentMonthly,
+    benefit: toSatang(reduction) > 0n ? ASSIST.benefit(formatBaht(reduction)) : null,
+  };
 }
 
 export type AiBubble =

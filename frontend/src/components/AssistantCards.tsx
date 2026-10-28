@@ -7,7 +7,7 @@
  */
 import { useId, useState } from "react";
 import { getAssistantSummary } from "../api.ts";
-import { ACCENT, type Accent } from "../accent.ts";
+import { ACCENT, EDGE, SOLID, type Accent } from "../accent.ts";
 import { ratePercent } from "../assistantText.ts";
 import { ASSIST, COMMON } from "../copy.ts";
 import { aiBubble, type ConsolidationView } from "../homeLayout.ts";
@@ -16,6 +16,21 @@ import { useLoad } from "../useLoad.ts";
 import { Icon } from "./Icon.tsx";
 import { LogoBean } from "./Logo.tsx";
 import { Button } from "./ui.tsx";
+
+/**
+ * Thai breaks a line between any two words, so "ทุกเดือนกลับมาอยู่ในงบ" could end a
+ * line on "กลับ". The sentence's last phrase (after its last space) moves down whole.
+ */
+function KeepLastPhrase({ text }: { text: string }) {
+  const cut = text.lastIndexOf(" ");
+  if (cut < 0) return text;
+  return (
+    <>
+      {text.slice(0, cut + 1)}
+      <span className="whitespace-nowrap">{text.slice(cut + 1)}</span>
+    </>
+  );
+}
 
 function ExampleTag({ text, accent }: { text: string; accent: Accent }) {
   const look = ACCENT[accent];
@@ -34,7 +49,7 @@ export function ConsolidationCard({ view }: { view: ConsolidationView }) {
     // Nothing to act on: one slim line, the reason only on request.
     const look = ACCENT[view.line.accent];
     return (
-      <section className={`rounded-field border ${look.tint} ${look.line}`}>
+      <section className={`rounded-field ${look.tint} ${EDGE.quiet}`}>
         <button
           type="button"
           aria-expanded={open}
@@ -57,52 +72,69 @@ export function ConsolidationCard({ view }: { view: ConsolidationView }) {
   const e = view.estimate;
   const bank = ACCENT[view.title.accent];
   return (
-    <section className={`flex flex-col gap-4 rounded-card border-2 p-5 ${bank.tint} ${bank.line}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className={`flex items-center gap-2 text-lead font-bold ${bank.ink}`}>
+    // A white card framed in blue, with a solid blue header band: it stands out from
+    // the page, its edge at least 3:1 against it (UI-35). The card itself is the blue
+    // (the band shows it), so its rounded corners never show a pale hairline.
+    <section className={`overflow-hidden rounded-card ${SOLID.bank} ${EDGE.bank}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+        <h2 className="flex items-center gap-2 text-lead font-bold">
           <Icon name={view.title.icon} size={24} />
           {view.title.text}
         </h2>
         <ExampleTag text={ASSIST.exampleTag} accent="bank" />
       </div>
-      <p className="text-body text-ink">{ASSIST.worth}</p>
-      {/* Both rows on both sides: a lower payment can cost more in total. */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <Plan title={ASSIST.nowColumn} monthly={view.currentMonthly} total={e.current_remaining_total} />
-        <Icon name="arrow" size={20} className={bank.ink} />
-        <Plan title={ASSIST.ifConsolidated} monthly={e.monthly_payment} total={e.total_cost} />
-      </div>
-      <p className="text-body text-ink-muted">{ASSIST.terms(e.term_months, ratePercent(e.annual_rate))}</p>
-      <p className="flex items-start gap-2 text-body font-semibold text-ink">
-        <Icon name="info" size={20} className="mt-0.5" />
-        {ASSIST.extraCost(formatBaht(e.extra_cost))}
-      </p>
-      {interested ? (
-        <div role="status" className={`flex gap-3 rounded-field border-2 bg-card p-4 ${bank.line} ${bank.ink}`}>
-          <Icon name="check" className="mt-0.5" />
-          <div className="flex flex-col gap-1">
-            <p className="text-body font-bold">{ASSIST.bankWillCall}</p>
-            <p className="text-body">{ASSIST.bankDecides}</p>
-          </div>
+      <div className="flex flex-col gap-4 bg-card p-4 text-ink">
+        {/* Both rows on both sides, equally large: a lower payment can cost more in total.
+            The arrow sits on the gap, not in a column of its own, so each amount keeps
+            its "บาท" on one line in the 370px desktop frame (UI-38). */}
+        <div className="relative grid grid-cols-2 gap-3">
+          <Plan title={ASSIST.nowColumn} monthly={view.currentMonthly} total={e.current_remaining_total} />
+          <Plan title={ASSIST.ifConsolidated} monthly={e.monthly_payment} total={e.total_cost} />
+          <span
+            aria-hidden="true"
+            className={`absolute top-1/2 left-1/2 inline-flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-pill border-2 bg-card ${bank.line} ${bank.ink}`}
+          >
+            <Icon name="arrow" size={16} />
+          </span>
         </div>
-      ) : (
-        <Button variant="bank" onClick={() => setInterested(true)}>
-          {ASSIST.interested}
-        </Button>
-      )}
+        {view.benefit !== null && (
+          <p className="text-body text-pretty text-ink">
+            <KeepLastPhrase text={view.benefit} />
+          </p>
+        )}
+        <p className="text-body text-ink-muted">
+          <KeepLastPhrase text={ASSIST.terms(e.term_months, ratePercent(e.annual_rate))} />
+        </p>
+        {interested ? (
+          <div role="status" className={`flex gap-3 rounded-field border-2 p-4 ${bank.tint} ${bank.line} ${bank.ink}`}>
+            <Icon name="check" className="mt-0.5" />
+            <div className="flex flex-col gap-1">
+              <p className="text-body font-bold">{ASSIST.bankWillCall}</p>
+              <p className="text-body">{ASSIST.bankDecides}</p>
+            </div>
+          </div>
+        ) : (
+          <Button variant="bank" onClick={() => setInterested(true)}>
+            {ASSIST.interested}
+          </Button>
+        )}
+      </div>
     </section>
   );
 }
 
+/** The monthly amount and the total are the same size and weight: the total is never the small print (UI-38). */
+const PLAN_AMOUNT = "text-lead font-bold text-ink";
+
 function Plan({ title, monthly, total }: { title: string; monthly: Money; total: Money }) {
   return (
-    <div className="flex h-full flex-col rounded-field bg-card p-3">
+    <div className={`flex h-full flex-col rounded-field p-3 ${ACCENT.bank.tint}`}>
       {/* Two lines for every title, so both columns' numbers line up. */}
       <span className="min-h-10 text-caption font-semibold text-ink-muted">{title}</span>
-      <span className="text-lead font-bold text-ink">{formatBaht(monthly)}</span>
+      <span className={PLAN_AMOUNT}>{formatBaht(monthly)}</span>
       <span className="text-caption text-ink-muted">{COMMON.perMonth}</span>
       <span className="mt-2 text-caption text-ink-muted">{ASSIST.totalAll}</span>
-      <span className="text-body font-semibold text-ink">{formatBaht(total)}</span>
+      <span className={PLAN_AMOUNT}>{formatBaht(total)}</span>
     </div>
   );
 }
@@ -115,7 +147,7 @@ export function AiBubbleCard() {
   const bubble = aiBubble(load);
   const ai = ACCENT.ai;
   return (
-    <section className={`flex items-start gap-3 rounded-card border p-4 ${ai.tint} ${ai.line}`}>
+    <section className={`flex items-start gap-3 rounded-card p-4 ${ai.tint} ${EDGE.ai}`}>
       <span aria-hidden="true" className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-pill bg-card shadow-card">
         <LogoBean size={34} />
       </span>

@@ -287,6 +287,10 @@ export type EstimateOut = {
   total_cost: Money; // monthly_payment x term_months
   current_remaining_total: Money; // what is left on the current plans
   extra_cost: Money; // total_cost - current_remaining_total
+  // TODO(backend): not in GET /assistant/plan yet, mock only. The monthly amounts of the
+  // plans the loan pays off (every counted installment, so DebtSummary.monthly_total,
+  // L43) minus monthly_payment; "0.00" if that is not above zero.
+  monthly_reduction: Money;
 };
 
 export type ConsolidationOut = {

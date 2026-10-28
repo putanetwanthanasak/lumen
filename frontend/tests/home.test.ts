@@ -108,6 +108,8 @@ test("UI_33_this_month_over_budget_the_buffer_falls_short_and_the_offer_card_sho
     [offer.currentMonthly, offer.estimate.current_remaining_total, offer.estimate.monthly_payment, offer.estimate.total_cost],
     ["7500.00", "67500.00", "3369.88", "80877.12"],
   );
+  // One benefit line, the API's monthly_reduction as is (UI-38): 7,500.00 - 3,369.88.
+  assert.equal(offer.benefit, "ค่างวดลดลงเดือนละ 4,130.12 บาท ทุกเดือนกลับมาอยู่ในงบ");
 });
 
 test("UI_33_an_empty_buffer_does_not_cover_and_the_link_goes_to_the_months", () => {

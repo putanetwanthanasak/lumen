@@ -7,7 +7,7 @@
  */
 import { getAssistantPlan, getBuffer, getDebtSummary, getMonths, getSettings, USE_MOCK } from "../api.ts";
 import type { AssistantPlanOut, BufferOut, DebtSummary, InstallmentLine, MonthsOut, SettingsOut } from "../api-types.ts";
-import { ACCENT, BUFFER_METER, SOLID } from "../accent.ts";
+import { ACCENT, BUFFER_METER, EDGE, SOLID } from "../accent.ts";
 import { HOME } from "../copy.ts";
 import { AiBubbleCard, ConsolidationCard } from "../components/AssistantCards.tsx";
 import { Icon } from "../components/Icon.tsx";
@@ -56,7 +56,7 @@ export function HomeScreen() {
   );
 }
 
-function HomeBody({
+export function HomeBody({
   settings,
   summary,
   buffer,
@@ -160,10 +160,13 @@ function Hero({ hero, budget }: { hero: HeroView; budget: Money }) {
   );
 }
 
-/** Amber, under the bar: each month over budget and by how much, and the buffer. */
+/**
+ * Amber, under the bar: each month over budget and by how much, and the buffer.
+ * Framed in `EDGE.warn` (at least 3:1, UI-35), so its tint never blends into the page.
+ */
 function Strip({ strip }: { strip: OverStrip }) {
   return (
-    <div className={`flex flex-col gap-3 border-t-2 px-6 py-4 ${ACCENT.warn.tint} ${ACCENT.warn.line}`}>
+    <div className={`flex flex-col gap-3 rounded-b-card px-6 py-4 ${ACCENT.warn.tint} ${EDGE.warn}`}>
       <MarkedText item={strip.title} className="font-bold" />
       <ul className="grid grid-cols-2 gap-2">
         {strip.chips.map((chip) => (

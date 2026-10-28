@@ -3,7 +3,18 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SOLID } from "../src/accent.ts";
 import { NAV, THINK } from "../src/copy.ts";
-import { NAV_RAISE, NAV_TABS, navFill, navIconClass, navLabelClass, SCROLL_PAD_WITH_NAV } from "../src/navStyle.ts";
+import {
+  ACTIONS_PAD_WITH_NAV,
+  ACTIONS_PAD_WITHOUT_NAV,
+  bottomPads,
+  NAV_RAISE,
+  NAV_TABS,
+  navFill,
+  navIconClass,
+  navLabelClass,
+  SCROLL_PAD_WITH_NAV,
+  SCROLL_PAD_WITHOUT_NAV,
+} from "../src/navStyle.ts";
 
 // Class by class, never a substring of a whole look (round 1 review F6): the bg- of
 // each filled look in accent.ts.
@@ -57,4 +68,20 @@ test("UI_27_the_scroll_area_clears_the_raised_centre_button", () => {
   const pad = step(SCROLL_PAD_WITH_NAV, /^pb-(\d+)$/);
   assert.ok(navIconClass("think", false).includes(NAV_RAISE));
   assert.ok(pad >= raise + 24, `padding ${pad}px vs raise ${raise}px`);
+  assert.deepEqual(bottomPads(true, false), { main: SCROLL_PAD_WITH_NAV, actions: ACTIONS_PAD_WITH_NAV });
+});
+
+test("UI_27_an_action_bar_above_the_nav_clears_the_raised_centre_button", () => {
+  // เช็กก่อนผ่อน (UI-37): the check sits in a bar between the body and the nav, so the
+  // raised button reaches into the bar, not the body. Its button keeps 12px clear.
+  const step = (cls: string, re: RegExp) => Number(re.exec(cls)?.[1] ?? Number.NaN) * 4; // ui-06-allow: layout pixels
+  const raise = step(NAV_RAISE, /^-mt-(\d+)$/);
+  const withNav = bottomPads(true, true);
+  assert.equal(withNav.main, SCROLL_PAD_WITHOUT_NAV);
+  assert.equal(withNav.actions, ACTIONS_PAD_WITH_NAV);
+  const pad = step(withNav.actions, /^pb-(\d+)$/);
+  assert.ok(pad >= raise + 12, `bar padding ${pad}px vs raise ${raise}px`);
+  // No nav (the result's บันทึก / ยังไม่ซื้อ): a plain bar.
+  assert.deepEqual(bottomPads(false, true), { main: SCROLL_PAD_WITHOUT_NAV, actions: ACTIONS_PAD_WITHOUT_NAV });
+  assert.equal(bottomPads(false, false).main, SCROLL_PAD_WITHOUT_NAV);
 });

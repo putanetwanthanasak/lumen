@@ -36,6 +36,22 @@ export const NAV_RAISE = "-mt-5";
 export const SCROLL_PAD_WITH_NAV = "pb-14";
 export const SCROLL_PAD_WITHOUT_NAV = "pb-6";
 
+/**
+ * Bottom padding of a screen's action bar while the nav shows under it (the check on
+ * เช็กก่อนผ่อน): the raise plus at least 12px, so its button is never behind the raised
+ * button (UI-27). The bar then takes the raise, so the scrolling body needs only `pb-6`.
+ */
+export const ACTIONS_PAD_WITH_NAV = "pb-8";
+export const ACTIONS_PAD_WITHOUT_NAV = "pb-3";
+
+/** The bottom padding of the scrolling body and of the action bar (UI-27). */
+export function bottomPads(showNav: boolean, hasActions: boolean): { main: string; actions: string } {
+  return {
+    main: showNav && !hasActions ? SCROLL_PAD_WITH_NAV : SCROLL_PAD_WITHOUT_NAV,
+    actions: showNav ? ACTIONS_PAD_WITH_NAV : ACTIONS_PAD_WITHOUT_NAV,
+  };
+}
+
 /** The filled look of a selected tab: green, or teal for the buffer (accent.ts). */
 export function navFill(tab: NavTab): string {
   return tab === "buffer" ? SOLID.buffer : SOLID.debt;

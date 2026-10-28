@@ -88,6 +88,9 @@ test("UI_28_over_budget_now_pauses_is_still_short_and_can_consolidate", () => {
     total_cost: "80877.12",
     current_remaining_total: "67500.00",
     extra_cost: "13377.12",
+    // TODO(backend), mock only: 2,000.00 + 1,500.00 + 4,000.00 = 7,500.00 a month
+    // replaced, minus 3,369.88 (UI-38).
+    monthly_reduction: "4130.12",
   });
 });
 
