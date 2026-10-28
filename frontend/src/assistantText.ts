@@ -54,3 +54,20 @@ export function ratePercent(rate: string): string {
   const rest = digits.slice(2).replace(/0+$/, "");
   return rest === "" ? intPart : `${intPart}.${rest}`;
 }
+
+/**
+ * The assistant's example summary (AI is roadmap only): the plan's own words, the
+ * same lines the screens show, one point per line. Shown labelled ตัวอย่าง.
+ */
+export function exampleSummary(plan: AssistantPlanOut): string {
+  const lines = planLines(plan);
+  const buffer = bufferPlanLines(plan.buffer_plan).lines.join(" ");
+  const c = plan.consolidation;
+  const consolidate =
+    c.estimate === null
+      ? `${notConsolidatingLine(c.reason)} ${ASSIST.reason[c.reason]}`
+      : `${ASSIST.worth} ${ASSIST.newMonthly} ${formatBaht(c.estimate.monthly_payment)} ${ASSIST.totalCost} ${formatBaht(c.estimate.total_cost)} (${ASSIST.exampleTag})`;
+  // The buffer line already says every month is in budget: say it once.
+  const back = plan.back_in_budget_month === null ? [] : [lines.back];
+  return [...back, lines.safe, buffer, consolidate].join("\n"); // one point per line
+}

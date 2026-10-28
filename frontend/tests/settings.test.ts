@@ -42,7 +42,8 @@ test("UI_11_first_save_retried_after_a_lost_answer_still_saves", async () => {
   // Review round 2, F6: the first POST was saved but its answer was lost, so the
   // screen still thinks nothing exists. The retry must not fail with 409 forever.
   const { resetMock, handle } = await import("../src/mock/server.ts");
-  const { saveSettings } = await import("../src/api.ts");
+  const { answerFromMock, saveSettings } = await import("../src/api.ts");
+  answerFromMock(true);
   resetMock(new Date(2026, 9, 27));
   const result = toRequest(FILLED);
   assert.ok(result.ok);

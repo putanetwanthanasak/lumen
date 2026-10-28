@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { beforeEach, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { AssistantPlanOut, AssistantSummaryOut, BufferOut, DebtSummary, MonthsOut, SettingsOut } from "../src/api-types.ts";
+import type { AssistantPlanOut, AssistantSummaryOut, BufferOut, DebtSummary, MonthsOut, SettingsOut, ShortfallsOut } from "../src/api-types.ts";
 import { readAssistantSummary, readMonths, readPlan, readSummary } from "../src/apiFields.ts";
 import { ASSIST, HOME } from "../src/copy.ts";
 import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
@@ -74,8 +74,8 @@ test("UI_39_complete_answers_pass_unchanged_and_warn_nothing", () => {
     assert.deepEqual(readAssistantSummary(summary), summary);
   });
   assert.ok(estimates > 0, "the estimate path ran");
-  // The rows as main shapes them: no over_by, and nothing asks for it.
-  assert.ok(answer<MonthsOut>("/debts/months").months.every((row) => !("over_by" in row)));
+  // Since Session 17 the rows carry over_by, as the backend's do, and pass unchanged.
+  assert.ok(answer<MonthsOut>("/debts/months").months.every((row) => "over_by" in row));
   assert.deepEqual(warned, [], "the demo's console stays clean");
 });
 
@@ -160,12 +160,16 @@ test("UI_39_api_ts_reads_every_such_answer_through_its_reader", () => {
     ["getDebtSummary", "readSummary"],
     ["getMonths", "readMonths"],
     ["getAssistantPlan", "readPlan"],
-    ["getAssistantSummary", "readAssistantSummary"],
   ];
   for (const [getter, reader] of getters) {
     const body = new RegExp(`export async function ${getter}\\([^)]*\\)[^{]*\\{\\s*return ${reader}\\(\\(await call<`).test(api);
     assert.ok(body, `${getter} returns ${reader}(...)`);
   }
+  // The summary: an example from the real plan (read by readPlan), or the mock's answer through its reader.
+  const summary = api.slice(api.indexOf("export async function getAssistantSummary"));
+  const end = summary.indexOf("\n}\n");
+  assert.match(summary.slice(0, end), /return \{ text: exampleSummary\(await getAssistantPlan\(\)\), is_example: true \}/);
+  assert.match(summary.slice(0, end), /return readAssistantSummary\(\(await call</);
 });
 
 // ---- Home, drawn from the answers as main's backend gives them today -------------
@@ -199,9 +203,10 @@ function home(name: string, fields: readonly string[], change?: (summary: DebtSu
   const buffer = sent<BufferOut>("/buffer");
   const months = sent<MonthsOut>("/debts/months");
   const plan = sent<AssistantPlanOut>("/assistant/plan");
+  const shortfalls = sent<ShortfallsOut>("/buffer/shortfalls");
   return withWarnings(() =>
     renderToStaticMarkup(
-      createElement(HomeBody, { settings, buffer, summary: readSummary(summary), months: readMonths(months), plan: readPlan(plan) }),
+      createElement(HomeBody, { settings, buffer, summary: readSummary(summary), months: readMonths(months), plan: readPlan(plan), shortfalls }),
     ),
   );
 }
@@ -218,7 +223,7 @@ test("UI_39_without_monthly_reduction_home_shows_the_offer_without_its_benefit_l
   for (const part of parts) assert.ok(card.includes(part), part);
   assert.ok(!html.includes("ค่างวดลดลง"), "no benefit line");
   assert.deepEqual(warned, [
-    "GET /assistant/plan: no readable consolidation.estimate.monthly_reduction, so the offer card shows without its benefit line. TODO(backend): send it.",
+    "GET /assistant/plan: no readable consolidation.estimate.monthly_reduction, so the offer card shows without its benefit line.",
   ]);
   // The control: with the field sent, the same card has the line, and nothing is warned.
   const [full, quiet] = home("over_budget_now", []);

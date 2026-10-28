@@ -4,7 +4,7 @@
  * Every tap target is at least 44px high; body text is 16px.
  */
 import { useId, type ReactNode } from "react";
-import { ACCENT, OUTLINE, type Marked } from "../accent.ts";
+import { ACCENT, FILL, OUTLINE, type Marked } from "../accent.ts";
 import { COMMON } from "../copy.ts";
 import { THAI_MONTHS } from "../thaiMonth.ts";
 import { Icon, type IconName } from "./Icon.tsx";
@@ -14,7 +14,7 @@ import { Icon, type IconName } from "./Icon.tsx";
 type ButtonProps = {
   children: ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "secondary" | "ghost" | "bank";
+  variant?: "primary" | "secondary" | "ghost" | "bank" | "buffer" | "bufferOutline";
   type?: "button" | "submit";
   disabled?: boolean;
   busy?: boolean;
@@ -33,6 +33,9 @@ const BUTTON_VARIANTS = {
   ghost: "bg-transparent text-leaf-800 hover:bg-leaf-50 active:bg-leaf-100 disabled:text-ink-muted",
   // A feature's own action, in its accent (accent.ts): the bank's offer.
   bank: `${OUTLINE.bank} disabled:border-line disabled:text-ink-muted`,
+  // The buffer's move (UI-46): filled on the buffer screen, outlined where it only opens it.
+  buffer: FILL.buffer,
+  bufferOutline: `${OUTLINE.buffer} disabled:border-line disabled:text-ink-muted`,
 };
 
 export function Button({

@@ -58,7 +58,6 @@ export const NAV = {
   think: "เช็กก่อนผ่อน",
   buffer: "กันชน",
   alerts: "แจ้งเตือน",
-  alertsUnread: (count: number) => `แจ้งเตือน ยังไม่ได้อ่าน ${count} รายการ`,
   settings: "ตั้งค่า",
   back: "ย้อนกลับ",
   menu: "เมนูหลัก",
@@ -76,6 +75,9 @@ export const COMMON = {
   settingsMissingBody: "บอกรายได้และงบผ่อนต่อเดือนก่อน KidNee ถึงจะช่วยคิดให้ได้",
   settingsMissingAction: "ไปตั้งค่า",
 };
+
+/** A field the API refused with 422 (item 7): said next to that field, never the raw error. */
+export const REJECTED = "ระบบไม่รับค่านี้ ลองแก้แล้วกดอีกครั้ง";
 
 export const MONEY_ERRORS = {
   empty: "กรอกจำนวนเงินด้วยนะ",
@@ -142,6 +144,7 @@ export const HOME = {
   statusCancelled: "ยกเลิกแล้ว",
   statusCancelledAfterReport: "ยกเลิกแล้ว หลังจากคุณแจ้งว่าไม่ใช่รายการของคุณ",
   statusDisputed: "คุณแจ้งว่าไม่ใช่รายการของคุณ",
+  statusConsolidated: "ปิดด้วยสินเชื่อรวมหนี้แล้ว",
   notCounted: "ไม่นับในยอดต่อเดือน", // cancelled, or reported "not me": never under "ผ่อนครบแล้ว"
   finished: (count: number) => `ผ่อนครบแล้ว ${count} รายการ`,
   allInBudget: (later: number) => `เดือนนี้และอีก ${later} เดือนอยู่ในงบ`,
@@ -232,6 +235,28 @@ export const THINK = {
   toForm: "ไปกรอกข้อมูล",
 };
 
+// A month over budget and the buffer (UI-46), on Home, the buffer screen and the months.
+export const BUFFER_STATE = {
+  over: (month: string, shortfall: string) => `${month} เกินงบ ${shortfall}`,
+  partly: (month: string, shortfall: string, prepared: string, gap: string) =>
+    `${month} เกินงบ ${shortfall} เตรียมจากกันชนแล้ว ${prepared} ยังขาด ${gap}`,
+  prepared: (month: string, shortfall: string) => `${month} เกินงบ ${shortfall} เตรียมเงินจากกันชนแล้ว`,
+  use: "ใช้กันชนจ่ายส่วนที่เกิน",
+  // The buffer screen's move for a month, as three steps (UI-47). "ย้าย" between the
+  // user's own accounts, never "โอน".
+  sectionTitle: "เดือนที่ค่างวดเกินงบ",
+  step1: (amount: string) => `ใช้กันชน ${amount}`,
+  step1Done: (amount: string, before: string, after: string) => `ใช้กันชน ${amount} (กันชน ${before} → ${after})`,
+  step2: (amount: string) => `ย้ายเข้าบัญชีหลัก +${amount}`,
+  step3: (month: string, total: string) => `จ่ายค่างวดในแอปผ่อน (ผู้ใช้ทำเอง) ค่างวด ${month} ${total}`,
+  stepsLabel: "ขั้นตอน",
+  helper: "ย้ายก่อนวันที่แอปผ่อนตัดเงิน แนะนำทำในวันเงินเดือนเข้า",
+  moving: "กำลังย้าย...",
+  success: (amount: string, balance: string) =>
+    `ย้าย ${amount}เข้าบัญชีหลักแล้ว กันชนเหลือ ${balance} จ่ายค่างวดในแอปผ่อนได้เลย`,
+  empty: "กันชนว่าง ยังไม่มีเงินให้ย้าย",
+};
+
 export const MONTHS_VIEW = {
   title: "ภาระผ่อนรายเดือน",
   intro: "ค่างวดรวมของทุกเดือน ตั้งแต่เดือนนี้ถึงเดือนสุดท้ายที่มีงวดผ่อน แตะเดือนเพื่อดูรายการ",
@@ -244,6 +269,9 @@ export const MONTHS_VIEW = {
   instalmentOf: (n: number, total: number) => `งวดที่ ${n} จาก ${total}`,
   lastInstalment: "งวดสุดท้าย",
   empty: "ไม่มีงวดผ่อนที่ต้องจ่ายตั้งแต่เดือนนี้",
+  // One quiet line at the bottom (Session 17): the user's own check against the app.
+  scamCheck:
+    "ยอดในแอปผ่อนไม่ตรงกับที่นี่? อาจมีรายการที่คุณไม่ได้ทำ ติดต่อแอปผ่อนโดยตรงจากช่องทางในแอป อย่าโอนเงินให้ใครที่โทรมาทวง",
 };
 
 export const BUFFER = {
@@ -279,7 +307,7 @@ export const ALERTS = {
   empty: "ยังไม่มีแจ้งเตือน ทุกครั้งที่มีหนี้ใหม่ KidNee จะบอกทันที",
   openMonths: "ดูภาระผ่อนรายเดือน",
   openBuffer: "ดูกันชน",
-  unread: "ใหม่",
+  more: (shown: number, count: number) => `แสดง ${shown} รายการล่าสุด จากทั้งหมด ${count} รายการ`,
 };
 
 /**
@@ -351,4 +379,7 @@ export const DEMO = {
   sceneAiSlow: "ม่อน: ผู้ช่วยกำลังสรุป (ตอบช้า)",
   sceneAiFailing: "ม่อน: ผู้ช่วยสรุปไม่สำเร็จ",
   done: "เปลี่ยนฉากแล้ว",
+  personaTitle: "ผู้ใช้ตัวอย่าง",
+  personaNote: "สลับผู้ใช้ที่ seed ไว้ใน lumen_kidnee (X-Demo-User)",
+  personaPlain: "ผู้ใช้",
 };

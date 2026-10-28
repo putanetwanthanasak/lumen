@@ -1,24 +1,49 @@
 /**
  * The Demo panel (DESIGN.md section 7.8): a dashed "Demo" button in the header,
- * clearly not part of the app, opens a sheet over the phone frame. It simulates
- * payday for a month (POST /demo/payday) and switches the mock between the demo
- * scenes, one per Home state (DESIGN.md section 10).
+ * clearly not part of the app, opens a sheet over the phone frame. It shows only
+ * while the demo endpoints are on (DEMO_ENDPOINTS_ENABLED, UI-49). It switches between
+ * the seeded personas (X-Demo-User) and simulates payday for a month (POST
+ * /demo/payday). With `--mode mock` it switches the mock's scenes instead of personas.
  */
 import { useEffect, useState } from "react";
-import { ApiError, runPayday, setDemoScene, USE_MOCK, type DemoScene } from "../api.ts";
+import { ApiError, demoEndpointsEnabled, needsSettings, runPayday, setDemoScene, USE_MOCK, type DemoScene } from "../api.ts";
 import type { PaydayOut } from "../api-types.ts";
-import { COMMON, DEMO, PAYDAY_OUTCOME } from "../copy.ts";
+import { DEMO, PAYDAY_OUTCOME } from "../copy.ts";
 import { formatBaht } from "../money.ts";
+import { demoUser, PERSONAS, setDemoUser } from "../personas.ts";
 import { navigate } from "../router.ts";
 import { addMonths, monthOf, thaiMonth } from "../thaiMonth.ts";
+import { Icon } from "./Icon.tsx";
 import { Alert, Button } from "./ui.tsx";
 
 const MONTH_CHOICES = 4;
 
 let openSheet: (() => void) | null = null;
 
-/** The header's "Demo" button; the sheet lives at frame level in DemoPanel. */
+// Asked once per page: a probe that writes nothing (src/api.ts).
+let enabled: Promise<boolean> | null = null;
+
+function useDemoEnabled(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    enabled ??= demoEndpointsEnabled();
+    let live = true;
+    enabled.then((value) => live && setOn(value));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return on;
+}
+
+/** The screen on show reads its data again (App remounts it). */
+function reloadScreen(): void {
+  window.dispatchEvent(new Event("kidnee-demo-scene"));
+}
+
+/** The header's "Demo" button, only while the demo endpoints are on; the sheet lives at frame level in DemoPanel. */
 export function DemoButton() {
+  if (!useDemoEnabled()) return null;
   return (
     <button
       type="button"
@@ -54,16 +79,16 @@ function Sheet({ onClose }: { onClose: () => void }) {
     setMessage(null);
     try {
       setResult(await runPayday(month));
+      reloadScreen(); // the buffer may have changed
     } catch (error) {
       setResult(null);
+      if (needsSettings(error)) {
+        navigate("settings");
+        onClose();
+        return;
+      }
       // Thai only, never the raw error text (review B2 F7).
-      setMessage(
-        error instanceof ApiError && error.status === 404
-          ? DEMO.paydayUnavailable
-          : error instanceof ApiError && error.code === "SETTINGS_REQUIRED"
-            ? COMMON.settingsMissingBody
-            : DEMO.paydayFailed,
-      );
+      setMessage(error instanceof ApiError && error.status === 404 ? DEMO.paydayUnavailable : DEMO.paydayFailed);
     } finally {
       setBusy(false);
     }
@@ -77,11 +102,19 @@ function Sheet({ onClose }: { onClose: () => void }) {
       setMessage(DEMO.done);
       navigate(name === "first_launch" ? "settings" : "home");
       // Screens load when they open: remount the one on show so it reads the new scene.
-      window.dispatchEvent(new Event("kidnee-demo-scene"));
+      reloadScreen();
       onClose();
     } finally {
       setBusy(false);
     }
+  }
+
+  function persona(id: string) {
+    setDemoUser(id);
+    setResult(null);
+    navigate("home");
+    reloadScreen();
+    onClose();
   }
 
   return (
@@ -96,6 +129,33 @@ function Sheet({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <p className="text-body text-ink-muted">{DEMO.note}</p>
+
+        {!USE_MOCK && (
+          <section className="flex flex-col gap-2">
+            <h3 className="text-body font-bold text-ink">{DEMO.personaTitle}</h3>
+            <p className="text-caption text-ink-muted">{DEMO.personaNote}</p>
+            {PERSONAS.map((p) => {
+              const on = p.id === demoUser();
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => persona(p.id)}
+                  className={`flex min-h-12 cursor-pointer flex-col items-start gap-0.5 rounded-field border-2 px-4 py-2 text-left ${
+                    on ? "border-info-line bg-info-bg" : "border-line bg-card hover:bg-surface"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 text-body font-semibold text-ink">
+                    {on && <Icon name="check" size={18} />}
+                    {p.name ?? DEMO.personaPlain} <span className="font-normal text-ink-muted">({p.id})</span>
+                  </span>
+                  <span className="text-caption text-ink-muted">{p.story}</span>
+                </button>
+              );
+            })}
+          </section>
+        )}
 
         <section className="flex flex-col gap-3">
           <h3 className="text-body font-bold text-ink">{DEMO.paydayTitle}</h3>

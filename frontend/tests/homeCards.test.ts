@@ -1,9 +1,9 @@
 /**
  * Home's cards as drawn, rendered with react-dom/server (no browser, no extra package):
  * UI-38: the bank's offer card. A white card with a solid blue header band; one
- *   benefit line from the API's monthly_reduction (TODO(backend), mock only), never
- *   worked out on screen and left out at 0.00; each total as large as its monthly
- *   amount; the extra-cost line and the old top line gone.
+ *   benefit line from the API's monthly_reduction, never worked out on screen and
+ *   left out at 0.00; each total as large as its monthly amount; the extra-cost line
+ *   and the old top line gone.
  * UI-35 (markup): every tinted card that meets the page carries its EDGE, so it stands
  *   out from the page at least 3:1 (contrast.test.ts measures the colours): on Home,
  *   and the buffer screen's balance card, the same wallet.
@@ -16,8 +16,8 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ACCENT, EDGE, SOLID } from "../src/accent.ts";
-import type { AssistantPlanOut, BufferOut, ConsolidationOut, DebtSummary, MonthsOut, SettingsOut } from "../src/api-types.ts";
+import { ACCENT, EDGE, FILL, SOLID } from "../src/accent.ts";
+import type { AssistantPlanOut, BufferOut, ConsolidationOut, DebtSummary, MonthsOut, SettingsOut, ShortfallsOut } from "../src/api-types.ts";
 import { ConsolidationCard } from "../src/components/AssistantCards.tsx";
 import { ASSIST, HOME } from "../src/copy.ts";
 import { consolidationView } from "../src/homeLayout.ts";
@@ -41,10 +41,8 @@ function offered(): ConsolidationOut {
   return c;
 }
 
-const monthlyTotal = () => (call("GET", "/debts/summary").body as DebtSummary).monthly_total;
-
-function card(c: ConsolidationOut, currentMonthly: string): string {
-  return renderToStaticMarkup(createElement(ConsolidationCard, { view: consolidationView(c, currentMonthly) }));
+function card(c: ConsolidationOut): string {
+  return renderToStaticMarkup(createElement(ConsolidationCard, { view: consolidationView(c) }));
 }
 
 /** Every element's opening tag: its class list and the text right after it. */
@@ -74,14 +72,14 @@ test("UI_38_monthly_reduction_comes_from_the_api_and_the_card_shows_it_as_is", (
   // Worked out by hand, not by the mock: 2,000.00 + 1,500.00 + 4,000.00 a month
   // replaced, minus the loan's 3,369.88 (UI-28).
   assert.equal(c.estimate?.monthly_reduction, "4130.12");
-  const html = card(c, monthlyTotal());
+  const html = card(c);
   // One line at body size; its last phrase moves down whole, never split after "กลับ".
   const benefit = paragraphs(html).filter((p) => p.text.startsWith("ค่างวดลดลง"));
   assert.deepEqual(benefit, [{ cls: "text-body text-pretty text-ink", text: "ค่างวดลดลงเดือนละ 4,130.12 บาท ทุกเดือนกลับมาอยู่ในงบ" }]);
   assert.ok(html.includes('ค่างวดลดลงเดือนละ 4,130.12 บาท <span class="whitespace-nowrap">ทุกเดือนกลับมาอยู่ในงบ</span></p>'));
   // The screen shows the API's number, never its own: a value no subtraction gives.
   assert.ok(c.estimate !== null);
-  const odd = card({ ...c, estimate: { ...c.estimate, monthly_reduction: "1.23" } }, monthlyTotal());
+  const odd = card({ ...c, estimate: { ...c.estimate, monthly_reduction: "1.23" } });
   assert.ok(paragraphs(odd).some((p) => p.text === "ค่างวดลดลงเดือนละ 1.23 บาท ทุกเดือนกลับมาอยู่ในงบ"));
   assert.ok(!odd.includes("4,130.12"));
 });
@@ -89,10 +87,10 @@ test("UI_38_monthly_reduction_comes_from_the_api_and_the_card_shows_it_as_is", (
 test("UI_38_no_benefit_line_unless_the_reduction_is_above_zero", () => {
   const c = offered();
   assert.ok(c.estimate !== null);
-  const at = (reduction: string) => consolidationView({ ...c, estimate: { ...c.estimate!, monthly_reduction: reduction } }, "7500.00");
+  const at = (reduction: string) => consolidationView({ ...c, estimate: { ...c.estimate!, monthly_reduction: reduction } });
   const zero = at("0.00");
   assert.ok(zero.kind === "offer" && zero.benefit === null);
-  assert.ok(!card({ ...c, estimate: { ...c.estimate, monthly_reduction: "0.00" } }, "7500.00").includes("ค่างวดลดลง"));
+  assert.ok(!card({ ...c, estimate: { ...c.estimate, monthly_reduction: "0.00" } }).includes("ค่างวดลดลง"));
   const satang = at("0.01");
   assert.ok(satang.kind === "offer" && satang.benefit === "ค่างวดลดลงเดือนละ 0.01 บาท ทุกเดือนกลับมาอยู่ในงบ");
   // Not an API money string: an error, never a guessed line (as formatBaht).
@@ -100,7 +98,7 @@ test("UI_38_no_benefit_line_unless_the_reduction_is_above_zero", () => {
 });
 
 test("UI_38_each_total_is_as_large_as_its_monthly_amount", () => {
-  const html = card(offered(), monthlyTotal());
+  const html = card(offered());
   // Now: 7,500.00 a month, 67,500.00 left; consolidated: 3,369.88 a month, 80,877.12.
   const amounts = ["7,500.00 บาท", "67,500.00 บาท", "3,369.88 บาท", "80,877.12 บาท"].map((text) => classOf(html, text));
   for (const cls of amounts) assert.deepEqual(cls, amounts[0]);
@@ -113,7 +111,7 @@ test("UI_38_each_total_is_as_large_as_its_monthly_amount", () => {
 });
 
 test("UI_38_the_extra_cost_line_and_the_old_top_line_are_gone", () => {
-  const html = card(offered(), monthlyTotal());
+  const html = card(offered());
   assert.ok(!html.includes("จ่ายรวมมากกว่าแผนเดิม"), "the extra-cost line");
   assert.ok(!html.includes("13,377.12"), "its amount");
   assert.ok(!html.includes("รวมหนี้อาจช่วยให้ทุกเดือนกลับมาอยู่ในงบ"), "the old top line");
@@ -121,7 +119,7 @@ test("UI_38_the_extra_cost_line_and_the_old_top_line_are_gone", () => {
 });
 
 test("UI_38_the_offer_is_a_white_card_with_a_solid_blue_header_band", () => {
-  const html = card(offered(), monthlyTotal());
+  const html = card(offered());
   const section = /^<section class="([^"]*)">/.exec(html)?.[1];
   assert.ok(section !== undefined, html.slice(0, 120));
   // Framed in blue; the blue behind the band is the card's own (no pale corner hairline).
@@ -155,6 +153,7 @@ function homeIn(name: string, change?: (summary: DebtSummary) => void): string {
       buffer: call("GET", "/buffer").body as BufferOut,
       months: call("GET", "/debts/months").body as MonthsOut,
       plan: call("GET", "/assistant/plan").body as AssistantPlanOut,
+      shortfalls: call("GET", "/buffer/shortfalls").body as ShortfallsOut,
     }),
   );
 }
@@ -187,7 +186,11 @@ test("UI_35_every_tinted_card_on_home_carries_its_edge", () => {
 test("UI_35_the_buffer_screens_balance_card_carries_the_wallets_edge", () => {
   for (const name of ["persona", "over_budget_empty_buffer"]) {
     scene(name);
-    const html = renderToStaticMarkup(createElement(BufferBody, { buffer: call("GET", "/buffer").body as BufferOut, onMoved: () => undefined }));
+    const html = renderToStaticMarkup(createElement(BufferBody, {
+        buffer: call("GET", "/buffer").body as BufferOut,
+        shortfalls: call("GET", "/buffer/shortfalls").body as ShortfallsOut,
+        onMoved: () => undefined,
+      }));
     // The balance card is the screen's tinted section; its edge is the wallet's on Home.
     const cards = [...html.matchAll(/<section class="([^"]*)">/g)].map((m) => new Set(tokens(m[1] ?? ""))).filter((c) => hasAll(c, ACCENT.buffer.tint));
     assert.equal(cards.length, 1, name);
@@ -241,7 +244,7 @@ test("UI_42_the_bar_marks_the_budget_amber_only_above_it_and_never_all_amber", (
   assert.deepEqual(barOf(heroOf(homeIn("over_budget_now"))), { green: "width:66.6%", amber: "left:66.6%", mark: "left:66.6%" });
 });
 
-test("UI_42_one_warning_line_and_one_buffer_line_with_its_link_and_no_chips_or_total", () => {
+test("UI_42_UI_46_one_warning_line_and_one_buffer_line_with_its_button_and_no_chips_or_total", () => {
   const html = homeIn("over_budget_now");
   const hero = heroOf(html);
   const text = hero.replace(/<[^>]+>/g, "|");
@@ -252,20 +255,20 @@ test("UI_42_one_warning_line_and_one_buffer_line_with_its_link_and_no_chips_or_t
   for (const gone of ["เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้", "เดือนที่ค่างวดรวมเกินงบ", "รวมทุกเดือน", "+2,500.00", "หลังจากนั้น", "ดูภาระผ่อนรายเดือน"]) {
     assert.ok(!html.includes(gone), gone);
   }
-  // One buffer line, then its text link in the buffer's colour, above the card's cover.
-  assert.ok(text.includes("|กันชนช่วยได้บางส่วน|"));
-  const link = /<button type="button" class="([^"]*)">ใช้กันชน ›<\/button>/.exec(hero);
-  assert.ok(link !== null, "the link");
-  const cls = new Set(tokens(link[1] ?? ""));
-  assert.ok(cls.has("relative") && hasAll(cls, ACCENT.buffer.ink) && cls.has("min-h-11"), link[1]);
-  // It comes after the card's own button, so it is drawn above that button's cover.
-  assert.ok(hero.indexOf("ใช้กันชน ›") > hero.indexOf("</button>"));
+  // One buffer line (UI-46): the first month over and its state, then the button in the
+  // buffer's colour, in a positioned box after the card's own button, so above its cover.
+  const plain = (h: string) => h.replace(/<[^>]+>/g, "");
+  assert.ok(plain(hero).includes("ต.ค. 2569 เกินงบ 2,500.00 บาท"));
+  const button = /<div class="relative"><button type="button"[^>]*? class="([^"]*)">.*?ใช้กันชนจ่ายส่วนที่เกิน<\/button><\/div>/.exec(hero);
+  assert.ok(button !== null, "the button");
+  assert.ok(hasAll(new Set(tokens(button[1] ?? "")), FILL.buffer), button[1]);
+  assert.ok(hero.indexOf("ใช้กันชนจ่ายส่วนที่เกิน") > hero.indexOf("</button>"));
   // Every number in the card is an API string, formatted: this month's total and the budget.
   assert.ok(text.includes("|7,500.00 บาท|") && text.includes("|จากงบ 5,000.00 บาท|"));
-  // Covered: the other wording, and an empty buffer gets no line or link at all.
-  assert.ok(heroOf(homeIn("over_budget")).includes("กันชนพอจ่ายส่วนที่เกิน"));
+  // Months over later: the first of them. An empty buffer keeps the line, without the button.
+  assert.ok(plain(heroOf(homeIn("over_budget"))).includes("พ.ย. 2569 เกินงบ 1,500.00 บาท"));
   const empty = heroOf(homeIn("over_budget_empty_buffer"));
-  assert.ok(!empty.includes("ใช้กันชน") && !empty.includes("กันชน"), "no buffer line");
+  assert.ok(plain(empty).includes("พ.ย. 2569 เกินงบ 1,500.00 บาท") && !empty.includes("ใช้กันชนจ่ายส่วนที่เกิน"), "no button");
   // In budget: the status line only.
   const calm = heroOf(homeIn("persona")).replace(/<[^>]+>/g, "|");
   assert.ok(calm.includes("|เดือนนี้และอีก 8 เดือนอยู่ในงบ|") && !calm.includes("เกินงบ"));

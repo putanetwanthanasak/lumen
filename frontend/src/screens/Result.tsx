@@ -6,7 +6,7 @@
  * once (UI-41). Recording is always allowed, whatever the verdict.
  */
 import { useState } from "react";
-import { ApiError, getSettings, recordInstallment } from "../api.ts";
+import { getSettings, needsSettings, recordInstallment } from "../api.ts";
 import type { ManualEntryIn, PreviewOut, RecordedOut } from "../api-types.ts";
 import { THINK } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
@@ -27,7 +27,7 @@ export function ResultScreen() {
   const stage = draft?.stage;
   const [view, setView] = useState<View>({ name: "result" });
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<"failed" | "settings" | null>(null);
+  const [problem, setProblem] = useState<"failed" | null>(null);
 
   function finish(next: View) {
     setDraft(null); // the next เช็กก่อนผ่อน starts with an empty form
@@ -41,7 +41,9 @@ export function ResultScreen() {
       // Same entry, same client_request_id: a retry after a lost answer records once.
       finish({ name: "recorded", result: await recordInstallment(entry) });
     } catch (error) {
-      setProblem(error instanceof ApiError && error.code === "SETTINGS_REQUIRED" ? "settings" : "failed");
+      // No settings: open them; the draft is kept, so the check can be recorded after.
+      if (needsSettings(error)) navigate("settings");
+      else setProblem("failed");
     } finally {
       setBusy(false);
     }
@@ -77,10 +79,7 @@ export function ResultScreen() {
       {load.state === "loading" && <Loading lines={4} />}
       {load.state === "error" && <ErrorState onRetry={reload} />}
       {load.state === "ready" && load.data === null && <SettingsMissing onSetUp={() => navigate("settings")} />}
-      {load.state === "ready" && load.data !== null && problem === "settings" && (
-        <SettingsMissing onSetUp={() => navigate("settings")} />
-      )}
-      {load.state === "ready" && load.data !== null && problem !== "settings" && (
+      {load.state === "ready" && load.data !== null && (
         <>
           {view.name === "recorded" && <Recorded result={view.result} />}
           {view.name === "notBuying" && <NotBuying />}

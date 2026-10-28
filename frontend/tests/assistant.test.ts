@@ -45,7 +45,7 @@ test("UI_28_persona_every_month_in_budget", () => {
   assert.equal(p.safe_new_monthly, "1500.00"); // 5,000.00 - 3,500.00
   assert.equal(p.safe_new_from, "2026-10");
   assert.equal(p.safe_new_months, 12);
-  assert.deepEqual(p.buffer_plan, { shortfall: "0.00", balance: "4800.00", covered: true, still_short: "0.00" });
+  assert.deepEqual(p.buffer_plan, { shortfall: "0.00", remaining_gap: "0.00", balance: "4800.00", covered: true, still_short: "0.00" });
   assert.deepEqual(p.consolidation, { eligible: false, reason: "NOT_NEEDED", estimate: null });
   assert.equal(p.months[0]?.month, "2026-10");
   assert.equal(p.months.at(-1)?.month, "2027-06");
@@ -60,7 +60,7 @@ test("UI_28_two_months_over_later_buffer_covers_no_consolidation", () => {
   assert.equal(p.pause_until, null); // this month is 3,500.00
   assert.equal(p.safe_new_from, "2027-01");
   assert.equal(p.safe_new_monthly, "500.00");
-  assert.deepEqual(p.buffer_plan, { shortfall: "3000.00", balance: "7800.00", covered: true, still_short: "0.00" });
+  assert.deepEqual(p.buffer_plan, { shortfall: "3000.00", remaining_gap: "3000.00", balance: "7800.00", covered: true, still_short: "0.00" });
   assert.equal(p.consolidation.reason, "NOT_NEEDED"); // a run of 2, not 3
 });
 
@@ -74,7 +74,7 @@ test("UI_28_over_budget_now_pauses_is_still_short_and_can_consolidate", () => {
   assert.equal(p.safe_new_from, "2027-07");
   assert.equal(p.safe_new_monthly, "1000.00"); // Jul-Sep: 5,000.00 - 4,000.00
   // 3 x 2,500.00 + 6 x 500.00 over; 4,800.00 + 4,800.00 saved on the motorbike.
-  assert.deepEqual(p.buffer_plan, { shortfall: "10500.00", balance: "9600.00", covered: false, still_short: "900.00" });
+  assert.deepEqual(p.buffer_plan, { shortfall: "10500.00", remaining_gap: "10500.00", balance: "9600.00", covered: false, still_short: "900.00" });
   assert.equal(p.consolidation.reason, "ELIGIBLE");
   // 3 x 2,000.00 + 9 x 1,500.00 + 12 x 4,000.00 left from this month on.
   assert.deepEqual(p.consolidation.estimate, {
@@ -88,8 +88,9 @@ test("UI_28_over_budget_now_pauses_is_still_short_and_can_consolidate", () => {
     total_cost: "80877.12",
     current_remaining_total: "67500.00",
     extra_cost: "13377.12",
-    // TODO(backend), mock only: 2,000.00 + 1,500.00 + 4,000.00 = 7,500.00 a month
-    // replaced, minus 3,369.88 (UI-38).
+    // This month (Oct): 2,000.00 + 1,500.00 + 4,000.00 = 7,500.00, the hero's total,
+    // minus 3,369.88 (UI-38; backend AS-11).
+    current_monthly_total: "7500.00",
     monthly_reduction: "4130.12",
   });
 });
@@ -126,9 +127,9 @@ test("UI_28_a_buffer_of_exactly_the_shortfall_covers_it", () => {
   // Three months 100.00 over: a shortfall of 300.00 (B-UI-68 found no test at the edge).
   const over = [debt("2026-11", 3, "5100.00")];
   const exact = build(over, "20000.00", "5000.00", "300.00").buffer_plan;
-  assert.deepEqual(exact, { shortfall: "300.00", balance: "300.00", covered: true, still_short: "0.00" });
+  assert.deepEqual(exact, { shortfall: "300.00", remaining_gap: "300.00", balance: "300.00", covered: true, still_short: "0.00" });
   const short = build(over, "20000.00", "5000.00", "299.99").buffer_plan;
-  assert.deepEqual(short, { shortfall: "300.00", balance: "299.99", covered: false, still_short: "0.01" });
+  assert.deepEqual(short, { shortfall: "300.00", remaining_gap: "300.00", balance: "299.99", covered: false, still_short: "0.01" });
 });
 
 test("UI_28_safe_amount_also_stays_within_a_third_of_income_rounded_down", () => {
@@ -216,15 +217,15 @@ test("UI_29_form_hint_and_nothing_fits", () => {
 });
 
 test("UI_29_buffer_plan_covered_or_still_short", () => {
-  assert.deepEqual(bufferPlanLines({ shortfall: "0.00", balance: "10.00", covered: true, still_short: "0.00" }), {
+  assert.deepEqual(bufferPlanLines({ shortfall: "0.00", remaining_gap: "0.00", balance: "10.00", covered: true, still_short: "0.00" }), {
     tone: "ok",
     lines: ["ทุกเดือนอยู่ในงบ ยังไม่ต้องใช้กันชน"],
   });
-  assert.deepEqual(bufferPlanLines({ shortfall: "3000.00", balance: "3000.00", covered: true, still_short: "0.00" }), {
+  assert.deepEqual(bufferPlanLines({ shortfall: "3000.00", remaining_gap: "3000.00", balance: "3000.00", covered: true, still_short: "0.00" }), {
     tone: "ok",
     lines: ["ค่างวดส่วนที่เกินงบรวมทุกเดือน 3,000.00 บาท", "กันชน 3,000.00 บาท พอจ่ายส่วนที่เกินได้ทั้งหมด"],
   });
-  assert.deepEqual(bufferPlanLines({ shortfall: "10500.00", balance: "9600.00", covered: false, still_short: "900.00" }), {
+  assert.deepEqual(bufferPlanLines({ shortfall: "10500.00", remaining_gap: "10500.00", balance: "9600.00", covered: false, still_short: "900.00" }), {
     tone: "warn",
     lines: ["ค่างวดส่วนที่เกินงบรวมทุกเดือน 10,500.00 บาท", "กันชน 9,600.00 บาท ยังขาดอีก 900.00 บาท"],
   });

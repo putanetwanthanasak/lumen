@@ -5,9 +5,7 @@
  * or disputed, so the backend's OVERDUE_DEBT and DISPUTED_DEBT checks never apply here.
  */
 import type { AssistantPlanOut, ConsolidationOut, PlanMonth } from "../api-types.ts";
-import { bufferPlanLines, notConsolidatingLine, planLines } from "../assistantText.ts";
-import { ASSIST } from "../copy.ts";
-import { formatBaht, type Money } from "../money.ts";
+import type { Money } from "../money.ts";
 import { addMonths } from "../thaiMonth.ts";
 import { fromSatang, toSatang } from "./satang.ts";
 
@@ -78,9 +76,8 @@ function consolidation(
   if (principal > MONEY_MAX) return no("ESTIMATE_TOO_LARGE");
   const payment = amortisedPayment(principal, annualRate, term);
   const total = payment * BigInt(term);
-  // What the loan replaces each month: every counted installment's monthly amount, the
-  // L43 monthly total ("ตอนนี้" on Home's card). TODO(backend): monthly_reduction.
-  const replaced = debts.reduce((acc, d) => acc + toSatang(d.monthly_amount), 0n);
+  // "ตอนนี้" on Home's card: this month's total, the hero's (Session 17, review F2).
+  const current = totalAt(debts, now);
   if (total > MONEY_MAX) return no("ESTIMATE_TOO_LARGE");
   // The loan replaces every counted installment, so it is the only plan due (b).
   if (payment > budget) return no("PAYMENT_ABOVE_BUDGET");
@@ -102,7 +99,8 @@ function consolidation(
       total_cost: fromSatang(total),
       current_remaining_total: fromSatang(principal),
       extra_cost: fromSatang(total - principal),
-      monthly_reduction: fromSatang(max0(replaced - payment)),
+      current_monthly_total: fromSatang(current),
+      monthly_reduction: fromSatang(max0(current - payment)),
     },
   };
 }
@@ -120,6 +118,7 @@ export function assistantPlan(
   bufferBalance: Money,
   annualRate = EXAMPLE_ANNUAL_RATE,
   term = EXAMPLE_TERM_MONTHS,
+  prepared: ReadonlyMap<string, bigint> = new Map(), // moved for a month ("YYYY-MM"), in satang
 ): AssistantPlanOut {
   const cap = toSatang(budget);
   const third = toSatang(income);
@@ -148,6 +147,8 @@ export function assistantPlan(
     longest = later(longest, run);
   }
   const shortfall = totals.reduce((acc, t) => acc + max0(t - cap), 0n);
+  // What is left of each month's gap after the money moved for it (never another month's).
+  const gap = totals.reduce((acc, t, k) => acc + max0(max0(t - cap) - (prepared.get(monthOfIndex(start + k)) ?? 0n)), 0n);
   const balance = toSatang(bufferBalance);
 
   const shown = totals.length > HORIZON_CAP ? HORIZON_CAP : totals.length;
@@ -168,27 +169,11 @@ export function assistantPlan(
     safe_new_months: SAFE_NEW_TERM,
     buffer_plan: {
       shortfall: fromSatang(shortfall),
+      remaining_gap: fromSatang(gap),
       balance: fromSatang(balance),
-      covered: balance >= shortfall,
-      still_short: fromSatang(max0(shortfall - balance)),
+      covered: balance >= gap,
+      still_short: fromSatang(max0(gap - balance)),
     },
     consolidation: consolidation(debts, longest >= CONSOLIDATION_RUN, start, cap, third, annualRate, term),
   };
-}
-
-/**
- * TODO(backend, tomorrow): the AI summary. The mock is a fixed example, built from
- * the plan's own words (the same lines the screens show), labelled ตัวอย่าง.
- */
-export function exampleSummary(plan: AssistantPlanOut): string {
-  const lines = planLines(plan);
-  const buffer = bufferPlanLines(plan.buffer_plan).lines.join(" ");
-  const c = plan.consolidation;
-  const consolidate =
-    c.estimate === null
-      ? `${notConsolidatingLine(c.reason)} ${ASSIST.reason[c.reason]}`
-      : `${ASSIST.worth} ${ASSIST.newMonthly} ${formatBaht(c.estimate.monthly_payment)} ${ASSIST.totalCost} ${formatBaht(c.estimate.total_cost)} (${ASSIST.exampleTag})`;
-  // The buffer line already says every month is in budget: say it once.
-  const back = plan.back_in_budget_month === null ? [] : [lines.back];
-  return [...back, lines.safe, buffer, consolidate].join("\n"); // one point per line
 }

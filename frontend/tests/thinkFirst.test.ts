@@ -61,6 +61,8 @@ const LINE: InstallmentLine = {
   disputed_at: null,
   owed: true,
   platform_name: null,
+  first_due_date: "2026-10-01",
+  last_due_date: "2027-07-01",
 };
 
 function built(form: Form, id: string) {

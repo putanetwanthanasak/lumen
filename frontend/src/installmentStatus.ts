@@ -21,6 +21,8 @@ export function lineStatus(line: InstallmentLine): LineStatus {
       return { label: HOME.statusDisputed, counted };
     case "cancelled":
       return { label: line.disputed_at === null ? HOME.statusCancelled : HOME.statusCancelledAfterReport, counted };
+    case "consolidated":
+      return { label: HOME.statusConsolidated, counted };
   }
 }
 

@@ -1,12 +1,11 @@
 /**
  * Screen 5: notifications (DESIGN.md section 7.5), opened from the header bell. The
  * title and body are the backend's own Thai text; the screen adds an icon and a
- * next step per kind. Opening it marks every notification read; the ones that
- * were unread keep a "ใหม่" tag while the screen is open.
- * TODO(backend): GET /notifications and POST /notifications/read (mock only for now).
+ * next step per kind. The API keeps no read state, so there is no "new" tag; when
+ * the user has more alerts than the API lists, a line says how many.
  */
 import { alertAction } from "../alertAction.ts";
-import { getBuffer, getNotifications, markNotificationsRead } from "../api.ts";
+import { getBuffer, getNotifications } from "../api.ts";
 import type { NotificationKind, NotificationOut } from "../api-types.ts";
 import { ALERTS } from "../copy.ts";
 import { Icon, type IconName } from "../components/Icon.tsx";
@@ -23,14 +22,12 @@ const KIND_STYLE: Record<NotificationKind, { icon: IconName; badge: string }> = 
   over_cap: { icon: "alert", badge: "bg-warn-bg text-warn-ink" },
   payday_shortfall: { icon: "alert", badge: "bg-warn-bg text-warn-ink" },
   leftover_saved: { icon: "shield", badge: "bg-ok-bg text-ok-ink" },
+  consolidation_loan: { icon: "bank", badge: "bg-info-bg text-info-ink" },
 };
 
-async function loadAlerts(): Promise<{ notifications: NotificationOut[]; bufferBalance: Money }> {
+async function loadAlerts(): Promise<{ notifications: NotificationOut[]; count: number; bufferBalance: Money }> {
   const [list, buffer] = await Promise.all([getNotifications(), getBuffer()]);
-  // Shown as loaded (unread tagged), then marked read for the bell; a failed mark
-  // only leaves the badge up.
-  if (list.unread_count > 0) await markNotificationsRead().catch(() => undefined);
-  return { notifications: list.notifications, bufferBalance: buffer.balance };
+  return { notifications: list.notifications, count: list.count, bufferBalance: buffer.balance };
 }
 
 export function NotificationsScreen() {
@@ -45,11 +42,16 @@ export function NotificationsScreen() {
             <p className="text-body text-ink-muted">{ALERTS.empty}</p>
           </Card>
         ) : (
-          <ul className="flex flex-col gap-3">
-            {load.data.notifications.map((n) => (
-              <NotificationCard key={n.id} notification={n} bufferBalance={load.data.bufferBalance} />
-            ))}
-          </ul>
+          <>
+            <ul className="flex flex-col gap-3">
+              {load.data.notifications.map((n) => (
+                <NotificationCard key={n.id} notification={n} bufferBalance={load.data.bufferBalance} />
+              ))}
+            </ul>
+            {load.data.count > load.data.notifications.length && (
+              <p className="text-center text-body text-ink-muted">{ALERTS.more(load.data.notifications.length, load.data.count)}</p>
+            )}
+          </>
         ))}
     </Screen>
   );
@@ -64,12 +66,7 @@ function NotificationCard({ notification, bufferBalance }: { notification: Notif
         <Icon name={style.icon} />
       </span>
       <div className="flex min-w-0 flex-col gap-1">
-        <p className="flex items-center gap-2 text-body font-bold text-ink">
-          {notification.title}
-          {!notification.read && (
-            <span className="rounded-pill bg-risk-ink px-2 py-0.5 text-caption font-bold text-white">{ALERTS.unread}</span>
-          )}
-        </p>
+        <p className="text-body font-bold text-ink">{notification.title}</p>
         <p className="text-body text-ink">{notification.body}</p>
         {action !== null && (
           <button

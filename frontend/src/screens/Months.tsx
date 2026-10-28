@@ -2,30 +2,39 @@
  * "ภาระผ่อนรายเดือน" (DESIGN.md section 7.2b), opened from Home's this-month card.
  * Every month from this month to the last month with an installment: the total
  * against the budget, a bar, and the status as icon + text. Tap a month for its
- * installments ("งวดที่ x จาก y", "งวดสุดท้าย"). All numbers come from the API
- * (GET /debts/months); nothing is added up here.
+ * installments ("งวดที่ x จาก y", "งวดสุดท้าย"). A month over budget says whether
+ * money was moved from the buffer for it (GET /buffer/shortfalls, UI-46). One quiet
+ * line at the bottom says what to do when the app's amount differs (UI-48). All
+ * numbers come from the API; nothing is added up here.
  */
 import { useState } from "react";
-import { getAssistantPlan, getMonths, getSettings } from "../api.ts";
-import type { AssistantPlanOut, MonthDetail, MonthsOut, SettingsOut } from "../api-types.ts";
+import { getAssistantPlan, getMonths, getSettings, getShortfalls } from "../api.ts";
+import type { AssistantPlanOut, MonthDetail, MonthsOut, SettingsOut, ShortfallsOut } from "../api-types.ts";
+import { ACCENT } from "../accent.ts";
 import { planLines } from "../assistantText.ts";
-import { ASSIST, HOME, MONTHS_VIEW } from "../copy.ts";
+import { openBufferAt, shortfallsByMonth, type ShortfallView } from "../bufferState.ts";
+import { ASSIST, BUFFER_STATE, HOME, MONTHS_VIEW } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
-import { Card, ErrorState, Loading, SettingsMissing } from "../components/ui.tsx";
+import { Button, Card, ErrorState, Loading, MarkedText, SettingsMissing } from "../components/ui.tsx";
 import { monthStatus, type MonthStatus } from "../monthStatus.ts";
 import { barPermille, formatBaht, largest, type Money } from "../money.ts";
 import { navigate } from "../router.ts";
 import { thaiMonth } from "../thaiMonth.ts";
 import { useLoad } from "../useLoad.ts";
 
-type MonthsData = { settings: SettingsOut; months: MonthsOut; plan: AssistantPlanOut | null };
+type MonthsData = { settings: SettingsOut; months: MonthsOut; plan: AssistantPlanOut | null; shortfalls: ShortfallsOut | null };
 
 async function loadMonths(): Promise<MonthsData | null> {
   const settings = await getSettings();
   if (settings === null) return null;
-  const [months, plan] = await Promise.all([getMonths(), getAssistantPlan().catch(() => null)]);
-  return { settings, months, plan };
+  // The plan and the buffer states are extras: the months show without them.
+  const [months, plan, shortfalls] = await Promise.all([
+    getMonths(),
+    getAssistantPlan().catch(() => null),
+    getShortfalls().catch(() => null),
+  ]);
+  return { settings, months, plan, shortfalls };
 }
 
 export function MonthsScreen() {
@@ -40,7 +49,12 @@ export function MonthsScreen() {
         ) : (
           <>
             {load.data.plan !== null && <PlanCard plan={load.data.plan} />}
-            <MonthList months={load.data.months.months} budget={load.data.settings.monthly_installment_budget} />
+            <MonthList
+              months={load.data.months.months}
+              budget={load.data.settings.monthly_installment_budget}
+              buffer={shortfallsByMonth(load.data.shortfalls)}
+            />
+            <p className="px-1 pt-2 text-caption text-ink-muted">{MONTHS_VIEW.scamCheck}</p>
           </>
         ))}
     </Screen>
@@ -71,7 +85,7 @@ const TONE: Record<MonthStatus["tone"], { text: string; bar: string; chip: strin
   risk: { text: "text-risk-ink", bar: "bg-bar-risk", chip: "bg-risk-bg text-risk-ink" },
 };
 
-function MonthList({ months, budget }: { months: MonthDetail[]; budget: Money }) {
+export function MonthList({ months, budget, buffer }: { months: MonthDetail[]; budget: Money; buffer: ReadonlyMap<string, ShortfallView> }) {
   const [open, setOpen] = useState<string | null>(null);
   if (months.length === 0) {
     return (
@@ -94,6 +108,7 @@ function MonthList({ months, budget }: { months: MonthDetail[]; budget: Money })
             budget={budget}
             scale={scale}
             budgetMark={budgetMark}
+            buffer={buffer.get(month.month) ?? null}
             expanded={open === month.month}
             onToggle={() => setOpen((o) => (o === month.month ? null : month.month))}
           />
@@ -108,11 +123,12 @@ type MonthCardProps = {
   budget: Money;
   scale: Money;
   budgetMark: number;
+  buffer: ShortfallView | null; // over budget: the buffer state (UI-46)
   expanded: boolean;
   onToggle: () => void;
 };
 
-function MonthCard({ month, budget, scale, budgetMark, expanded, onToggle }: MonthCardProps) {
+function MonthCard({ month, budget, scale, budgetMark, buffer, expanded, onToggle }: MonthCardProps) {
   const status = monthStatus(month);
   const tone = TONE[status.tone];
   const panelId = `month-${month.month}`;
@@ -148,6 +164,23 @@ function MonthCard({ month, budget, scale, budgetMark, expanded, onToggle }: Mon
           <Icon name="down" size={18} className={expanded ? "rotate-180" : ""} />
         </span>
       </button>
+      {buffer !== null && (
+        <div className="flex flex-col gap-2 px-4 pb-4">
+          <MarkedText item={buffer.line} className="font-semibold" />
+          {buffer.prepare !== null && (
+            <Button
+              variant="bufferOutline"
+              icon={ACCENT.buffer.icon}
+              onClick={() => {
+                openBufferAt(month.month);
+                navigate("buffer");
+              }}
+            >
+              {BUFFER_STATE.use}
+            </Button>
+          )}
+        </div>
+      )}
       {expanded && (
         <ul id={panelId} className="flex flex-col divide-y divide-line border-t border-line px-4">
           {month.installments.map((item) => (

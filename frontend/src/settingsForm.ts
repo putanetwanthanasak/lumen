@@ -3,7 +3,7 @@
  * Money stays the string the user typed; nothing is rounded (L49).
  */
 import type { SettingsIn, SettingsOut } from "./api-types.ts";
-import { MONEY_ERRORS, SETTINGS } from "./copy.ts";
+import { MONEY_ERRORS, REJECTED, SETTINGS } from "./copy.ts";
 import { parseMoneyInput } from "./money.ts";
 
 export type Form = {
@@ -49,6 +49,21 @@ export type Errors = Partial<Record<"income" | "payday" | "budget" | "percent" |
 const INT_1_TO_31 = /^([1-9]|[12][0-9]|3[01])$/;
 const INT_1_TO_100 = /^([1-9][0-9]?|100)$/;
 const DEFAULT_RULE = { mode: "percent", percent: 10 } as const;
+
+const FIELD_OF_API: Record<string, keyof Errors> = {
+  income: "income",
+  payday: "payday",
+  monthly_installment_budget: "budget",
+  percent: "percent",
+  amount: "fixed",
+  auto_save_consent: "consent",
+};
+
+/** The fields a 422 refused (ApiError.fields), as the form's; null when it named none of them. */
+export function rejectedErrors(fields: readonly string[]): Errors | null {
+  const keys = fields.flatMap((name) => FIELD_OF_API[name] ?? []);
+  return keys.length === 0 ? null : Object.fromEntries(keys.map((key) => [key, REJECTED]));
+}
 
 /** Build the request, or the errors to show. Money stays the string the user typed. */
 export function toRequest(form: Form): { ok: true; body: SettingsIn } | { ok: false; errors: Errors } {

@@ -3,8 +3,8 @@
  *
  * It mirrors L43 (monthly total), L63 (saving rule and 500.00 safety net), L64
  * (budget warning) and L65 (verdict) closely enough for the demo, with exact BigInt
- * satang. It is NOT the source of truth: the backend tests are. When USE_MOCK is
- * false nothing here runs.
+ * satang. It is NOT the source of truth: the backend tests are. Only the tests and
+ * `npm run dev -- --mode mock` use it (src/api.ts); the app calls the API.
  */
 import type {
   AssistantPlanOut,
@@ -24,6 +24,8 @@ import type {
   RecordedOut,
   SettingsIn,
   SettingsOut,
+  ShortfallMonth,
+  ShortfallsOut,
   SuggestedMonthlyOut,
   Verdict,
   VerdictOut,
@@ -40,7 +42,8 @@ import {
   type MockInstallment,
 } from "./persona.ts";
 import { leftoverAlert, manualEntryAlert, shortfallAlert } from "./alerts.ts";
-import { assistantPlan, exampleSummary } from "./assistant.ts";
+import { exampleSummary } from "../assistantText.ts";
+import { assistantPlan } from "./assistant.ts";
 import { SCENARIOS } from "./persona.ts";
 import { fromSatang, sum, toSatang } from "./satang.ts";
 
@@ -53,7 +56,7 @@ const PLATFORM_MAX = 60;
 const CONTROL = /[\u0000-\u001f]/; // L55: no control characters in text fields
 
 type Recorded = { fingerprint: string; installmentId: string; savedAmount: Money };
-type Moved = { amount: Money; out: MovedOut };
+type Moved = { amount: Money; forMonth: string | null; out: MovedOut };
 
 type Store = {
   settings: SettingsOut | null;
@@ -83,23 +86,23 @@ function freshStore(today: Date): Store {
   };
 }
 
-function notify(alert: { kind: NotificationOut["kind"]; title: string; body: string }): void {
-  store.notifications.unshift({ ...alert, id: crypto.randomUUID(), created_at: new Date().toISOString(), read: false });
+function notify(alert: { kind: NotificationOut["kind"]; title: string; body: string }, installmentId: string | null): void {
+  store.notifications.unshift({ ...alert, id: crypto.randomUUID(), installment_id: installmentId, created_at: new Date().toISOString() });
 }
 
 function notificationsOut(): NotificationsOut {
-  return { notifications: store.notifications, unread_count: store.notifications.filter((n) => !n.read).length };
+  return { notifications: store.notifications, count: store.notifications.length };
 }
 
 /**
  * The persona recorded its latest installment by hand, so its alert is the manual
  * entry one (L62), never the webhook's, which offers "Not me" (no "Not me" for
- * manual entries, L68; UI-24). It is unread, so the bell shows 1.
+ * manual entries, L68; UI-24).
  */
 function seedNotifications(): void {
   const latest = store.installments.filter(owed).sort((a, b) => b.first_due_month.localeCompare(a.first_due_month))[0];
   if (latest !== undefined) {
-    notify(manualEntryAlert(latest.kind, latest.item_name, latest.principal, latest.months, latest.monthly_amount, monthlyTotal()));
+    notify(manualEntryAlert(latest.kind, latest.item_name, latest.principal, latest.months, latest.monthly_amount, monthlyTotal()), latest.id);
   }
 }
 
@@ -267,7 +270,6 @@ function checkEntry(body: unknown): ManualEntryIn | MockResponse {
   if (typeof b.first_due_month !== "string" || !/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(b.first_due_month)) {
     return invalid("first_due_month");
   }
-  // TODO(backend): platform_name is mock only for now.
   const platform = b.platform_name;
   if (platform !== null && platform !== undefined) {
     if (typeof platform !== "string" || platform.trim() === "" || [...platform].length > PLATFORM_MAX || CONTROL.test(platform)) {
@@ -288,7 +290,6 @@ function previewOrRecord(body: unknown, record: boolean): MockResponse {
   const entry = checkEntry(body);
   if (isResponse(entry)) return entry;
   if (!record) {
-    // TODO(backend): saving_if_recorded is mock only for now.
     const out: PreviewOut = {
       ...assess(settings, store.installments, entry, true),
       saving_if_recorded: savingFor(settings, entry, store.mainBalance),
@@ -324,7 +325,7 @@ function previewOrRecord(body: unknown, record: boolean): MockResponse {
     store.bufferBalance = fromSatang(toSatang(store.bufferBalance) + toSatang(saved));
     recorded = { fingerprint, installmentId: id, savedAmount: saved };
     store.recorded.set(key, recorded);
-    notify(manualEntryAlert(entry.kind, entry.item_name, entry.item_price, entry.months, entry.monthly_amount, monthlyTotal()));
+    notify(manualEntryAlert(entry.kind, entry.item_name, entry.item_price, entry.months, entry.monthly_amount, monthlyTotal()), id);
   }
   const out: RecordedOut = {
     installment_id: recorded.installmentId,
@@ -354,6 +355,8 @@ function debtSummary(): DebtSummary {
     disputed_at: null,
     owed: owed(i),
     platform_name: i.platform_name,
+    first_due_date: `${i.first_due_month}-01`,
+    last_due_date: `${lastMonth(i)}-01`,
   }));
   const owedLines = store.installments.filter(owed);
   const last = owedLines.map(lastMonth).sort().at(-1);
@@ -366,8 +369,8 @@ function debtSummary(): DebtSummary {
 }
 
 /**
- * GET /debts/months, as on main since #39. From this month, with no candidate: `count`
- * months, or up to the last month an owed installment is due.
+ * GET /debts/months. From this month, with no candidate: `count` months, or up to the
+ * last month an owed installment is due.
  */
 function months(path: string): MockResponse {
   const settings = store.settings;
@@ -384,10 +387,14 @@ function months(path: string): MockResponse {
     if (!isInt(count, 1, 600)) return invalid("count");
   }
   const rows = count === 0 ? [] : assess(settings, store.installments, { first_due_month: from, months: count, monthly_amount: "0.00" }, false).months;
+  const budget = settings.monthly_installment_budget;
   const out: MonthsOut = {
+    months_truncated: false,
     months: rows.map(
       (row): MonthDetail => ({
         ...row,
+        budget,
+        over_by: row.over_budget ? fromSatang(toSatang(row.total) - toSatang(budget)) : "0.00",
         installments: counted
           .filter((i) => dueIn(i, row.month))
           .map((i) => ({
@@ -398,6 +405,7 @@ function months(path: string): MockResponse {
             installment_no: monthsBetween(i.first_due_month, row.month) + 1,
             installments_total: i.months,
             is_last: row.month === lastMonth(i),
+            last_month: lastMonth(i),
           })),
       }),
     ),
@@ -411,7 +419,7 @@ function monthsBetween(from: string, to: string): number {
   return ((ty ?? 0) - (fy ?? 0)) * 12 + ((tm ?? 0) - (fm ?? 0));
 }
 
-/** TODO(backend): GET /installments/suggested-monthly. price / months, rounded UP to 0.01. */
+/** GET /installments/suggested-monthly: price / months, rounded UP to 0.01. */
 function suggestedMonthly(path: string): MockResponse {
   const query = new URLSearchParams(path.split("?")[1] ?? "");
   const price = query.get("item_price");
@@ -423,15 +431,22 @@ function suggestedMonthly(path: string): MockResponse {
   return ok(out);
 }
 
-/** POST /buffer/move-to-main (L66): idempotent on client_request_id, never blocked. */
+/**
+ * POST /buffer/move-to-main (L66): idempotent on client_request_id with the same amount
+ * and `for_month`, never blocked. `for_month` only labels the money for a month.
+ */
 function moveToMain(body: unknown): MockResponse {
-  const b = body as { client_request_id?: unknown; amount?: unknown };
+  const b = body as { client_request_id?: unknown; amount?: unknown; for_month?: unknown };
   if (typeof b.client_request_id !== "string" || b.client_request_id === "") return invalid("client_request_id");
   if (!isMoney(b.amount) || toSatang(b.amount) === 0n) return invalid("amount");
+  const forMonth = b.for_month ?? null;
+  if (forMonth !== null && (typeof forMonth !== "string" || !/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(forMonth))) {
+    return invalid("for_month");
+  }
   const previous = store.moves.get(b.client_request_id);
   if (previous !== undefined) {
-    if (toSatang(previous.amount) !== toSatang(b.amount)) {
-      return fail(409, "client_request_id reused with another amount");
+    if (toSatang(previous.amount) !== toSatang(b.amount) || previous.forMonth !== forMonth) {
+      return fail(409, "client_request_id reused with another amount or month");
     }
     return ok({ ...previous.out, status: "duplicate", balance: store.bufferBalance }, 200);
   }
@@ -444,10 +459,70 @@ function moveToMain(body: unknown): MockResponse {
     transaction_id: crypto.randomUUID(),
     status: "created",
     amount: b.amount,
+    for_month: forMonth,
     balance: store.bufferBalance,
   };
-  store.moves.set(b.client_request_id, { amount: b.amount, out });
+  store.moves.set(b.client_request_id, { amount: b.amount, forMonth, out });
   return ok(out, 201);
+}
+
+/** What was moved for each month from this month on ("YYYY-MM" -> satang). */
+function preparedByMonth(): Map<string, bigint> {
+  const now = monthOf(store.today);
+  const prepared = new Map<string, bigint>();
+  for (const { forMonth, amount } of store.moves.values()) {
+    if (forMonth !== null && forMonth >= now) prepared.set(forMonth, (prepared.get(forMonth) ?? 0n) + toSatang(amount));
+  }
+  return prepared;
+}
+
+/**
+ * GET /buffer/shortfalls: each month over budget from this month on, less what was
+ * moved for it, with the buffer spent on what is left in date order.
+ */
+function shortfalls(path: string): MockResponse {
+  const settings = store.settings;
+  if (settings === null) return SETTINGS_REQUIRED;
+  const answer = months(path);
+  if (answer.status !== 200) return answer;
+  const prepared = preparedByMonth();
+  const budget = toSatang(settings.monthly_installment_budget);
+  let left = toSatang(store.bufferBalance);
+  let shortfall = 0n;
+  let gap = 0n;
+  const rows: ShortfallMonth[] = (answer.body as MonthsOut).months
+    .filter((row) => row.over_budget)
+    .map((row) => {
+      const over = toSatang(row.total) - budget;
+      const moved = prepared.get(row.month) ?? 0n;
+      const remaining = over > moved ? over - moved : 0n;
+      const covered = left < remaining ? left : remaining;
+      left -= covered;
+      shortfall += over;
+      gap += remaining;
+      return {
+        month: row.month,
+        total: row.total,
+        budget: settings.monthly_installment_budget,
+        shortfall: fromSatang(over),
+        prepared: fromSatang(moved),
+        remaining_gap: fromSatang(remaining),
+        state: moved === 0n ? "not_prepared" : remaining === 0n ? "prepared" : "partly_prepared",
+        covered_by_buffer: fromSatang(covered),
+        still_short: fromSatang(remaining - covered),
+      };
+    });
+  const balance = toSatang(store.bufferBalance);
+  const out: ShortfallsOut = {
+    balance: store.bufferBalance,
+    shortfall: fromSatang(shortfall),
+    remaining_gap: fromSatang(gap),
+    covered: balance >= gap,
+    still_short: fromSatang(balance >= gap ? 0n : gap - balance),
+    months: rows,
+    months_truncated: false,
+  };
+  return ok(out);
 }
 
 /** POST /demo/payday (L67), in the backend's decision order; once per month. */
@@ -491,9 +566,9 @@ function payday(body: unknown): MockResponse {
     buffer_balance: store.bufferBalance,
   };
   if (outcome === "over_budget") {
-    notify(shortfallAlert(month, out.month_total, out.amount, store.bufferBalance, toSatang(store.bufferBalance) === 0n));
+    notify(shortfallAlert(month, out.month_total, out.amount, store.bufferBalance, toSatang(store.bufferBalance) === 0n), null);
   } else if (outcome === "leftover_saved") {
-    notify(leftoverAlert(month, out.month_total, out.amount));
+    notify(leftoverAlert(month, out.month_total, out.amount), null);
   }
   store.paydays.set(month, out);
   return ok(out, 201);
@@ -523,6 +598,9 @@ function planNow(settings: SettingsOut): AssistantPlanOut {
     settings.income,
     settings.monthly_installment_budget,
     store.bufferBalance,
+    undefined,
+    undefined,
+    preparedByMonth(),
   );
 }
 
@@ -601,13 +679,12 @@ export function handle(
       return payday(body);
     case "GET /notifications":
       return ok(notificationsOut());
-    case "POST /notifications/read":
-      store.notifications = store.notifications.map((n) => ({ ...n, read: true }));
-      return ok(notificationsOut());
+    case "GET /buffer/shortfalls":
+      return shortfalls("/debts/months");
     case "GET /assistant/plan":
       return store.settings === null ? SETTINGS_REQUIRED : ok(planNow(store.settings));
     case "POST /assistant/summary": {
-      // TODO(backend, tomorrow): the AI summary. The mock is a fixed example.
+      // Mock only (AI is roadmap): the example, with the slow and failing scenes.
       if (store.settings === null) return SETTINGS_REQUIRED;
       if (store.summary === "failing") return fail(503, "summary unavailable");
       const out: AssistantSummaryOut = { text: exampleSummary(planNow(store.settings)), is_example: true };

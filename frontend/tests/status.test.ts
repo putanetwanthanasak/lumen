@@ -23,6 +23,8 @@ const ACTIVE: InstallmentLine = {
   disputed_at: null,
   owed: true,
   platform_name: null,
+  first_due_date: "2026-07-01",
+  last_due_date: "2026-12-01",
 };
 
 test("UI_12_active_owed_line_has_no_label_and_counts", () => {
@@ -63,6 +65,8 @@ function due(month: string, items: [string, number, number, boolean][]): MonthDe
     total: "0.00", // not read
     over_budget: false,
     over_one_third: false,
+    budget: "5000.00", // not read
+    over_by: "0.00", // not read
     installments: items.map(([installment_id, installment_no, installments_total, is_last]) => ({
       installment_id,
       item_name: "",
@@ -71,6 +75,7 @@ function due(month: string, items: [string, number, number, boolean][]): MonthDe
       installment_no,
       installments_total,
       is_last,
+      last_month: "2027-01", // not read
     })),
   };
 }

@@ -126,13 +126,18 @@ export function ConsolidationCard({ view }: { view: ConsolidationView }) {
 /** The monthly amount and the total are the same size and weight: the total is never the small print (UI-38). */
 const PLAN_AMOUNT = "text-lead font-bold text-ink";
 
-function Plan({ title, monthly, total }: { title: string; monthly: Money; total: Money }) {
+/** `monthly` is null when the answer did not carry it (UI-39): the column shows its total only. */
+function Plan({ title, monthly, total }: { title: string; monthly: Money | null; total: Money }) {
   return (
     <div className={`flex h-full flex-col rounded-field p-3 ${ACCENT.bank.tint}`}>
       {/* Two lines for every title, so both columns' numbers line up. */}
       <span className="min-h-10 text-caption font-semibold text-ink-muted">{title}</span>
-      <span className={PLAN_AMOUNT}>{formatBaht(monthly)}</span>
-      <span className="text-caption text-ink-muted">{COMMON.perMonth}</span>
+      {monthly !== null && (
+        <>
+          <span className={PLAN_AMOUNT}>{formatBaht(monthly)}</span>
+          <span className="text-caption text-ink-muted">{COMMON.perMonth}</span>
+        </>
+      )}
       <span className="mt-2 text-caption text-ink-muted">{ASSIST.totalAll}</span>
       <span className={PLAN_AMOUNT}>{formatBaht(total)}</span>
     </div>

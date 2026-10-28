@@ -5,6 +5,7 @@
 declare module "node:test" {
   export function test(name: string, fn: () => void | Promise<void>): void;
   export function beforeEach(fn: () => void | Promise<void>): void;
+  export function afterEach(fn: () => void | Promise<void>): void;
 }
 
 declare module "node:assert/strict" {
@@ -17,6 +18,7 @@ declare module "node:assert/strict" {
     match(value: string, pattern: RegExp, message?: string): void;
     doesNotMatch(value: string, pattern: RegExp, message?: string): void;
     throws(fn: () => unknown, expected?: ErrorClass | RegExp, message?: string): void;
+    rejects(promise: Promise<unknown>, check: (error: unknown) => boolean, message?: string): Promise<void>;
   };
   export default assert;
 }

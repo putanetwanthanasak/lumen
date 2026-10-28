@@ -1,7 +1,8 @@
 /**
  * The header bell (PR B). (UI-23, the payoff steps per app, went with screen 7.)
- * UI-24: the persona's alerts use the manual entry copy (never "Not me"), and the
- * unread count comes from the API and drops to 0 once the list is opened.
+ * UI-24: the persona's alerts use the manual entry copy (never "Not me"). The API
+ * keeps no read state (docs/api/kidnee-endpoints.md): `count` is every alert, and the
+ * bell has no unread badge.
  */
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -19,17 +20,17 @@ beforeEach(() => resetMock(TODAY, PERSONA_SETTINGS));
 
 // ---- UI-24 -------------------------------------------------------------------------
 
-test("UI_24_persona_alert_is_the_manual_entry_copy_and_unread", () => {
+test("UI_24_persona_alert_is_the_manual_entry_copy", () => {
   const out = alerts();
-  assert.equal(out.unread_count, 1);
+  assert.equal(out.count, 1);
   assert.deepEqual(
-    out.notifications.map((n) => [n.kind, n.title, n.body, n.read]),
+    out.notifications.map((n) => [n.kind, n.title, n.body, n.installment_id !== null]),
     [
       [
         "new_debt",
         "บันทึกรายการผ่อนแล้ว",
         "ตู้เย็น ราคา 15,000 บาท ผ่อน 10 เดือน เดือนละ 1,500 บาท ยอดผ่อนรวมต่อเดือนตอนนี้ 3,500 บาท",
-        false,
+        true,
       ],
     ],
   );
@@ -62,7 +63,7 @@ test("UI_24_no_alert_and_no_source_offers_not_me", () => {
   assert.deepEqual(hits, []);
 });
 
-test("UI_24_opening_the_list_marks_every_alert_read", () => {
+test("UI_24_count_is_every_alert_and_nothing_marks_them_read", () => {
   const entry = {
     client_request_id: "r1",
     kind: "purchase",
@@ -74,17 +75,23 @@ test("UI_24_opening_the_list_marks_every_alert_read", () => {
     platform_name: null,
   };
   call("POST", "/installments", entry);
-  assert.equal(alerts().unread_count, 2);
-  const read = call("POST", "/notifications/read").body as NotificationsOut;
-  assert.equal(read.unread_count, 0);
-  assert.ok(read.notifications.every((n) => n.read));
-  assert.equal(alerts().unread_count, 0);
-  // A new alert after that is unread again; the old ones stay read.
-  call("POST", "/installments", { ...entry, client_request_id: "r2" });
-  const after = alerts();
-  assert.equal(after.unread_count, 1);
+  call("POST", "/demo/payday", { month: "2026-11" });
+  const out = alerts();
+  // Newest first; a payday alert names no installment.
+  assert.equal(out.count, 3);
   assert.deepEqual(
-    after.notifications.map((n) => n.read),
-    [false, true, true],
+    out.notifications.map((n) => [n.kind, n.installment_id === null]),
+    [
+      ["leftover_saved", true],
+      ["new_debt", false],
+      ["new_debt", false],
+    ],
   );
+  // There is no mark-read endpoint, and opening the list changes nothing.
+  assert.equal(call("POST", "/notifications/read").status, 404);
+  assert.equal(alerts().count, 3);
+  // The bell and the list never read a read state the API does not send.
+  for (const file of ["src/components/Screen.tsx", "src/screens/Notifications.tsx", "src/api.ts"]) {
+    assert.doesNotMatch(readFileSync(file, "utf8"), /unread|\.read\b|notifications\/read/, file);
+  }
 });

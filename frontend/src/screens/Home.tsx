@@ -6,30 +6,38 @@
  * and in which shape comes from homeLayout.ts (UI-33). All amounts are API strings.
  */
 import { Fragment, useId, useState } from "react";
-import { getAssistantPlan, getBuffer, getDebtSummary, getMonths, getSettings, USE_MOCK } from "../api.ts";
-import type { AssistantPlanOut, BufferOut, DebtSummary, InstallmentLine, MonthsOut, SettingsOut } from "../api-types.ts";
+import { getAssistantPlan, getBuffer, getDebtSummary, getMonths, getSettings, getShortfalls } from "../api.ts";
+import type { AssistantPlanOut, BufferOut, DebtSummary, InstallmentLine, MonthsOut, SettingsOut, ShortfallsOut } from "../api-types.ts";
 import { ACCENT, BUFFER_METER, EDGE, SOLID } from "../accent.ts";
-import { HOME } from "../copy.ts";
+import { openBufferAt } from "../bufferState.ts";
+import { BUFFER_STATE, HOME } from "../copy.ts";
 import { AiBubbleCard, ConsolidationCard } from "../components/AssistantCards.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Button, ErrorState, Loading, MarkedText, SettingsMissing } from "../components/ui.tsx";
 import { homeView, WALLET_SEGMENTS, type HeroView, type WalletView } from "../homeLayout.ts";
 import { groupByPlatform, lineStatus, scheduleText } from "../installmentStatus.ts";
-import { PERSONA_NAME } from "../mock/persona.ts";
 import { barPermille, formatBaht, largest, type Money } from "../money.ts";
+import { currentPersona } from "../personas.ts";
 import { navigate } from "../router.ts";
 import { thaiMonth } from "../thaiMonth.ts";
 import { useLoad } from "../useLoad.ts";
 
 type HomeData =
   | { settings: null }
-  | { settings: SettingsOut; summary: DebtSummary; buffer: BufferOut; months: MonthsOut; plan: AssistantPlanOut | null };
+  | {
+      settings: SettingsOut;
+      summary: DebtSummary;
+      buffer: BufferOut;
+      months: MonthsOut;
+      plan: AssistantPlanOut | null;
+      shortfalls: ShortfallsOut | null;
+    };
 
 async function loadHome(): Promise<HomeData> {
   const settings = await getSettings();
   if (settings === null) return { settings: null };
-  const [summary, buffer, months, plan] = await Promise.all([
+  const [summary, buffer, months, plan, shortfalls] = await Promise.all([
     getDebtSummary(),
     getBuffer(),
     // Every month to the last one due: the hero counts the months over budget, and
@@ -37,8 +45,10 @@ async function loadHome(): Promise<HomeData> {
     getMonths(),
     // The plan's cards are extras: if it fails, Home still shows the debts.
     getAssistantPlan().catch(() => null),
+    // The hero's buffer line is an extra too.
+    getShortfalls().catch(() => null),
   ]);
-  return { settings, summary, buffer, months, plan };
+  return { settings, summary, buffer, months, plan, shortfalls };
 }
 
 export function HomeScreen() {
@@ -63,21 +73,24 @@ export function HomeBody({
   buffer,
   months,
   plan,
+  shortfalls,
 }: {
   settings: SettingsOut;
   summary: DebtSummary;
   buffer: BufferOut;
   months: MonthsOut;
   plan: AssistantPlanOut | null;
+  shortfalls: ShortfallsOut | null;
 }) {
-  const view = homeView({ months: months.months, plan, buffer, monthlyTotal: summary.monthly_total });
+  const view = homeView({ months: months.months, plan, buffer, shortfalls });
+  const name = currentPersona().name;
   const counted = summary.installments.filter((line) => lineStatus(line).counted);
   const finished = summary.installments.filter((line) => !lineStatus(line).counted && line.status === "paid_off");
   // Cancelled, or reported "not me": not counted either, but never under "ผ่อนครบแล้ว".
   const others = summary.installments.filter((line) => !lineStatus(line).counted && line.status !== "paid_off");
   return (
     <>
-      <p className="text-lead font-semibold text-ink">{USE_MOCK ? HOME.greeting(PERSONA_NAME) : HOME.greetingPlain}</p>
+      <p className="text-lead font-semibold text-ink">{name === null ? HOME.greetingPlain : HOME.greeting(name)}</p>
 
       {view.hero !== null && <Hero hero={view.hero} budget={settings.monthly_installment_budget} />}
 
@@ -162,16 +175,24 @@ function Hero({ hero, budget }: { hero: HeroView; budget: Money }) {
         {hero.warning !== null && <MarkedText item={hero.warning} className="font-semibold" />}
       </button>
       {buffer !== null && (
-        <p className="flex flex-wrap items-center justify-between gap-x-3">
-          <MarkedText item={buffer.line} />
-          <button
-            type="button"
-            onClick={() => navigate(buffer.route)}
-            className={`relative -mx-2 inline-flex min-h-11 cursor-pointer items-center rounded-pill px-2 text-body font-semibold underline-offset-4 hover:underline ${ACCENT.buffer.ink}`}
-          >
-            {buffer.link}
-          </button>
-        </p>
+        <div className="flex flex-col gap-2">
+          <MarkedText item={buffer.line} className="font-semibold" />
+          {buffer.prepare !== null && (
+            // Above the card's cover: it opens the buffer at this month, never the months.
+            <div className="relative">
+              <Button
+                variant="buffer"
+                icon={ACCENT.buffer.icon}
+                onClick={() => {
+                  openBufferAt(buffer.month);
+                  navigate("buffer");
+                }}
+              >
+                {BUFFER_STATE.use}
+              </Button>
+            </div>
+          )}
+        </div>
       )}
     </section>
   );
