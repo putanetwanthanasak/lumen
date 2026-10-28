@@ -6,9 +6,10 @@
  * (TODO(backend): GET /debts/months); nothing is added up here.
  */
 import { useState } from "react";
-import { getMonths, getSettings } from "../api.ts";
-import type { MonthDetail, MonthsOut, SettingsOut } from "../api-types.ts";
-import { HOME, MONTHS_VIEW } from "../copy.ts";
+import { getAssistantPlan, getMonths, getSettings } from "../api.ts";
+import type { AssistantPlanOut, MonthDetail, MonthsOut, SettingsOut } from "../api-types.ts";
+import { planLines } from "../assistantText.ts";
+import { ASSIST, HOME, MONTHS_VIEW } from "../copy.ts";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Card, ErrorState, Loading, SettingsMissing } from "../components/ui.tsx";
@@ -18,10 +19,13 @@ import { navigate } from "../router.ts";
 import { thaiMonth } from "../thaiMonth.ts";
 import { useLoad } from "../useLoad.ts";
 
-async function loadMonths(): Promise<{ settings: SettingsOut; months: MonthsOut } | null> {
+type MonthsData = { settings: SettingsOut; months: MonthsOut; plan: AssistantPlanOut | null };
+
+async function loadMonths(): Promise<MonthsData | null> {
   const settings = await getSettings();
   if (settings === null) return null;
-  return { settings, months: await getMonths() };
+  const [months, plan] = await Promise.all([getMonths(), getAssistantPlan().catch(() => null)]);
+  return { settings, months, plan };
 }
 
 export function MonthsScreen() {
@@ -34,9 +38,30 @@ export function MonthsScreen() {
         (load.data === null ? (
           <SettingsMissing onSetUp={() => navigate("settings")} />
         ) : (
-          <MonthList months={load.data.months.months} budget={load.data.settings.monthly_installment_budget} />
+          <>
+            {load.data.plan !== null && <PlanCard plan={load.data.plan} />}
+            <MonthList months={load.data.months.months} budget={load.data.settings.monthly_installment_budget} />
+          </>
         ))}
     </Screen>
+  );
+}
+
+/** From GET /assistant/plan: back in budget, and how much more fits (L69: no ranking of debts). */
+function PlanCard({ plan }: { plan: AssistantPlanOut }) {
+  const lines = planLines(plan);
+  return (
+    <Card className={`flex flex-col gap-2 border-2 ${lines.pauseNow ? "border-warn-line" : "border-transparent"}`}>
+      <p className="flex items-center gap-2 text-lead font-bold text-ink">
+        <Icon name={plan.back_in_budget_month === null ? "check" : "calendar"} size={22} className="text-leaf-700" />
+        {lines.back}
+      </p>
+      <p className={`flex items-start gap-2 text-body ${lines.pauseNow ? "font-semibold text-warn-ink" : "text-ink"}`}>
+        <Icon name={lines.pauseNow ? "alert" : "info"} size={20} className="mt-0.5" />
+        {lines.safe}
+      </p>
+      <p className="text-caption text-ink-muted">{ASSIST.safeTerm(plan.safe_new_months)}</p>
+    </Card>
   );
 }
 

@@ -1,5 +1,5 @@
 /**
- * The ตรวจสอบก่อนผ่อน form and its stages (screen 3): UI-16 (review round 2, F2, F3,
+ * The เช็กก่อนผ่อน form and its stages (screen 3): UI-16 (review round 2, F2, F3,
  * F5), UI-18 (first due month, the 0% suggestion), UI-19 (the app), UI-21 (saving).
  */
 import assert from "node:assert/strict";
@@ -118,8 +118,10 @@ test("UI_18_first_due_month_has_no_default_and_blocks_the_preview", () => {
 test("UI_18_the_two_first_due_choices_are_this_month_and_next_month", () => {
   assert.deepEqual(firstDueChoices(TODAY), { thisMonth: "2026-10", nextMonth: "2026-11" });
   assert.deepEqual(firstDueChoices(new Date(2026, 11, 31)), { thisMonth: "2026-12", nextMonth: "2027-01" });
-  assert.equal(THINK.firstDueThis(thaiMonth("2026-10")), "เดือนนี้ (ต.ค. 2569)");
-  assert.equal(THINK.firstDueNext(thaiMonth("2026-11")), "เดือนหน้า (พ.ย. 2569)");
+  // Two equal buttons: the word on one line, the month on a second, smaller line.
+  assert.equal(THINK.firstDueThis, "เดือนนี้");
+  assert.equal(THINK.firstDueNext, "เดือนหน้า");
+  assert.equal(thaiMonth("2026-10"), "ต.ค. 2569");
 });
 
 test("UI_18_suggestion_is_asked_only_when_price_and_months_are_ready", () => {

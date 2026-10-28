@@ -5,7 +5,7 @@
  * the one-third rule is "ธปท. แนะนำ" (guidance), never "ธปท. กำหนด" (L64, L65).
  * Amounts come in already formatted by money.ts; this file never touches money.
  */
-import type { PaydayOutcome, Verdict } from "./api-types.ts";
+import type { ConsolidationReason, PaydayOutcome, Verdict } from "./api-types.ts";
 
 export const APP_NAME = "KidNee";
 export const APP_NAME_TH = "คิดหนี้";
@@ -44,9 +44,9 @@ export const ADVISORY_NOTE = "นี่เป็นคำแนะนำเท�
 
 export const NAV = {
   home: "หน้าหลัก",
-  think: "ตรวจสอบก่อนผ่อน",
+  // Short labels: a quarter of 390px, one line each. Full names stay on titles and buttons.
+  think: "เช็กก่อนผ่อน",
   buffer: "กันชน",
-  payoff: "ผู้ช่วยปลดหนี้",
   alerts: "แจ้งเตือน",
   alertsUnread: (count: number) => `แจ้งเตือน ยังไม่ได้อ่าน ${count} รายการ`,
   settings: "ตั้งค่า",
@@ -118,7 +118,7 @@ export const HOME = {
   withinBudgetNow: "เดือนนี้ยังอยู่ในงบ",
   installments: "รายการผ่อนของคุณ",
   totalPerMonth: (total: string) => `รวม ${total} ต่อเดือน`,
-  emptyInstallments: "ยังไม่มีรายการผ่อน ก่อนผ่อนชิ้นต่อไป กด ตรวจสอบก่อนผ่อน ได้เลย",
+  emptyInstallments: "ยังไม่มีรายการผ่อน ก่อนผ่อนชิ้นต่อไป กด เช็กก่อนผ่อน ได้เลย",
   noPlatform: "ไม่ระบุแอป",
   unnamed: "รายการผ่อน",
   perMonth: (amount: string) => `${amount}/เดือน`,
@@ -136,12 +136,12 @@ export const HOME = {
   upcomingTitle: "เดือนข้างหน้าที่ค่างวดรวมเกินงบ",
   upcomingNone: "5 เดือนข้างหน้ายังไม่มีเดือนไหนเกินงบ",
   upcomingRow: (total: string) => `รวม ${total}`,
-  thinkCta: "ตรวจสอบก่อนผ่อน",
+  thinkCta: "เช็กก่อนผ่อน",
   thinkCtaHelp: "ก่อนกดผ่อนชิ้นต่อไป ประเมินภาระผ่อนรายเดือนได้ที่นี่",
 };
 
 export const THINK = {
-  title: "ตรวจสอบก่อนผ่อน",
+  title: "เช็กก่อนผ่อน",
   intro: "กรอกราคาและแผนผ่อน KidNee จะประเมินค่างวดรวมของทุกเดือนตลอดแผนผ่อนนี้",
   kindTitle: "ประเภทรายการ",
   kinds: { purchase: "ผ่อนสินค้า", cash_withdrawal: "กดเงินสด", cash_loan: "สินเชื่อเงินสด" },
@@ -159,8 +159,8 @@ export const THINK = {
   platformTooLong: "ชื่อแอปยาวได้ไม่เกิน 60 ตัวอักษร",
   firstDue: "เริ่มจ่ายงวดแรก",
   firstDueHelp: "ดูได้ในหน้าสรุปก่อนกดผ่อนของแอปผ่อน",
-  firstDueThis: (month: string) => `เดือนนี้ (${month})`,
-  firstDueNext: (month: string) => `เดือนหน้า (${month})`,
+  firstDueThis: "เดือนนี้",
+  firstDueNext: "เดือนหน้า",
   firstDueError: "เลือกเดือนที่เริ่มจ่ายงวดแรก",
   check: "ประเมินภาระผ่อน",
   checking: "กำลังประเมิน...",
@@ -183,7 +183,7 @@ export const THINK = {
   demoTitle: "Demo: ลองตัวอย่างของมิ้นท์",
   demoScenario: { GREEN: "อยู่ในงบ", YELLOW: "เกินงบ", RED: "เกินเกณฑ์" },
   backHome: "กลับหน้าหลัก",
-  another: "ตรวจสอบรายการอื่น",
+  another: "เช็กรายการอื่น",
   resultTitle: "ผลการประเมิน",
   edit: "แก้ไข",
   summary: (what: string, price: string, months: number, monthly: string, start: string) =>
@@ -193,7 +193,7 @@ export const THINK = {
   savingTitle: "ถ้าบันทึก จะกันเงินเข้ากันชน",
   savingNone: "ถ้าบันทึก ครั้งนี้จะไม่ได้กันเงินเข้ากันชน",
   savingNoneHelp: "เช่น รายการเงินสด ปิดการออมอัตโนมัติ หรือเงินในบัญชีหลักจะเหลือน้อยกว่า 500 บาท",
-  seePayoff: "ดูผู้ช่วยปลดหนี้",
+  seeMonths: "ดูภาระผ่อนรายเดือน",
   noDraft: "ยังไม่มีรายการที่ประเมิน กรอกข้อมูลก่อนนะ",
   toForm: "ไปกรอกข้อมูล",
 };
@@ -214,14 +214,22 @@ export const MONTHS_VIEW = {
 
 export const BUFFER = {
   title: "กันชน",
+  intro: "เงินที่กันไว้ทุกครั้งที่ผ่อน ไว้ช่วยในเดือนที่ค่างวดแน่น",
   balance: "ยอดในกันชน",
+  covers: (months: number) => `พอจ่ายค่างวดได้ประมาณ ${months} เดือน`,
+  coversNone: "ยังไม่พอจ่ายค่างวดครบหนึ่งเดือน",
+  nothingOwed: "ตอนนี้ไม่มีค่างวดที่ต้องจ่าย",
+  monthlyTotal: (total: string) => `ค่างวดรวมต่อเดือนตอนนี้ ${total}`,
   moveTitle: "ย้ายกลับบัญชีหลัก",
-  moveHelp: "เงินในกันชนเป็นของคุณ ย้ายกลับได้ทุกเมื่อ",
+  moveHelp: "เงินในกันชนเป็นของคุณ ย้ายกลับได้ทุกเมื่อ ไม่มีเงื่อนไข",
   amount: "จำนวนเงินที่จะย้าย",
   move: "ย้ายกลับบัญชีหลัก",
   moving: "กำลังย้าย...",
   moved: (amount: string) => `ย้าย ${amount} กลับบัญชีหลักแล้ว`,
-  aboveBalance: "ยอดในกันชนไม่พอสำหรับจำนวนนี้",
+  balanceAfter: (amount: string) => `เหลือในกันชน ${amount}`,
+  aboveBalance: "ยอดในกันชนไม่พอสำหรับจำนวนนี้ ลองใส่จำนวนที่น้อยลง",
+  failed: "ยังไม่แน่ใจว่าย้ายสำเร็จหรือไม่ กดย้ายอีกครั้งด้วยจำนวนเดิมได้เลย ระบบจะไม่ย้ายซ้ำ",
+  another: "ย้ายอีกจำนวน",
 };
 
 export const PAYDAY_OUTCOME: Record<PaydayOutcome, string> = {
@@ -230,4 +238,77 @@ export const PAYDAY_OUTCOME: Record<PaydayOutcome, string> = {
   no_leftover: "ค่างวดพอดีงบ ไม่มีส่วนเหลือให้ออม",
   leftover_off: "ไม่ได้เปิดการออมส่วนที่เหลือ",
   safety_net: "ข้ามการออมเพราะเงินในบัญชีหลักจะเหลือน้อยกว่า 500 บาท",
+};
+
+export const ALERTS = {
+  title: "แจ้งเตือน",
+  empty: "ยังไม่มีแจ้งเตือน ทุกครั้งที่มีหนี้ใหม่ KidNee จะบอกทันที",
+  openMonths: "ดูภาระผ่อนรายเดือน",
+  openBuffer: "ดูกันชน",
+  unread: "ใหม่",
+};
+
+/**
+ * The assistant plan's parts (GET /assistant/plan), spread over the screens:
+ * ภาระผ่อนรายเดือน, the form hint, the buffer card and Home's consolidation card.
+ * Every number is the API's; these only put words around them (assistantText.ts).
+ */
+export const ASSIST = {
+  backInBudget: (month: string) => `กลับมาอยู่ในงบเดือน ${month}`,
+  allInBudget: "ทุกเดือนอยู่ในงบ",
+  pauseNow: "ตอนนี้ยังไม่ควรผ่อนเพิ่ม",
+  safeNew: (month: string, amount: string) => `ตั้งแต่ ${month} ผ่อนเพิ่มได้ไม่เกินเดือนละ ${amount}`,
+  safeNone: (month: string) => `ตั้งแต่ ${month} ยังผ่อนเพิ่มไม่ได้โดยไม่เกินงบ`,
+  safeTerm: (months: number) => `(คิดจากแผนผ่อน ${months} เดือน ไม่เกินงบ และไม่เกิน 1 ใน 3 ของรายได้)`,
+  formHint: (amount: string, month: string) => `ผ่อนเพิ่มได้ไม่เกินเดือนละ ${amount} ตั้งแต่ ${month}`,
+  bufferTitle: "ถ้าเดือนไหนเกินงบ",
+  bufferNone: "ทุกเดือนอยู่ในงบ ยังไม่ต้องใช้กันชน",
+  shortfall: (amount: string) => `ค่างวดส่วนที่เกินงบรวมทุกเดือน ${amount}`,
+  covered: (balance: string) => `กันชน ${balance} พอจ่ายส่วนที่เกินได้ทั้งหมด`,
+  stillShort: (balance: string, short: string) => `กันชน ${balance} ยังขาดอีก ${short}`,
+  consolidateTitle: "ควรรวมหนี้ไหม",
+  notWorth: "ตอนนี้ยังไม่คุ้มที่จะรวมหนี้",
+  reason: {
+    NOT_NEEDED: "ยังไม่มีช่วงที่ค่างวดรวมเกินงบติดกัน 3 เดือนขึ้นไป",
+    OVERDUE_DEBT: "มีรายการที่ค้างชำระอยู่ ควรจัดการรายการนั้นก่อน",
+    DISPUTED_DEBT: "มีรายการที่คุณแจ้งว่าไม่ใช่ของคุณ จึงยังรวมไม่ได้",
+    ESTIMATE_TOO_LARGE: "ยอดรวมสูงเกินกว่าที่จะประมาณได้",
+    PAYMENT_ABOVE_BUDGET: "ถึงรวมแล้ว ค่างวดใหม่ก็ยังเกินงบ",
+    ELIGIBLE: "",
+  } satisfies Record<ConsolidationReason, string>,
+  worth: "รวมหนี้อาจช่วยให้ทุกเดือนกลับมาอยู่ในงบ",
+  exampleTag: "ตัวอย่างการประมาณ",
+  newMonthly: "ค่างวดใหม่ต่อเดือน",
+  totalCost: "ต้นทุนรวมทั้งหมด",
+  terms: (months: number, rate: string) => `ผ่อน ${months} เดือน ดอกเบี้ยสมมติ ${rate}% ต่อปี (ไม่ใช่อัตราจริง)`,
+  extraCost: (extra: string, now: string) => `จ่ายรวมมากกว่าแผนเดิม ${extra} (ตอนนี้คงเหลือ ${now})`,
+  interested: "สนใจรวมหนี้",
+  bankWillCall: "ธนาคารจะติดต่อกลับเพื่อพิจารณา",
+  bankDecides: "ธนาคารพิจารณาจากข้อมูลของธนาคารเอง ตัวเลขนี้ยังไม่ใช่ข้อเสนอ",
+  aiTitle: "ผู้ช่วย KidNee สรุปให้ฟัง",
+  aiHelp: "สรุปภาพรวมหนี้ กันชน และการรวมหนี้ในไม่กี่ประโยค",
+  aiButton: "สรุปให้ฟัง",
+  aiLoading: "กำลังสรุป...",
+  aiExample: "ตัวอย่าง",
+  aiFailed: "สรุปไม่สำเร็จ ลองอีกครั้งได้เลย",
+};
+
+export const DEMO = {
+  paydayFailed: "จำลองไม่สำเร็จ ลองอีกครั้งได้เลย",
+  open: "Demo",
+  title: "Demo panel",
+  note: "สำหรับนำเสนอเท่านั้น ไม่ใช่ส่วนหนึ่งของแอป",
+  close: "ปิด",
+  paydayTitle: "จำลองวันเงินเดือนออก",
+  paydayMonth: "เดือน",
+  paydayRun: "จำลองวันเงินเดือนออก",
+  paydayRepeat: "เดือนนี้จำลองไปแล้ว ผลเดิม ไม่มีอะไรเปลี่ยน",
+  paydayResult: (total: string, budget: string) => `ค่างวดรวม ${total} งบ ${budget}`,
+  paydayUnavailable: "ยังเปิดใช้ไม่ได้ (ต้องเปิด DEMO_ENDPOINTS_ENABLED ที่ backend)",
+  scenesTitle: "ฉาก",
+  sceneFirst: "เริ่มใหม่: ยังไม่ตั้งค่า",
+  scenePersona: "มิ้นท์: ตั้งค่าแล้ว",
+  sceneOver: "มิ้นท์: มีเดือนเกินงบ",
+  sceneOverNow: "มิ้นท์: เกินงบตั้งแต่เดือนนี้",
+  done: "เปลี่ยนฉากแล้ว",
 };

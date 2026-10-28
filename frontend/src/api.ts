@@ -6,11 +6,17 @@
  * proxy (/api is stripped; to be confirmed when wiring).
  */
 import type {
+  AssistantPlanOut,
+  AssistantSummaryOut,
   BufferOut,
   CodedDetail,
   DebtSummary,
   ManualEntryIn,
   MonthsOut,
+  MoveIn,
+  MovedOut,
+  NotificationsOut,
+  PaydayOut,
   PreviewOut,
   RecordedOut,
   SettingsIn,
@@ -116,7 +122,7 @@ export async function getBuffer(): Promise<BufferOut> {
   return (await call<BufferOut>("GET", "/buffer")).body;
 }
 
-// ---- ตรวจสอบก่อนผ่อน (screen 3) ------------------------------------------------------
+// ---- เช็กก่อนผ่อน (screen 3) ------------------------------------------------------
 
 /** Writes nothing. 409 SETTINGS_REQUIRED without settings. */
 export async function previewInstallment(entry: ManualEntryIn): Promise<PreviewOut> {
@@ -135,4 +141,51 @@ export async function suggestMonthly(itemPrice: Money, months: number): Promise<
 /** 201 new or 200 repeat (same client_request_id): the body says which. */
 export async function recordInstallment(entry: ManualEntryIn): Promise<RecordedOut> {
   return (await call<RecordedOut>("POST", "/installments", entry)).body;
+}
+
+// ---- กันชน (screen 4) --------------------------------------------------------
+
+/** 201 moved or 200 repeat (same client_request_id); 422 AMOUNT_ABOVE_BALANCE. */
+export async function moveToMain(request: MoveIn): Promise<MovedOut> {
+  return (await call<MovedOut>("POST", "/buffer/move-to-main", request)).body;
+}
+
+// ---- แจ้งเตือน (screen 5) ------------------------------------------------------
+
+/** TODO(backend): GET /notifications is not built yet; answered by the mock only. */
+export async function getNotifications(): Promise<NotificationsOut> {
+  return (await call<NotificationsOut>("GET", "/notifications")).body;
+}
+
+/** TODO(backend): POST /notifications/read marks every notification read (opening the list). */
+export async function markNotificationsRead(): Promise<NotificationsOut> {
+  return (await call<NotificationsOut>("POST", "/notifications/read")).body;
+}
+
+// ---- Assistant plan (Home, ภาระผ่อนรายเดือน, the form hint, the buffer) ------------
+
+/** GET /assistant/plan (merged backend): every number of the plan; 409 SETTINGS_REQUIRED. */
+export async function getAssistantPlan(): Promise<AssistantPlanOut> {
+  return (await call<AssistantPlanOut>("GET", "/assistant/plan")).body;
+}
+
+/** TODO(backend, tomorrow): POST /assistant/summary, the AI summary. The mock returns an example. */
+export async function getAssistantSummary(): Promise<AssistantSummaryOut> {
+  return (await call<AssistantSummaryOut>("POST", "/assistant/summary")).body;
+}
+
+// ---- Demo panel -----------------------------------------------------------------
+
+/** POST /demo/payday: mounted only with DEMO_ENDPOINTS_ENABLED=true (404 otherwise). */
+export async function runPayday(month: string): Promise<{ created: boolean; out: PaydayOut }> {
+  const answer = await call<PaydayOut>("POST", "/demo/payday", { month });
+  return { created: answer.status === 201, out: answer.body };
+}
+
+export type DemoScene = "first_launch" | "persona" | "over_budget" | "over_budget_now";
+
+/** Mock only: there is no backend endpoint for scenes. */
+export async function setDemoScene(scene: DemoScene): Promise<void> {
+  if (!USE_MOCK) throw new Error("demo scenes exist only in the mock");
+  await call<unknown>("POST", "/demo/scene", { scene });
 }

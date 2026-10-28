@@ -3,10 +3,22 @@
  * footer (every screen), and the bottom navigation.
  */
 import type { ReactNode } from "react";
+import { getNotifications } from "../api.ts";
 import { APP_NAME, APP_NAME_TH, FOOTER, NAV } from "../copy.ts";
 import { navigate, type Route } from "../router.ts";
+import { DemoButton } from "./DemoPanel.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { LogoBean } from "./Logo.tsx";
+import {
+  NAV_TABS,
+  navActive,
+  navIconClass,
+  navLabelClass,
+  SCROLL_PAD_WITH_NAV,
+  SCROLL_PAD_WITHOUT_NAV,
+  type NavTab,
+} from "../navStyle.ts";
+import { useLoad } from "../useLoad.ts";
 
 type ScreenProps = {
   title?: string;
@@ -21,7 +33,7 @@ type ScreenProps = {
 export function Screen({ title, back, route, children, showNav = true, actions }: ScreenProps) {
   return (
     <div className="flex h-full flex-col bg-surface">
-      <header className="flex min-h-16 items-center gap-2 border-b border-line bg-card px-4">
+      <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-line bg-card px-4">
         {back !== undefined ? (
           <button
             type="button"
@@ -45,11 +57,14 @@ export function Screen({ title, back, route, children, showNav = true, actions }
       </header>
       {/* The scrollbar is hidden inside the phone frame only (index.css); the body
           still scrolls by wheel, touchpad, touch and keyboard (it takes focus). */}
-      <main tabIndex={0} className="phone-scroll flex-1 overflow-y-auto px-4 pt-4 pb-6 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-leaf-600">
+      <main
+        tabIndex={0}
+        className={`phone-scroll min-h-0 flex-1 overflow-y-auto px-4 pt-4 ${showNav ? SCROLL_PAD_WITH_NAV : SCROLL_PAD_WITHOUT_NAV} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-leaf-600`}
+      >
         <div className="flex flex-col gap-4">{children}</div>
         <Footer />
       </main>
-      {actions !== undefined && <div className="border-t border-line bg-card px-4 py-3 shadow-card">{actions}</div>}
+      {actions !== undefined && <div className="shrink-0 border-t border-line bg-card px-4 py-3 shadow-card">{actions}</div>}
       {showNav && <BottomNav current={route} />}
     </div>
   );
@@ -58,10 +73,12 @@ export function Screen({ title, back, route, children, showNav = true, actions }
 const HEADER_BUTTON =
   "relative inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-pill text-leaf-800 hover:bg-leaf-50";
 
-/** Top right: settings as a gear (PR B adds the notifications bell next to it). */
+/** Top right: the notifications bell with its unread count, and settings as a gear. */
 function HeaderActions({ route }: { route: Route }) {
   return (
-    <div className="-mr-2 flex items-center">
+    <div className="-mr-2 flex items-center gap-1">
+      <DemoButton />
+      {route !== "alerts" && <Bell />}
       {route !== "settings" && (
         <a href="#/settings" className={HEADER_BUTTON}>
           <Icon name="gear" label={NAV.settings} />
@@ -71,49 +88,55 @@ function HeaderActions({ route }: { route: Route }) {
   );
 }
 
+/** The unread count is the API's (`unread_count`); opening the list marks it read. */
+function Bell() {
+  const [load] = useLoad(getNotifications);
+  const unread = load.state === "ready" ? load.data.unread_count : 0;
+  return (
+    <a href="#/alerts" className={HEADER_BUTTON} aria-label={unread > 0 ? NAV.alertsUnread(unread) : NAV.alerts}>
+      <Icon name="bell" />
+      {unread > 0 && (
+        <span
+          aria-hidden="true"
+          className="absolute top-1 right-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-pill bg-risk-ink px-1 text-[0.75rem] leading-none font-bold text-white ring-2 ring-card"
+        >
+          {unread > 9 ? "9+" : unread}
+        </span>
+      )}
+    </a>
+  );
+}
+
 export function Footer() {
   return <p className="mt-8 text-center text-caption text-ink-muted">{FOOTER}</p>;
 }
 
-type NavItem = { route: Route; label: string; icon: IconName; primary?: boolean };
-
-// กันชน and ผู้ช่วยปลดหนี้ join in PR B. ตรวจสอบก่อนผ่อน is the most prominent item.
-const NAV_ITEMS: NavItem[] = [
-  { route: "home", label: NAV.home, icon: "home" },
-  { route: "think", label: NAV.think, icon: "think", primary: true },
-];
+// The tabs and which is selected live in navStyle.ts (UI-30); here only their look.
+const NAV_LOOK: Record<NavTab, { label: string; icon: IconName }> = {
+  home: { label: NAV.home, icon: "home" },
+  think: { label: NAV.think, icon: "think" },
+  buffer: { label: NAV.buffer, icon: "shield" },
+};
 
 function BottomNav({ current }: { current: Route }) {
   return (
-    <nav aria-label={NAV.menu} className="border-t border-line bg-card">
+    <nav aria-label={NAV.menu} className="shrink-0 border-t border-line bg-card">
       <ul className="flex">
-        {NAV_ITEMS.map((item) => {
-          const active = item.route === current || (item.route === "think" && current === "result");
+        {NAV_TABS.map((tab) => {
+          const item = { ...tab, ...NAV_LOOK[tab.route] };
+          const active = navActive(tab.route, current);
+          const primary = tab.primary;
           return (
-            <li key={item.route} className={item.primary === true ? "flex-[1.3]" : "flex-1"}>
+            <li key={item.route} className="min-w-0 flex-1">
               <a
                 href={`#/${item.route}`}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-16 flex-col items-center justify-center gap-0.5 text-center text-caption font-semibold leading-tight ${
-                  item.primary === true
-                    ? "text-leaf-800"
-                    : active
-                      ? "text-leaf-800"
-                      : "text-ink-muted hover:text-leaf-700"
-                }`}
+                className="group flex min-h-16 flex-col items-center justify-center gap-0.5 text-center text-caption leading-tight"
               >
-                {item.primary === true ? (
-                  <span
-                    className={`-mt-5 mb-0.5 inline-flex h-14 w-14 items-center justify-center rounded-pill bg-leaf-700 text-white shadow-card ring-4 ring-card ${
-                      active ? "bg-leaf-800" : "hover:bg-leaf-800"
-                    }`}
-                  >
-                    <Icon name={item.icon} size={28} />
-                  </span>
-                ) : (
-                  <Icon name={item.icon} size={24} />
-                )}
-                {item.label}
+                <span className={`${navIconClass(primary, active)} ${active ? "" : "group-hover:text-leaf-700"}`}>
+                  <Icon name={item.icon} size={primary ? 28 : 22} />
+                </span>
+                <span className={navLabelClass(active)}>{item.label}</span>
               </a>
             </li>
           );

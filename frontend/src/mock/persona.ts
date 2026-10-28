@@ -100,7 +100,7 @@ export type ScenarioEntry = {
   monthly_amount: Money;
 };
 
-/** The three ตรวจสอบก่อนผ่อน examples the demo switches between. */
+/** The three เช็กก่อนผ่อน examples the demo switches between. */
 export const SCENARIOS: Record<Scenario, ScenarioEntry> = {
   // Next month: 2,000 + 1,500 + 1,200 = 4,700 <= 5,000 budget. Every month fits.
   GREEN: { item_name: "โทรศัพท์", item_price: "12000.00", months: 10, monthly_amount: "1200.00" },

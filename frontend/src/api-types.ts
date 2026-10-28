@@ -101,7 +101,7 @@ export type ManualEntryIn = {
 
 /**
  * TODO(backend, Session 15): GET /installments/suggested-monthly?item_price=&months=
- * The 0% monthly amount the ตรวจสอบก่อนผ่อน form prefills: item_price / months, rounded UP
+ * The 0% monthly amount the เช็กก่อนผ่อน form prefills: item_price / months, rounded UP
  * to 0.01 (so the payments never add up to less than the price). Mocked until then.
  */
 export type SuggestedMonthlyOut = { monthly_amount: Money };
@@ -208,3 +208,101 @@ export type PaydayOut = {
   amount: Money; // the shortfall or the leftover saved
   buffer_balance: Money;
 };
+
+// ---- Notifications (screen 5) -------------------------------------------------
+
+export type NotificationKind =
+  | "new_debt"
+  | "cash_withdrawal"
+  | "cash_loan"
+  | "over_cap"
+  | "payday_shortfall"
+  | "leftover_saved";
+
+/**
+ * TODO(backend): GET /notifications is not built yet (Session 13 carry-over).
+ * Expected shape, from the `notifications` table: newest first; title and body are
+ * the Thai text already written by backend/app/notifications/copy.py.
+ */
+export type NotificationOut = {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  created_at: string; // ISO datetime
+  read: boolean; // TODO(backend): new; false until POST /notifications/read
+};
+/**
+ * TODO(backend): `unread_count` is new; the header bell shows it as a badge.
+ * POST /notifications/read marks every notification read and answers the same shape.
+ */
+export type NotificationsOut = { notifications: NotificationOut[]; unread_count: number };
+
+// ---- Assistant plan (GET /assistant/plan, merged backend) -------------------------
+
+/**
+ * Copied from backend/app/assistant/schemas.py (PlanOut, read only, 2026-10-27).
+ * Every number comes from code, never from AI (L69, L70). Money is a string;
+ * months are "YYYY-MM". 409 SETTINGS_REQUIRED without settings.
+ */
+export type PlanMonth = {
+  month: string;
+  total: Money;
+  budget: Money;
+  over_budget: boolean;
+  headroom: Money; // max(0, budget - total)
+};
+
+export type BufferPlanOut = {
+  shortfall: Money; // total - budget, added over the months over budget
+  balance: Money; // the buffer (L66)
+  covered: boolean; // the buffer covers the whole shortfall
+  still_short: Money; // max(0, shortfall - balance)
+};
+
+/** Why consolidation is or is not offered (L70), checked in this order. */
+export type ConsolidationReason =
+  | "NOT_NEEDED"
+  | "OVERDUE_DEBT"
+  | "DISPUTED_DEBT"
+  | "ESTIMATE_TOO_LARGE"
+  | "PAYMENT_ABOVE_BUDGET"
+  | "ELIGIBLE";
+
+/** One loan replacing every counted installment. The rate and term are EXAMPLE values. */
+export type EstimateOut = {
+  principal: Money;
+  annual_rate: string; // e.g. "0.18": an example yearly rate, not a real one
+  rate_is_example: true;
+  rate_note: "example, not a real rate";
+  term_months: number;
+  first_due_month: string;
+  monthly_payment: Money; // level payment, rounded up to 0.01
+  total_cost: Money; // monthly_payment x term_months
+  current_remaining_total: Money; // what is left on the current plans
+  extra_cost: Money; // total_cost - current_remaining_total
+};
+
+export type ConsolidationOut = {
+  eligible: boolean;
+  reason: ConsolidationReason;
+  estimate: EstimateOut | null; // only when eligible
+};
+
+export type AssistantPlanOut = {
+  months: PlanMonth[]; // this month to the last month due, at most 600
+  months_truncated: boolean;
+  back_in_budget_month: string | null; // null if every month already is
+  pause_until: string | null; // back_in_budget_month when this month is over budget
+  safe_new_monthly: Money; // for a new safe_new_months-month installment from safe_new_from
+  safe_new_from: string;
+  safe_new_months: number; // 12
+  buffer_plan: BufferPlanOut;
+  consolidation: ConsolidationOut;
+};
+
+/**
+ * TODO(backend, tomorrow): POST /assistant/summary, the AI summary of the plan.
+ * Mock now: a fixed example built from the plan's numbers, labelled ตัวอย่าง.
+ */
+export type AssistantSummaryOut = { text: string; is_example: boolean };

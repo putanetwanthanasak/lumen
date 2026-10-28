@@ -1,13 +1,15 @@
 /**
- * Screen 3: ตรวจสอบก่อนผ่อน, the form (DESIGN.md section 7.3).
+ * Screen 3: เช็กก่อนผ่อน, the form (DESIGN.md section 7.3).
  * Kind, item, app, price, months, monthly amount (prefilled with the API's 0%
  * suggestion until the user edits it) and the first due month (no default). The
  * preview opens the result screen (screens/Result.tsx); the form survives the trip.
  */
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ApiError, getSettings, previewInstallment, suggestMonthly } from "../api.ts";
+import { ApiError, getAssistantPlan, getSettings, previewInstallment, suggestMonthly } from "../api.ts";
+import { formHint } from "../assistantText.ts";
 import type { InstallmentKind } from "../api-types.ts";
 import { THINK } from "../copy.ts";
+import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Alert, Button, Card, ErrorState, Field, Loading, SettingsMissing } from "../components/ui.tsx";
 import { SCENARIOS, type Scenario } from "../mock/persona.ts";
@@ -35,13 +37,20 @@ import { useLoad } from "../useLoad.ts";
 const KINDS: InstallmentKind[] = ["purchase", "cash_withdrawal", "cash_loan"];
 const SUGGEST_DELAY_MS = 300; // wait for the user to stop typing
 
+/** The form needs the settings; the safe-amount hint is an extra that may fail alone. */
+async function loadForm() {
+  const settings = await getSettings();
+  if (settings === null) return null;
+  return { hint: await getAssistantPlan().then(formHint, () => null) };
+}
+
 export function ThinkFirstScreen() {
-  const [load, reload] = useLoad(getSettings);
+  const [load, reload] = useLoad(loadForm);
   return (
     <Screen route="think" title={THINK.title} back="home">
       {load.state === "loading" && <Loading lines={3} />}
       {load.state === "error" && <ErrorState onRetry={reload} />}
-      {load.state === "ready" && (load.data === null ? <SettingsMissing onSetUp={() => navigate("settings")} /> : <ThinkFirst />)}
+      {load.state === "ready" && (load.data === null ? <SettingsMissing onSetUp={() => navigate("settings")} /> : <ThinkFirst hint={load.data.hint} />)}
     </Screen>
   );
 }
@@ -68,7 +77,7 @@ function formFor(scenario: Scenario, base: Form): Form {
   };
 }
 
-function ThinkFirst() {
+function ThinkFirst({ hint }: { hint: string | null }) {
   const [form, setForm] = useState<Form>(() => {
     const kept = getDraft();
     if (kept !== null) return kept.form; // back from the result screen ("แก้ไข")
@@ -152,6 +161,12 @@ function ThinkFirst() {
   return (
     <>
       <p className="text-body text-ink-muted">{THINK.intro}</p>
+      {hint !== null && (
+        <p className="flex items-start gap-2 rounded-field bg-leaf-50 px-3 py-2 text-body text-leaf-800">
+          <Icon name="info" size={20} className="mt-0.5" />
+          {hint}
+        </p>
+      )}
       <div className="flex flex-col gap-2 rounded-field border-2 border-dashed border-info-line bg-info-bg p-3">
         <span className="text-caption font-semibold text-info-ink">{THINK.demoTitle}</span>
         <div className="grid grid-cols-3 gap-2">
@@ -238,7 +253,8 @@ type ChoiceProps<T extends string> = {
   legend: string;
   name: string;
   value: T | "";
-  options: { value: T; label: string }[];
+  /** `sub` is a second, smaller line (the first due month's "ต.ค. 2569"). */
+  options: { value: T; label: string; sub?: string }[];
   onChange: (value: T) => void;
   help?: string;
   error?: string | null;
@@ -253,7 +269,7 @@ function Choice<T extends string>({ legend, name, value, options, onChange, help
         {options.map((option) => (
           <label
             key={option.value}
-            className={`flex min-h-12 cursor-pointer items-center justify-center rounded-field border-2 px-1 text-center text-body font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-leaf-600 ${
+            className={`relative flex min-h-12 cursor-pointer flex-col items-center justify-center rounded-field border-2 px-1 py-1 text-center text-body leading-tight font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-leaf-600 ${
               value === option.value
                 ? "border-leaf-700 bg-leaf-50 text-leaf-800"
                 : `${error ? "border-risk-line" : "border-line"} bg-card text-ink-muted`
@@ -266,7 +282,10 @@ function Choice<T extends string>({ legend, name, value, options, onChange, help
               onChange={() => onChange(option.value)}
               className="sr-only"
             />
-            {option.label}
+            <span className="whitespace-nowrap">{option.label}</span>
+            {option.sub !== undefined && (
+              <span className="text-caption font-normal whitespace-nowrap">{option.sub}</span>
+            )}
           </label>
         ))}
       </div>
@@ -288,8 +307,8 @@ function FirstDue({ value, onChange, error }: { value: string; onChange: (v: str
       name="firstDue"
       value={value}
       options={[
-        { value: thisMonth, label: THINK.firstDueThis(thaiMonth(thisMonth)) },
-        { value: nextMonth, label: THINK.firstDueNext(thaiMonth(nextMonth)) },
+        { value: thisMonth, label: THINK.firstDueThis, sub: thaiMonth(thisMonth) },
+        { value: nextMonth, label: THINK.firstDueNext, sub: thaiMonth(nextMonth) },
       ]}
       onChange={onChange}
       help={THINK.firstDueHelp}

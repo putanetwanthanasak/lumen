@@ -1,5 +1,5 @@
 /**
- * The ตรวจสอบก่อนผ่อน form and its stages as data (screen 3), kept apart from React so
+ * The เช็กก่อนผ่อน form and its stages as data (screen 3), kept apart from React so
  * they can be tested (UI-16). Money stays the string the user typed (L49).
  *
  * A preview answer is shown only if the screen is still waiting for that very

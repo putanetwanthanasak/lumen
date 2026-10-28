@@ -3,11 +3,14 @@
  * UI-06 (critical): no floating-point handling of money in the client.
  * UI-07: src/api.ts is the only place that fetches.
  * UI-10: no em dash and no banned brand names (CLAUDE.md rules 5 and 10).
+ * UI-32: "เช็ก" wording, spelt with ก: never "เช็ค", and no button or nav label
+ *   says "ตรวจสอบ" (descriptive sentences may).
  */
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { test } from "node:test";
+import { HOME, NAV, THINK } from "../src/copy.ts";
 
 // npm runs the tests from frontend/ (the tests are compiled to .test-build first).
 const ROOT = process.cwd();
@@ -94,6 +97,16 @@ test("UI_10_no_banned_brand_names_in_src_or_design_md", () => {
   assert.deepEqual(scan([...files, DESIGN], pattern), []);
 });
 
+test("UI_32_check_before_installment_is_spelt_เช็ก_everywhere", () => {
+  // Wording change (parts 5 and 7): "เช็ก" with ก, never "เช็ค"; the old names are gone.
+  assert.deepEqual(scan([...files, DESIGN], /เช็ค|ตรวจสอบก่อนผ่อน|ตรวจสอบรายการอื่น/), []);
+  // Every button and nav label that checks says "เช็ก" (part 7).
+  for (const label of [NAV.think, HOME.thinkCta, THINK.title, THINK.another]) {
+    assert.match(label, /^เช็ก/, label);
+    assert.doesNotMatch(label, /ตรวจสอบ/, label);
+  }
+});
+
 test("UI_22_the_scrollbar_is_hidden_inside_the_phone_frame_only", () => {
   // The phone frame's scrolling body hides its scrollbar (Firefox and WebKit rules)...
   const css = readFileSync(join(SRC, "index.css"), "utf8");
@@ -106,5 +119,35 @@ test("UI_22_the_scrollbar_is_hidden_inside_the_phone_frame_only", () => {
   );
   // It still scrolls, and takes keyboard focus so arrow keys and Page Down work.
   const screen = readFileSync(join(SRC, "components", "Screen.tsx"), "utf8");
-  assert.match(screen, /<main tabIndex=\{0\} className="phone-scroll [^"]*overflow-y-auto/);
+  assert.match(screen, /<main\s+tabIndex=\{0\}\s+className=\{`phone-scroll [^`]*overflow-y-auto/);
+});
+
+test("UI_26_the_phone_frame_never_scrolls_and_hidden_inputs_stay_in_the_scrolling_body", () => {
+  // The frame clips (overflow: clip cannot be scrolled, even by focus or code)...
+  const app = readFileSync(join(SRC, "App.tsx"), "utf8");
+  assert.match(app, /className="relative h-dvh w-full overflow-clip /);
+  assert.doesNotMatch(app, /overflow-hidden/);
+  // ...and every visually hidden input sits in a `relative` label, so focusing it
+  // scrolls <main>, not the frame (the bug: the frame scrolled 157px and lifted the nav).
+  // From each sr-only class back to its tag: an `=>` inside the tag would stop a
+  // `[^>]*` scan, which once matched none of the inputs (B-UI-55).
+  let inputs = 0;
+  const hits = files.flatMap((file) => {
+    const text = readFileSync(file, "utf8");
+    return [...text.matchAll(/className="sr-only"/g)].flatMap((m) => {
+      if (!text.startsWith("<input", text.lastIndexOf("<", m.index))) return [];
+      inputs += 1;
+      const label = text.lastIndexOf("<label", m.index);
+      const tag = label === -1 ? "" : text.slice(label, m.index);
+      return /\brelative\b/.test(tag) ? [] : [`${relative(ROOT, file)} at ${m.index}`];
+    });
+  });
+  assert.deepEqual(hits, []);
+  // The term choices went with the consolidation screen (part 4).
+  assert.ok(inputs >= 2, `found ${inputs} hidden inputs; expected the first due and saving mode choices`);
+  // Only <main> scrolls: the bars around it never shrink.
+  const screen = readFileSync(join(SRC, "components", "Screen.tsx"), "utf8");
+  assert.match(screen, /<header className="[^"]*shrink-0/);
+  assert.match(screen, /<main\s+tabIndex=\{0\}\s+className=\{`phone-scroll min-h-0 flex-1 overflow-y-auto/);
+  assert.match(screen, /<nav aria-label=\{NAV.menu\} className="shrink-0 /);
 });
