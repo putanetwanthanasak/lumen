@@ -10,6 +10,8 @@ Spec docs are written in Thai. Read them for requirements; write everything you 
 - `docs/spec/04_architecture.md`: stack, folder layout, data model, webhook contract, processing flow
 - `docs/spec/05_testing_quality.md`: invariants (INV-x) and test cases (RE-x, WH-x, ID-x, ...)
 - `docs/progress/`: daily logs. Read the latest file before starting any session.
+- `docs/api/kidnee-endpoints.md`: the API the KidNee screens use, with exact JSON. Update it with any change to those endpoints.
+- Test ID families not yet in 05 (defined in the progress logs and the test docstrings): AF, NM, BF, PD, LO (Session 13); AS, CO (Session 14); UI-01 to UI-32 (frontend, Session 14-UI); DM `/debts/months`, SM suggested monthly, PV preview saving, BS buffer shortfalls, and NT-08 to NT-10 `GET /notifications` (Session 15A, after 05's NT-01 to NT-07).
 
 ## Locked decisions not yet reflected in docs/spec
 - **L40** Until Oct 19, build core + tests only: Ledger, webhook, idempotency, auto-save, debt summary, new-debt alerts. No Payoff Planner, no AI, no polished frontend yet.

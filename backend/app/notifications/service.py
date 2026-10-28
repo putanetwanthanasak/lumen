@@ -11,7 +11,7 @@ import logging
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -133,6 +133,26 @@ def store_payday_alert(
     session.add(row)
     session.flush()
     return row.id
+
+
+INBOX_LIMIT = 100
+
+
+def inbox(
+    session: Session, user_id: str, *, limit: int = INBOX_LIMIT
+) -> tuple[list[Notification], int]:
+    """The user's newest `limit` alerts, newest first, and how many they have in all.
+    Every alert is listed whatever its delivery status: the row is the record."""
+    rows = session.execute(
+        select(Notification)
+        .where(Notification.user_id == user_id)
+        .order_by(Notification.created_at.desc(), Notification.id.desc())
+        .limit(limit)
+    ).scalars()
+    count = session.execute(
+        select(func.count()).select_from(Notification).where(Notification.user_id == user_id)
+    ).scalar_one()
+    return list(rows), count
 
 
 def deliver(session: Session, notification_id: uuid.UUID, push: PushProvider) -> None:

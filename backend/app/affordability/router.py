@@ -9,7 +9,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.affordability.schemas import VerdictOut
+from app.affordability.schemas import PreviewOut, VerdictOut
 from app.affordability.service import (
     SETTINGS_REQUIRED,
     SettingsRequiredError,
@@ -20,6 +20,10 @@ from app.api_body import json_body
 from app.db import get_session
 from app.errors import coded
 from app.installments.schemas import ManualEntryIn
+from app.installments.service import reported_saving
+from app.providers import get_bank_provider
+from app.providers.base import BankAccountProvider
+from app.savings.service import would_save
 from app.users import demo_user
 
 router = APIRouter()
@@ -38,11 +42,21 @@ def preview_installment(
     user_id: Annotated[str, Depends(demo_user)],
     entry: Annotated[ManualEntryIn, Depends(json_body(ManualEntryIn))],
     session: Annotated[Session, Depends(get_session)],
-) -> VerdictOut:
-    """The month-by-month verdict if this entry were recorded. Nothing is written:
-    the session is never committed."""
+    bank: Annotated[BankAccountProvider, Depends(get_bank_provider)],
+) -> PreviewOut:
+    """The month-by-month verdict if this entry were recorded, and what recording it
+    would save. Nothing is written: the session is never committed."""
     try:
         profile = require_profile(session, user_id)
     except SettingsRequiredError:
         raise SETTINGS_REQUIRED_ERROR from None
-    return VerdictOut.of(assess(session, user_id, entry.schedule, profile, include_candidate=True))
+    verdict = VerdictOut.of(
+        assess(session, user_id, entry.schedule, profile, include_candidate=True)
+    )
+    # A repeat of a recorded request saves nothing new: POST reports its first answer.
+    saving = reported_saving(session, user_id=user_id, entry=entry)
+    if saving is None:
+        saving = would_save(
+            session, user_id=user_id, kind=entry.kind, item_price=entry.item_price, bank=bank
+        )
+    return PreviewOut(**verdict.model_dump(), saving_if_recorded=saving)

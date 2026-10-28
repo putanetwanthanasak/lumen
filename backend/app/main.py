@@ -14,6 +14,7 @@ from app.db import describe_db_error
 from app.debts.router import router as debts_router
 from app.disputes.router import router as disputes_router
 from app.installments.router import router as installments_router
+from app.notifications.router import router as notifications_router
 from app.payday.router import router as payday_router
 from app.user_settings.router import router as settings_router
 from app.webhooks.router import router as webhooks_router
@@ -54,6 +55,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(buffer_router)
     app.include_router(assistant_router)
     app.include_router(consolidation_router)
+    app.include_router(notifications_router)
     if settings.demo_endpoints_enabled:
         app.include_router(payday_router)  # demo only; absent (404) by default
 

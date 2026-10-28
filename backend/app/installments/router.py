@@ -16,10 +16,11 @@ from sqlalchemy.orm import Session
 from app.affordability.router import SETTINGS_REQUIRED_ERROR
 from app.affordability.schemas import VerdictOut
 from app.affordability.service import SettingsRequiredError, assess, require_profile
-from app.api_body import json_body
+from app.api_body import json_body, query_params
 from app.db import get_session
 from app.installments.schemas import ManualEntryIn, RecordedOut
 from app.installments.service import Outcome, record
+from app.installments.suggest import SuggestedMonthlyOut, SuggestIn, suggested_monthly
 from app.notifications import service as notifications
 from app.providers import get_bank_provider, get_push_provider
 from app.providers.base import BankAccountProvider, PushProvider
@@ -70,3 +71,19 @@ def record_installment(
     )
     status_code = 201 if result.outcome == Outcome.CREATED else 200
     return JSONResponse(status_code=status_code, content=body.model_dump(mode="json"))
+
+
+@router.get(
+    "/installments/suggested-monthly",
+    responses={
+        401: {"description": "No or malformed X-Demo-User"},
+        422: {"description": "item_price or months missing or invalid"},
+    },
+)
+def suggest_monthly(
+    _user_id: Annotated[str, Depends(demo_user)],
+    query: Annotated[SuggestIn, Depends(query_params(SuggestIn))],
+) -> SuggestedMonthlyOut:
+    """The 0% monthly amount for ?item_price=&months=: item_price / months rounded UP
+    to 0.01. Writes nothing and reads nothing but the query."""
+    return SuggestedMonthlyOut(monthly_amount=suggested_monthly(query.item_price, query.months))

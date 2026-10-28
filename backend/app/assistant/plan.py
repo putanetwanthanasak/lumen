@@ -60,6 +60,25 @@ class BufferPlan:
     still_short: Decimal
 
 
+@dataclass(frozen=True)
+class ShortfallMonth:
+    """One month over budget, with the buffer spent on the months in date order."""
+
+    month: Month
+    total: Decimal
+    shortfall: Decimal  # total - budget
+    covered_by_buffer: Decimal  # min(what is left of the buffer, shortfall)
+    still_short: Decimal  # shortfall - covered_by_buffer
+
+
+@dataclass(frozen=True)
+class Shortfalls:
+    budget: Decimal
+    months: list[ShortfallMonth]  # at most HORIZON_CAP; buffer covers every month
+    months_truncated: bool
+    buffer: BufferPlan
+
+
 class Reason(StrEnum):
     """Why consolidation is or is not offered (L70), checked in this order."""
 
@@ -157,6 +176,40 @@ def rows_of(totals: Sequence[MonthTotal], budget: Decimal) -> list[MonthRow]:
         MonthRow(t.month, t.total, over_budget(t.total, budget), headroom(t.total, budget))
         for t in totals
     ]
+
+
+def buffer_plan(over: Sequence[Span], budget: Decimal, balance: Decimal) -> BufferPlan:
+    """How far the buffer covers the months over budget, all of them together."""
+    shortfall = sum(((span.total - budget) * span.months for span in over), ZERO)
+    return BufferPlan(
+        shortfall=shortfall,
+        balance=balance,
+        covered=balance >= shortfall,
+        still_short=max(ZERO, shortfall - balance),
+    )
+
+
+def shortfalls(
+    schedules: Sequence[Scheduled], *, now: Month, budget: Decimal, balance: Decimal
+) -> Shortfalls:
+    """Every month over budget from now on, the buffer spent on them in date order
+    (Session 15A). The rows stop at HORIZON_CAP months over budget; the totals are
+    buffer_plan's, over every month, the same numbers GET /assistant/plan shows."""
+    over = [span for span in spans(schedules, now) if over_budget(span.total, budget)]
+    rows: list[ShortfallMonth] = []
+    left = balance
+    for span in over:
+        gap = span.total - budget
+        for k in range(min(span.months, HORIZON_CAP - len(rows))):
+            covered = min(left, gap)
+            left -= covered
+            rows.append(ShortfallMonth(span.first.plus(k), span.total, gap, covered, gap - covered))
+    return Shortfalls(
+        budget=budget,
+        months=rows,
+        months_truncated=len(rows) < sum(span.months for span in over),
+        buffer=buffer_plan(over, budget, balance),
+    )
 
 
 def back_in_budget(over: Sequence[Span]) -> Month | None:
@@ -278,7 +331,6 @@ def build(
     # means no L65 RED: at most a third of income in every month (review F2).
     safe_from = back or now
     window = month_totals(schedules, first=safe_from, count=SAFE_NEW_TERM)
-    shortfall = sum(((span.total - budget) * span.months for span in over), ZERO)
     return Plan(
         budget=budget,
         rows=rows,
@@ -289,12 +341,7 @@ def build(
             min(headroom(t.total, budget), third_headroom(t.total, income)) for t in window
         ),
         safe_new_from=safe_from,
-        buffer=BufferPlan(
-            shortfall=shortfall,
-            balance=buffer_balance,
-            covered=buffer_balance >= shortfall,
-            still_short=max(ZERO, shortfall - buffer_balance),
-        ),
+        buffer=buffer_plan(over, budget, buffer_balance),
         consolidation=consolidation(
             debts,
             over,

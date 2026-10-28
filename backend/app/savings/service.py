@@ -67,6 +67,40 @@ def saving_rule(settings: UserSettings) -> SavingRule | None:
     return None
 
 
+def active_rule(session: Session, user_id: str, kind: str) -> SavingRule | None:
+    """The rule a new installment of this kind saves by, or None if it saves nothing."""
+    if kind in NEVER_SAVE_KINDS:  # INV-5: decided before anything else
+        return None
+    settings = session.get(UserSettings, user_id)
+    # SV-01, SV-02: a missing row means auto-save was never switched on.
+    if settings is None or not settings.auto_save_enabled or settings.consent_at is None:
+        return None
+    return saving_rule(settings)  # None: no rule set yet, nothing to save by
+
+
+def _saving(kind: str, item_price: Decimal, bank_balance: Decimal, rule: SavingRule) -> Decimal:
+    """The L63 amount with the safety net, for both auto_save and would_save."""
+    return compute_saving(
+        kind=kind,
+        item_value=item_price,
+        bank_balance=bank_balance,
+        rule=rule,
+        protected_min=load_rules().safety_net.protected_min_balance,
+    )
+
+
+def would_save(
+    session: Session, *, user_id: str, kind: str, item_price: Decimal, bank: BankAccountProvider
+) -> Decimal:
+    """What auto_save would save for this installment now (the preview's
+    saving_if_recorded). Read-only: no lock and no write, so a purchase that commits
+    in between can change the answer; recording decides again under the lock."""
+    rule = active_rule(session, user_id, kind)
+    if rule is None:
+        return ZERO
+    return _saving(kind, item_price, bank.get_balance(user_id), rule)
+
+
 def auto_save(
     session: Session,
     *,
@@ -84,14 +118,8 @@ def auto_save(
     after the transaction passes reconcile. The saving belongs to the installment's
     user (L51), and its amount follows that user's own rule (L63) on either path.
     """
-    if kind in NEVER_SAVE_KINDS:  # INV-5: decided before anything else
-        return ZERO
-    settings = session.get(UserSettings, user_id)
-    # SV-01, SV-02: a missing row means auto-save was never switched on.
-    if settings is None or not settings.auto_save_enabled or settings.consent_at is None:
-        return ZERO
-    rule = saving_rule(settings)
-    if rule is None:  # no rule set yet: nothing to save by
+    rule = active_rule(session, user_id, kind)
+    if rule is None:
         return ZERO
 
     # R3: hold this user's balance row until commit, before reading the bank. A second
@@ -99,13 +127,7 @@ def auto_save(
     # one's transfer, so two savings cannot jointly pass the safety net. The version
     # check in adjust_balance stays as a second layer.
     lock_balance(session, user_id)
-    amount = compute_saving(
-        kind=kind,
-        item_value=item_price,
-        bank_balance=bank.get_balance(user_id),
-        rule=rule,
-        protected_min=load_rules().safety_net.protected_min_balance,
-    )
+    amount = _saving(kind, item_price, bank.get_balance(user_id), rule)
     if amount == ZERO:
         return ZERO
 

@@ -142,10 +142,11 @@ SHORTFALL_TITLE = "เดือนนี้ค่างวดเกินงบ"
 SHORTFALL_BODY = (
     "เดือน {month} ค่างวดรวม {total} บาท เกินงบ {shortfall} บาท คุณมีกันชน {buffer} บาท ย้ายมาช่วยจ่ายได้"
 )
-# With an empty buffer there is nothing to move, so point to the payoff assistant
-# instead (the user's wording, Session 13 review round 2 F4).
+# With an empty buffer there is nothing to move, so point to the monthly view, which
+# shows when the months are back within budget (Session 15A; the payoff assistant
+# screen was removed in the KidNee UI).
 SHORTFALL_BODY_NO_BUFFER = (
-    "เดือน {month} ค่างวดรวม {total} บาท เกินงบ {shortfall} บาท ลองเปิดผู้ช่วยปลดหนี้เพื่อดูแผนได้"
+    "เดือน {month} ค่างวดรวม {total} บาท เกินงบ {shortfall} บาท ลองดูภาระผ่อนรายเดือนว่าจะกลับมาอยู่ในงบเมื่อไร"
 )
 LEFTOVER_TITLE = "ออมส่วนที่เหลือจากงบแล้ว"
 LEFTOVER_BODY = "เดือน {month} ค่างวดรวม {total} บาท ต่ำกว่างบ {leftover} บาท ย้ายเข้ากันชนแล้ว"
