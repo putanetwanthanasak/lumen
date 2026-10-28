@@ -148,6 +148,7 @@ Components use tokens only, never raw hex.
 | `info-bg` / `info-line` / `info-ink` | `#eaf3fb` / `#a9cbe9` / `#1d4e7a` | neutral notices, Demo tags |
 | `bar-ok` / `bar-over` / `bar-risk` | `#138a52` / `#c27c00` / `#9b1c1c` | month bars |
 | `teal-50` / `100` / `200` / `700` / `800` | `#e8f7f7` / `#c4ebec` / `#94d9dc` / `#0c6a72` / `#0a535a` | the buffer (feature 2) |
+| `teal-edge` | `#358b92` | the wallet's edge (Home and the buffer screen), where it meets the page |
 | `bank-50` / `200` / `700` / `800` | `#eef3fd` / `#b3c9f2` / `#2a4fa0` / `#1f3d7d` | the bank's consolidation offer |
 | `ai-from` / `ai-to` / `ai-line` / `ai-ink` / `ai-edge` | `#f3effe` / `#e8f4fd` / `#d6ccf6` / `#4b3699` / `#8a76d6` | the assistant only (soft gradient; `ai-edge` is the panel's edge) |
 | `quiet-bg` / `quiet-line` / `quiet-ink` / `quiet-edge` | `#eef2f6` / `#d3dce6` / `#3f5166` / `#7a8a9d` | a note with nothing to act on (`quiet-edge` is the banner's edge) |
@@ -166,8 +167,8 @@ segments), on `warn-bg` 5.86; `bank-700` on `bank-50` 6.93; the hero bar on its
 `bank-700`, 7.71; its tag, `bank-800` on white, 10.39.
 Card edges against the page (surface / card), at least 3:1 (1.4.11): `warn-edge`
 3.67 / 3.93, `bank-700` 7.19 / 7.71, `ai-edge` 3.47 / 3.72, `quiet-edge` 3.29 /
-3.53. The light lines they replace blend in: `bank-200` 1.56, `ai-line` 1.42,
-`quiet-line` 1.29, `warn-line` 1.52 on surface. Test UI-35 recomputes these pairs
+3.53, `teal-edge` 3.73 / 3.99. The light lines they replace blend in: `bank-200`
+1.56, `ai-line` 1.42, `quiet-line` 1.29, `warn-line` 1.52, `teal-100` 1.19 on surface. Test UI-35 recomputes these pairs
 from `index.css`, the edges from `EDGE` in `accent.ts`.
 
 ### Feature accents (`src/accent.ts`)
@@ -177,9 +178,12 @@ and its text. The teal, bank, ai and quiet classes appear in `accent.ts` only
 (UI-34 scans `src/`), and the coloured lines and chips on Home are `Marked` values
 (accent, icon, text). A tinted card that meets the page takes its `EDGE`, so its
 light tint never blends into the page: the strip (`warn-edge`, 2px), the bank's
-offer (`bank-700`, 2px), the assistant's panel (`ai-edge`) and the consolidation
-banner (`quiet-edge`). UI-35 measures each edge, and checks Home's markup in three
-scenes for a tinted card without its edge.
+offer (`bank-700`, 2px), the assistant's panel (`ai-edge`), the consolidation
+banner (`quiet-edge`), and the buffer's wallet on Home and the buffer screen's
+balance card (`teal-edge`, 2px). UI-35 measures each edge, and checks Home's markup
+in four scenes and the buffer screen's card for a tinted card without its edge.
+Alerts (5.6) keep their light lines: they are messages, carried by their icon and
+words, not cards.
 
 | Accent | Tokens | Icon | Text | Used for |
 |---|---|---|---|---|
@@ -319,12 +323,12 @@ data (UI-33); they format, never add up.
 | Card | Shape | Shrinks or goes when |
 |---|---|---|
 | Hero, this month | the only white card with a `text-display` number; the bar; one status line | nothing over budget in the months shown: no strip, one line |
-| Over-budget strip | an amber band joined to the hero's bottom edge, framed in `warn-edge` (2px): title, month chips in two columns ("⚠ พ.ย. 2569" over "+1,500.00 บาท"), "และอีก {k} เดือนหลังจากนั้น", the total over all months, the buffer line, an outline link | shown only while a month is over |
+| Over-budget strip | an amber band joined to the hero's bottom edge, framed in `warn-edge` (2px): title, month chips in two columns ("⚠ พ.ย. 2569" over "+1,500.00 บาท"; the month only when the answer has no `over_by`), "และอีก {k} เดือนหลังจากนั้น", the total over all months, the buffer line, an outline link | shown only while a month is over |
 | เช็กก่อนผ่อน | the 56px green pill and its hint | never |
-| Wallet | one wide teal button: shield badge, "กันชนของคุณ ›", the balance at `text-title`; on the right 6 segments and "พอ {n} เดือน" | never; the meter is empty at 0 months |
+| Wallet | one wide teal button framed in `teal-edge` (2px): shield badge, "กันชนของคุณ ›", the balance at `text-title`; on the right 6 segments and "พอ {n} เดือน" | never; the meter is empty at 0 months |
 | Assistant bubble | a soft gradient panel with an `ai-edge` border; the mascot speaks from the left into a white bubble with a tail | loading: "กำลังสรุป..." at a fixed height, no spinner; error: one line and "ลองอีกครั้ง"; no plan: left out |
 | Consolidation banner | one slim grey-blue line, 44px, with a `quiet-edge` border, "ⓘ ... ›"; tap to show the reason | it is the offer's shrunk form |
-| Bank offer | a white card framed in `bank-700` (2px) with a solid blue header band: the bank icon, the white title, the "ตัวอย่างการประมาณ" tag. On the white body (`p-4`): two light-blue boxes "ตอนนี้" and "ถ้ารวมหนี้ (ตัวอย่าง)", every amount at `text-lead` bold, the arrow on the gap between them (not a column of its own, so each amount keeps its "บาท" on one line in the 370px frame); one benefit line; the example rate | shown only when the plan says eligible (L70) |
+| Bank offer | a white card framed in `bank-700` (2px) with a solid blue header band: the bank icon, the white title, the "ตัวอย่างการประมาณ" tag. On the white body (`p-4`): two light-blue boxes "ตอนนี้" and "ถ้ารวมหนี้ (ตัวอย่าง)", every amount at `text-lead` bold, the arrow on the gap between them (not a column of its own, so each amount keeps its "บาท" on one line in the 370px frame); one benefit line (left out when the answer has no `monthly_reduction`); the example rate | shown only when the plan says eligible (L70) |
 | Installments | flat (border, no shadow), last | empty: one sentence |
 
 ## 6. Layout and navigation
@@ -368,7 +372,8 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
      being the rows after this month ("เดือนนี้ยังอยู่ในงบ" when there are none);
    - this month over: an amber bar and "⚠ เดือนนี้ค่างวดรวมเกินงบที่ตั้งไว้";
    - any month over: the amber strip "เดือนที่ค่างวดรวมเกินงบ", one chip per month
-     with its `over_by` (read aloud as "เกินงบ 1,500.00 บาท"); then, from the plan,
+     with its `over_by` (read aloud as "เกินงบ 1,500.00 บาท"; an answer without it
+     gives the month only, read as "เกินงบ", never a guessed amount, UI-39); then, from the plan,
      "และอีก {k} เดือนหลังจากนั้น" when months after the six shown are over too, the
      total "ค่างวดส่วนที่เกินงบรวมทุกเดือน ..." and the buffer line about that total
      ("กันชน ... พอจ่ายส่วนที่เกินได้ทั้งหมด" or "... ยังขาดอีก ..."), so the amounts on
@@ -377,7 +382,7 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
      "ดูภาระผ่อนรายเดือน ›" (green), as on the payday alert (UI-17).
    There is no separate upcoming-months card.
 3. **เช็กก่อนผ่อน**, the 56px primary button, with a one-line hint.
-4. **Wallet** (`GET /buffer`): the balance, and segments filled up to the API's
+4. **Wallet** (`GET /buffer`, framed in `teal-edge`): the balance, and segments filled up to the API's
    `months_covered` (at most 6) with "พอ {n} เดือน", "ยังไม่พอ 1 เดือน" at 0, or
    "ไม่มีค่างวด" when nothing is owed. Tap: the buffer screen.
 5. **Assistant bubble** (`AssistantCards.tsx`, `POST /assistant/summary`, loaded
@@ -394,7 +399,9 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
      as bold as its monthly amount (UI-38), so a lower payment that costs more in
      total is plain to see without a line of its own. Then one benefit line at body
      size, "ค่างวดลดลงเดือนละ {monthly_reduction} ทุกเดือนกลับมาอยู่ในงบ", from the API
-     (never worked out on screen) and left out unless it is above 0.00;
+     (never worked out on screen) and left out unless it is above 0.00, and when
+     the answer has no readable `monthly_reduction` (UI-39: the card shows whole
+     without it, and the console says why);
      "ทุกเดือนกลับมาอยู่ในงบ" holds for every offer, since the plan offers only a loan
      that brings every month back within budget (L70 b). Then the term and the example rate
      "(ไม่ใช่อัตราจริง)". A phrase that does not fit moves to the next line whole
@@ -489,7 +496,7 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
 
 ### 7.4 Screen 4: Buffer, feature 2 (`#/buffer`, `screens/Buffer.tsx`)
 - Teal: the header is tinted with the shield. The balance card is the wallet's
-  colour: shield badge, "ยอดในกันชน", the balance, the 6-segment meter,
+  colour and edge (`EDGE.buffer`, UI-35): shield badge, "ยอดในกันชน", the balance, the 6-segment meter,
   "พอจ่ายค่างวดได้ประมาณ N เดือน" (or nothing owed), and the monthly total. After a
   move the new balance shows at once; the meter and the months wait for `GET /buffer`
   to answer for it (`walletFor`, UI-13), so they never show the old balance's months.
@@ -563,7 +570,7 @@ Source of truth: `frontend/src/copy.ts`. The key strings:
 | Connection error | เชื่อมต่อไม่สำเร็จ ข้อมูลของคุณยังอยู่ครบ ลองอีกครั้งได้เลย |
 | Settings missing | บอกรายได้และงบผ่อนต่อเดือนก่อน KidNee ถึงจะช่วยคิดให้ได้ |
 | Money errors | กรอกจำนวนเงินด้วยนะ · ทศนิยมได้ไม่เกิน 2 ตำแหน่ง · จำนวนเงินต้องมากกว่า 0 |
-| Hero | เดือนนี้และอีก {n} เดือนอยู่ในงบ · เดือนที่ค่างวดรวมเกินงบ · +{over_by} · และอีก {k} เดือนหลังจากนั้น |
+| Hero | เดือนนี้และอีก {n} เดือนอยู่ในงบ · เดือนที่ค่างวดรวมเกินงบ · +{over_by} · เกินงบ (a chip without its amount, to screen readers) · และอีก {k} เดือนหลังจากนั้น |
 | Strip link | ใช้กันชนช่วยจ่าย › · ดูภาระผ่อนรายเดือน › |
 | Wallet | กันชนของคุณ › · พอ {n} เดือน · ยังไม่พอ 1 เดือน · ไม่มีค่างวด |
 | Assistant | ผู้ช่วย KidNee · ตัวอย่าง · อ่านต่อ › · ย่อ · กำลังสรุป... |
@@ -586,7 +593,7 @@ prefix; to be confirmed when wiring).
 | 1 | `GET /settings` | | `SettingsOut` | 404 = none yet |
 | 1 | `POST /settings` / `PUT /settings` | `SettingsIn` (`saving_rule` is `{mode:"percent",percent}` or `{mode:"fixed",amount}`) | `SettingsOut` with `warnings` | 409 exists (POST), 404 none (PUT), 422 |
 | 2 | `GET /debts/summary` | | `DebtSummary` (`installments: InstallmentLine[]`) | |
-| 2, 2b | `GET /debts/months` **TODO, mock only** | `?count=N` (optional; without it, up to the last month due) | `MonthsOut { months: MonthDetail[] }` from this month, no candidate; `MonthDetail` = `MonthRow` + `over_by` (`total - budget` when `over_budget`, else `"0.00"`; asked of the backend session) + `installments: MonthInstallment[]` (`installment_id, item_name, platform_name, monthly_amount, installment_no, installments_total, is_last`) | 409 `SETTINGS_REQUIRED`, 422 bad count |
+| 2, 2b | `GET /debts/months` **TODO, mock only** | `?count=N` (optional; without it, up to the last month due) | `MonthsOut { months: MonthDetail[] }` from this month, no candidate; `MonthDetail` = `MonthRow` + `over_by` (`total - budget` when `over_budget`, else `"0.00"`; asked of the backend session; null when absent, UI-39) + `installments: MonthInstallment[]` (`installment_id, item_name, platform_name, monthly_amount, installment_no, installments_total, is_last`) | 409 `SETTINGS_REQUIRED`, 422 bad count |
 | 3 | `GET /installments/suggested-monthly` **TODO, mock only** | `?item_price=&months=` | `SuggestedMonthlyOut { monthly_amount }`: price / months rounded UP to 0.01 | 422 |
 | 2, 4 | `GET /buffer` | | `BufferOut` (`months_covered` null when nothing is owed) | |
 | 3 | `POST /installments/preview` | `ManualEntryIn` | `PreviewOut` = `VerdictOut` + `saving_if_recorded` (**TODO**: the field is new) | 409 `SETTINGS_REQUIRED`, 422 |
@@ -595,13 +602,30 @@ prefix; to be confirmed when wiring).
 | Demo | `POST /demo/payday` | `{ month: "YYYY-MM" }` | `PaydayOut` | 404 when demo endpoints are off |
 | 5 | `GET /notifications` **TODO, mock only** | | `NotificationsOut` (`notifications: NotificationOut[]`, newest first: `kind`, `title`, `body`, `created_at`, `read`; and `unread_count`) | |
 | 5 | `POST /notifications/read` **TODO, mock only** | | `NotificationsOut`, every item read, `unread_count: 0` | |
-| 2, 2b, 3, 4 | `GET /assistant/plan` (merged backend; mocked with the same shape and rules in `mock/assistant.ts`, UI-28) | | `AssistantPlanOut`: `months: PlanMonth[]` (`month, total, budget, over_budget, headroom`), `months_truncated`, `back_in_budget_month`, `pause_until`, `safe_new_monthly`, `safe_new_from`, `safe_new_months`, `buffer_plan {shortfall, balance, covered, still_short}`, `consolidation {eligible, reason, estimate}`; `EstimateOut` = `principal, annual_rate, rate_is_example, rate_note, term_months, first_due_month, monthly_payment, total_cost, current_remaining_total, extra_cost`, and `monthly_reduction` (**TODO(backend)**, mock only: the monthly amounts the loan pays off, which is `monthly_total`, minus `monthly_payment`; "0.00" when not above zero) | 409 `SETTINGS_REQUIRED` |
+| 2, 2b, 3, 4 | `GET /assistant/plan` (merged backend; mocked with the same shape and rules in `mock/assistant.ts`, UI-28) | | `AssistantPlanOut`: `months: PlanMonth[]` (`month, total, budget, over_budget, headroom`), `months_truncated`, `back_in_budget_month`, `pause_until`, `safe_new_monthly`, `safe_new_from`, `safe_new_months`, `buffer_plan {shortfall, balance, covered, still_short}`, `consolidation {eligible, reason, estimate}`; `EstimateOut` = `principal, annual_rate, rate_is_example, rate_note, term_months, first_due_month, monthly_payment, total_cost, current_remaining_total, extra_cost`, and `monthly_reduction` (**TODO(backend)**, mock only: the monthly amounts the loan pays off, which is `monthly_total`, minus `monthly_payment`; "0.00" when not above zero; null when absent, UI-39) | 409 `SETTINGS_REQUIRED` |
 | 2 | `POST /assistant/summary` **TODO, mock only**; Home calls it on open | | `AssistantSummaryOut {text, is_example}` | 409 `SETTINGS_REQUIRED` |
 | Demo | `POST /demo/scene` **mock only** | `{ scene }` | 204 | |
 
 Error bodies: `{"detail": {"code", "message"}}` for coded errors, a plain string
 `detail` for older ones, and FastAPI's list for 422. `ApiError` exposes `status`
 and `code`.
+
+**Fields the backend does not send yet (UI-39, `src/apiFields.ts`).** Checked
+against the backend's schemas on main: `monthly_reduction` (the plan's estimate),
+`over_by` (the month rows), `platform_name` (installment lines, in
+`GET /debts/summary` and in the month rows), and `POST /assistant/summary`, which
+has no endpoint yet. The mock sends them all. `api.ts` passes each of these answers
+through its reader, and a screen never crashes on such a field:
+- absent or not what the contract says (a JSON number, a sign, a comma): read as
+  null, with one console warning per answer and field, for example
+  `GET /debts/months: no readable over_by (6 times), so Home's over-budget chips
+  show without their amounts. TODO(backend): send it.`;
+- the screen leaves out only what needs it: the offer's benefit line, a chip's
+  amount, a row's app name. Nothing is guessed, and the answer given is not changed;
+- the summary without `text` is an error (the bubble's state with "ลองอีกครั้ง");
+  without `is_example` it keeps its example tag, the safe side for AI text.
+
+Fields the backend already sends are not checked again on screen.
 
 ## 10. Demo persona and scenes
 
