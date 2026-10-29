@@ -43,3 +43,40 @@ paint order) at points inside the raised button and along the nav's top edge.
 | 2 | Chrome or the dev server is missing. |
 
 The default run takes about 2 minutes, and `--height all` about 6.
+
+## month-labels-check.mjs
+
+Checks the result chart's month labels and bars (UI-40; DESIGN.md 5.4) in Chrome, for
+the red demo (12 months), the green demo (10 months), and red over 24 and 36 months,
+at 360, 390 and 430px wide.
+
+The same needs as above: Node, Chrome, and the dev server in mock mode.
+
+```bash
+npm run dev -- --mode mock                 # one terminal, from frontend/
+node scripts/month-labels-check.mjs        # another terminal, from frontend/
+```
+
+| Option | Values | Default |
+|---|---|---|
+| `--dpr` | the device pixel ratio to draw at | `3` |
+| `--only` | part of a view name: `red`, `green`, `red-24`, `red-36` | every view |
+| `--url` | the dev server | `http://127.0.0.1:5173` |
+
+**What it checks, for each view and width:**
+- Up to 12 months every bar has a label; beyond that every k-th from the first, with k = ceil(months / 12).
+- Labels are 11px, each centred on its own bar (within 1px), and inside the plot.
+- In the two demos, labels are at least 2px apart. Beyond 12 months, no two labels overlap.
+- Every bar is painted the same width, and every gap too (spread at most 0.5px).
+
+**How it checks:**
+- The labels and the plot are measured in the page (`getBoundingClientRect`).
+- The bars are measured in a screenshot of a 1px strip just above their base: runs of pixels that are not the white card. Layout gives every bar the same fractional width, so only the painted pixels show bars that Chrome rounded apart.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | Every check passed. |
+| 1 | A check failed. The script prints each failure under the view and width. |
+| 2 | Chrome or the dev server is missing. |
+
+A run takes about 75 seconds.

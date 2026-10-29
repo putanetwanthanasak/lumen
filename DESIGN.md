@@ -205,16 +205,19 @@ Font stack: `"Sukhumvit Set", "Noto Sans Thai", "Leelawadee UI", Tahoma, sans-se
 
 | Token | Size / line height | Use |
 |---|---|---|
+| `text-axis` | 11px / 19.6px | the month labels under the result's bars only |
 | `text-caption` | 14px / 1.4 | short labels only: footer, nav labels, chart legend, Demo tags, list meta |
 | `text-body` | 16px / 1.6 | **every sentence**, help text, errors |
 | `text-lead` | 18px / 1.5 | field values, section titles, large buttons |
 | `text-title` | 22px / 1.35 | screen headings, verdict label |
 | `text-display` | 32px / 1.2 | the one big number on a card |
 
-Month labels under the bars are `text-caption` (14px). Up to 7 months each has one;
-beyond that every k-th month (k = months / 7, rounded up), so label centres are at
-least 42px apart in the 298px plot of the 370px frame, and the widest label is 29px
-in Noto Sans Thai (34px allowed for other system fonts; UI-40). They are
+Month labels under the bars are `text-axis`: 11px, on the caption's 19.6px line, so
+the row keeps its height. Up to 12 months each month has one; beyond that every k-th
+month from the first (k = months / 12, rounded up), so there are never more than 12.
+At 11px the widest label, "เม.ย.", is 22.7px in Noto Sans Thai, and a month's slot is
+24px in the 288px plot of a 360px phone: the closest two labels are 2.4px apart
+(measured in Chrome by `scripts/month-labels-check.mjs`; UI-40). They are
 `aria-hidden`: every month, total and status is also in a screen-reader table, and a
 16px sentence says how many months are over budget and from when to when.
 
@@ -255,9 +258,19 @@ word), the sentence, and "นี่เป็นคำแนะนำเท่า
 
 ### 5.4 Month bars (`MonthBars`)
 - One bar per month of the plan, drawn with divs (no chart library), on one CSS
-  grid of equal columns (`repeat(n, minmax(0, 1fr))`): the bars, the month labels
-  and the dashed budget line share it, so each label sits under its own bar at any
-  number of months and nothing overflows the card (UI-40).
+  grid: a slot per month in whole pixels (`round(down, ...)`, `plotColumns`), with
+  the spare pixels (fewer than one per month) in a side column at each end. The
+  bars, the month labels and the dashed budget line (across the side columns too)
+  share it, so each label sits under its own bar and nothing overflows the card
+  (UI-40).
+  - Whole pixels, because Chrome draws a bar's edges on whole pixels: with slots of
+    318 / 12 = 26.5px (a 390px phone) alternate bars rounded 1px apart and read as
+    pairs. In whole-pixel slots every bar and every gap is drawn the same width.
+  - The slot also leaves 12px (half the widest label) from each end bar's centre to
+    the plot's edge, so the first and last labels stay inside. Up to 12 months on a
+    360px phone or wider, that changes nothing.
+  - Beyond 36 months a slot is under 10px and rounding down could leave a tenth of
+    the plot empty, so the slot is the exact share.
 - Scale: the largest of the budget and the month totals.
 - Every part is solid (no hatch, nothing hollow or white). Colour says one thing:
   the month's status, on the new item's share only. Everything else due that month
@@ -285,8 +298,9 @@ word), the sentence, and "นี่เป็นคำแนะนำเท่า
   budget, over budget, over one third with the ⚠); a status no month has is left
   out. The statuses wrap under each other, never under "ชิ้นใหม่:". With no item,
   row 2 is the statuses alone.
-- Labels: `text-caption`, plain (never bold or amber), on one line, centred under
-  their own bar; every month up to 7, beyond that every k-th (Typography).
+- Labels: `text-axis` (11px), plain (never bold or amber), on one line, centred
+  under their own bar; every month up to 12, beyond that every k-th from the first
+  (Typography).
 - Under the bars: the budget-line note, one plain sentence (`text-body`, ink, no
   icon) "เกินงบ {n} เดือน: {first} ถึง {last}", counted from the API's rows
   (`overRange`; "ในช่วง" when they are not one run, "เกินงบ 1 เดือน: {month}" for
