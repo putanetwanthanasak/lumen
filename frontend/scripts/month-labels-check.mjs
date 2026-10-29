@@ -162,7 +162,15 @@ async function openResult(page, view, width) {
       el.click();
       return true;
     })()`);
-  if (!(await press(view.demo))) return `no demo button "${view.demo}"`;
+  if (!(await press(view.demo))) {
+    // What the page showed instead, so a miss can be explained.
+    const seen = await evaluate(`(() => {
+      const main = document.querySelector("main");
+      const buttons = [...document.querySelectorAll("button")].map((b) => b.textContent.trim()).filter(Boolean).slice(0, 6);
+      return location.hash + " | " + (main?.innerText ?? "no main").replace(/\\s+/g, " ").slice(0, 80) + " | buttons: " + buttons.join(", ");
+    })()`);
+    return `no demo button "${view.demo}" (page: ${seen})`;
+  }
   await wait(600);
   if (view.fill !== undefined) {
     const filled = await evaluate(`(() => {
