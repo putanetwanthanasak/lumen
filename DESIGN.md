@@ -145,7 +145,8 @@ Components use tokens only, never raw hex.
 | `warn-bg` / `warn-line` / `warn-ink` | `#fff6db` / `#f5c451` / `#6e4500` | YELLOW, budget warning |
 | `risk-bg` / `risk-line` / `risk-ink` | `#fdecec` / `#f3a3a3` / `#9b1c1c` | RED, field errors |
 | `info-bg` / `info-line` / `info-ink` | `#eaf3fb` / `#a9cbe9` / `#1d4e7a` | neutral notices, Demo tags |
-| `bar-ok` / `bar-over` / `bar-risk` | `#138a52` / `#c27c00` / `#9b1c1c` | month bars |
+| `bar-ok` / `bar-over` / `bar-risk` | `#138a52` / `#c27c00` / `#9b1c1c` | month bars: a month's status (on the result, the new item's share) |
+| `bar-existing` | `#7a8880` | the result's bars: every other installment, one grey on every month |
 | `teal-50` / `100` / `200` / `700` / `800` | `#e8f7f7` / `#c4ebec` / `#94d9dc` / `#0c6a72` / `#0a535a` | the buffer (feature 2) |
 | `teal-edge` | `#358b92` | the wallet's edge (Home and the buffer screen), where it meets the page |
 | `bank-50` / `200` / `700` / `800` | `#eef3fd` / `#b3c9f2` / `#2a4fa0` / `#1f3d7d` | the bank's consolidation offer |
@@ -155,11 +156,11 @@ Components use tokens only, never raw hex.
 Contrast (WCAG 2.2, measured): white on `leaf-700` 6.31; `ink` on card 16.44;
 `ink-muted` on card 7.22 and on surface 6.73; `ok-ink`/`ok-bg` 7.81;
 `warn-ink`/`warn-bg` 7.74; `risk-ink`/`risk-bg` 7.14; `info-ink`/`info-bg` 7.72.
-Bars against the white card: `bar-ok` 4.39, `bar-over` 3.40, `bar-risk` 8.15
-(non-text minimum 3:1); the ⚠ above a bar, `risk-ink` on card, 8.15; the new
-item's white share against the rest of its bar and its outline against the card,
-the same three pairs (4.39, 3.40, 8.15); the legend's grey part swatches,
-`ink-muted` on card, 7.22.
+Bars against the white card: `bar-ok` 4.39, `bar-over` 3.40, `bar-risk` 8.15,
+`bar-existing` 3.71 (non-text minimum 3:1); the same pairs hold across the 2px white
+gap between a bar's two parts, so the gap shows whatever the grey and the colour do
+next to each other (they are only 1.09 to 2.20 apart); the ⚠ above a bar, `risk-ink`
+on card, 8.15; the dashed budget line, `ink-muted` on card, 7.22.
 Accents: `teal-800` on `teal-50` 7.96, on card 8.76; white on `teal-700` 6.32;
 `bank-800` on `bank-50` 9.33; `ai-ink` on `ai-from` 8.13 and on `ai-to` 8.22;
 `quiet-ink` on `quiet-bg` 7.23; `warn-ink` on card 8.35. The hero while hovered
@@ -258,23 +259,32 @@ word), the sentence, and "นี่เป็นคำแนะนำเท่า
   and the dashed budget line share it, so each label sits under its own bar at any
   number of months and nothing overflows the card (UI-40).
 - Scale: the largest of the budget and the month totals.
-- Colours, solid (no hatch): `bar-ok` in budget, `bar-over` over budget, `bar-risk`
-  above one third of income, with a small ⚠ above that bar (`risk-ink`, at most
-  16px and never wider than its bar, so a run of such months never overlaps). The
-  flags come from the API (`over_budget`, `over_one_third`); the client never
-  compares money to decide.
-- The new item's share is the top of each bar and looks the same on every bar,
-  whatever its status: a white fill (`bg-card`) with a closed 2px outline in that
-  bar's colour, its height the item's monthly amount as a share of that month's
-  total (`barPermille`, a drawing size). The outline is closed so that a month with
-  nothing else due, where the share is the whole bar, is still a box on its base.
-- Legend: only what this chart shows, each entry one 12px square. First the
-  statuses its months have, in a fixed order (in budget, over budget, over one
-  third with the ⚠); a status no month has is left out. Then, with an item, the
-  two parts of a bar in neutral swatches, since both take each month's colour on
-  the bars: "ค่างวดที่มีอยู่" (a solid `ink-muted` square; only when some month's
-  total is more than the item's amount, so its bar has a solid part) and
-  "ค่างวดชิ้นใหม่" (a white square with a 2px `ink-muted` outline).
+- Every part is solid (no hatch, nothing hollow or white). Colour says one thing:
+  the month's status, on the new item's share only. Everything else due that month
+  is one grey on every bar, so a reader decodes the status from the colour and the
+  composition from grey against colour, never both from one fill.
+- The new item's share is the top of each bar, solid in the month's status colour:
+  `bar-ok` in budget, `bar-over` over budget, `bar-risk` above one third of income
+  (red wins when both flags are set), with a small ⚠ above that bar (`risk-ink`, at
+  most 16px and never wider than its bar, so a run of such months never overlaps).
+  Its height is the item's monthly amount as a share of that month's total
+  (`barPermille`, a drawing size). The flags come from the API (`over_budget`,
+  `over_one_third`); the client never compares money to decide.
+- Below it, the other installments in `bar-existing`, whose top edge is a 2px white
+  gap (`border-t-2 border-card`) between the two parts. The gap comes out of the
+  grey part; when the grey is a sliver, the share gives way, so the bar never runs
+  past its base. A month with nothing else due has no grey part: the share is the
+  whole bar. The bar itself paints nothing, so no other colour shows at the parts'
+  rounded corners.
+- With no item (`candidate` null, not used on a screen today), each bar is wholly
+  its month's status colour, with no grey part.
+- Legend: only what this chart shows, each entry one solid 12px square in the very
+  colour it names on the bars. Row 1, "ค่างวดที่มีอยู่" in `bar-existing`, only when
+  some month's total is more than the item's amount, so some bar has a grey part.
+  Row 2, "ชิ้นใหม่:" and then the statuses its months have, in a fixed order (in
+  budget, over budget, over one third with the ⚠); a status no month has is left
+  out. The statuses wrap under each other, never under "ชิ้นใหม่:". With no item,
+  row 2 is the statuses alone.
 - Labels: `text-caption`, plain (never bold or amber), on one line, centred under
   their own bar; every month up to 7, beyond that every k-th (Typography).
 - Under the bars: the budget-line note, one plain sentence (`text-body`, ink, no
@@ -549,8 +559,9 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
    บาท · เริ่ม พ.ย. 2569 · ShopDemo") and "แก้ไข" (back to the form, values kept).
 2. A large verdict card: 64px icon, the label, the sentence, the advice note.
 3. Month bars against the dashed budget line (5.4): solid colours, a ⚠ above a
-   month over a third of income, the new item's share as the white, outlined top of
-   each bar, a legend of only what the chart shows, and one plain line
+   month over a third of income, the new item's share as the top of each bar in the
+   month's status colour over one grey for everything else, a legend of only what
+   the chart shows, and one plain line
    "เกินงบ {n} เดือน: {first} ถึง {last}". The verdict card holds the
    warning, and each fact is said once (UI-41).
 4. "ถ้าบันทึก จะกันเงินเข้ากันชน" and the amount (`saving_if_recorded`), or why
@@ -679,7 +690,7 @@ Source of truth: `frontend/src/copy.ts`. The key strings:
 | Buffer steps | ใช้กันชน {amount} · ย้ายเข้าบัญชีหลัก +{amount} · จ่ายค่างวดในแอปผ่อน (ผู้ใช้ทำเอง) ค่างวด {month} {total} · ย้ายก่อนวันที่แอปผ่อนตัดเงิน แนะนำทำในวันเงินเดือนเข้า · ย้าย {amount}เข้าบัญชีหลักแล้ว กันชนเหลือ {balance} จ่ายค่างวดในแอปผ่อนได้เลย |
 | Months, last line | ยอดในแอปผ่อนไม่ตรงกับที่นี่? อาจมีรายการที่คุณไม่ได้ทำ ติดต่อแอปผ่อนโดยตรงจากช่องทางในแอป อย่าโอนเงินให้ใครที่โทรมาทวง |
 | Rejected field (422) | ระบบไม่รับค่านี้ ลองแก้แล้วกดอีกครั้ง |
-| Result bars | เกินงบ {n} เดือน: {first} ถึง {last} · อยู่ในงบ · เกินงบ · เกินเกณฑ์ที่ ธปท. แนะนำ · ค่างวดที่มีอยู่ · ค่างวดชิ้นใหม่ |
+| Result bars | เกินงบ {n} เดือน: {first} ถึง {last} · อยู่ในงบ · เกินงบ · เกินเกณฑ์ที่ ธปท. แนะนำ · ค่างวดที่มีอยู่ · ชิ้นใหม่: |
 | Installments | งวดที่ {x} จาก {y} · หมด {month} · เริ่ม {month} · ผ่อนครบแล้ว {n} รายการ · ไม่นับในยอดต่อเดือน |
 | Wallet | กันชนของคุณ › · พอ {n} เดือน · ยังไม่พอ 1 เดือน · ไม่มีค่างวด |
 | Assistant | ผู้ช่วย KidNee สรุปให้ฟัง · อ่านต่อ › · ย่อ · กำลังสรุป... |
@@ -781,7 +792,8 @@ Now: 3,500.00 a month.
    out that the check waits for the first due month
    ("กรอกราคา จำนวนเดือน ค่างวด และเดือนเริ่มจ่ายให้ครบก่อน").
 4. **YELLOW**: tap "เกินงบ", then **ประเมินภาระผ่อน**. On the result screen, Nov
-   and Dec are amber, the laptop's share is the white top of each bar, and the line
+   and Dec are amber, the laptop's share is the coloured top of each bar (amber in
+   Nov and Dec, green after) over the grey of what is already due, and the line
    under them says "เกินงบ 2 เดือน: พ.ย. 2569 ถึง ธ.ค. 2569". Point out
    "บันทึกได้เสมอ". Tap "ยังไม่ซื้อ".
 5. **RED**: "แก้ไข" back, tap "เกินเกณฑ์", ประเมินภาระผ่อน. The ธปท. guidance

@@ -42,10 +42,12 @@
   --color-info-line: #a9cbe9;
   --color-info-ink: #1d4e7a;
 
-  /* Month bars: each at least 3:1 against the white card (WCAG 1.4.11). */
+  /* Month bars: each at least 3:1 against the white card (WCAG 1.4.11). On the result,
+     the status colours are the new item's share and bar-existing is everything else. */
   --color-bar-ok: #138a52;
   --color-bar-over: #c27c00;
   --color-bar-risk: #9b1c1c;
+  --color-bar-existing: #7a8880;
 
   /* Feature accents (DESIGN.md section 4): one colour per feature, used only through
      src/accent.ts, which pairs each with an icon and text (UI-34). Green (leaf) is the
