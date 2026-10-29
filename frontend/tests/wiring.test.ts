@@ -9,7 +9,7 @@
  *   and shows only while the demo endpoints are on.
  * UI-50: the build calls the API (no mock), with the persona's header; a 422 names its
  *   fields next to the form's fields; SETTINGS_REQUIRED is recognised; the assistant's
- *   example is worded from the real plan.
+ *   summary comes from GET /assistant/summary (Session 18, AI-27).
  * UI-51 (critical): no money arithmetic in screen code: amounts are compared, never
  *   added, subtracted, multiplied or divided outside src/money.ts and the mock.
  */
@@ -31,8 +31,8 @@ import {
   rejectedFields,
   USE_MOCK,
 } from "../src/api.ts";
-import type { AssistantPlanOut, BufferOut, MonthsOut, MoveIn, MovedOut, ShortfallsOut } from "../src/api-types.ts";
-import { bufferPlanLines, exampleSummary } from "../src/assistantText.ts";
+import type { BufferOut, MonthsOut, MoveIn, MovedOut, ShortfallsOut } from "../src/api-types.ts";
+import { bufferPlanLines } from "../src/assistantText.ts";
 import { latestOnly, moveBody, mover, moverRegistry, moveRequest, type MoveLock } from "../src/bufferMove.ts";
 import { cardMove, shortfallView, shortfallsByMonth } from "../src/bufferState.ts";
 import { DemoButton } from "../src/components/DemoPanel.tsx";
@@ -299,17 +299,19 @@ test("UI_50_a_blank_app_name_is_sent_as_null", () => {
   }
 });
 
-test("UI_50_the_assistant_example_is_worded_from_the_real_plan_and_labelled", async () => {
-  scene("over_budget_now");
-  const plan = call("GET", "/assistant/plan").body as AssistantPlanOut;
-  const seen = fakeFetch((url) => (url === "/api/assistant/plan" ? { status: 200, body: plan } : { status: 404, body: null }));
-  const out = await getAssistantSummary();
-  assert.deepEqual(out, { text: exampleSummary(plan), is_example: true });
-  // No AI endpoint is called: only the plan.
-  assert.deepEqual(
-    seen.map((s) => [s.method, s.url]),
-    [["GET", "/api/assistant/plan"]],
-  );
+test("UI_50_AI_27_the_assistant_summary_is_the_apis_answer_as_it_comes", async () => {
+  for (const sent of [
+    { text: "หนึ่ง\nสอง", source: "ai", reason: "ok" },
+    { text: "สาม\nสี่", source: "fallback", reason: "grounding_failed" },
+  ]) {
+    const seen = fakeFetch((url) => (url === "/api/assistant/summary" ? { status: 200, body: sent } : { status: 404, body: null }));
+    assert.deepEqual(await getAssistantSummary(), sent);
+    // One GET with the persona's header; the plan is not asked for.
+    assert.deepEqual(
+      seen.map((s) => [s.method, s.url, s.headers["X-Demo-User"]]),
+      [["GET", "/api/assistant/summary", "demo-mon"]],
+    );
+  }
 });
 
 // ---- UI-51 (critical): no money arithmetic in screen code ---------------------------------

@@ -28,7 +28,6 @@ import type {
   SuggestedMonthlyOut,
 } from "./api-types.ts";
 import { readAssistantSummary, readMonths, readPlan, readSummary } from "./apiFields.ts";
-import { exampleSummary } from "./assistantText.ts";
 import { handle } from "./mock/server.ts";
 import type { Money } from "./money.ts";
 import { demoUser } from "./personas.ts";
@@ -202,13 +201,12 @@ export async function getAssistantPlan(): Promise<AssistantPlanOut> {
 }
 
 /**
- * The assistant's bubble on Home. There is no AI endpoint (roadmap only), so it is an
- * example worded from the real plan's numbers, always labelled ตัวอย่าง. The mock
- * still answers POST /assistant/summary, for its slow and failing scenes.
+ * The assistant's bubble on Home: the model's words behind the backend's grounding
+ * check, or the backend's own template (`source` says which). A failed request shows
+ * the plan's own words instead (homeLayout.aiBubble).
  */
 export async function getAssistantSummary(): Promise<AssistantSummaryOut> {
-  if (!mock) return { text: exampleSummary(await getAssistantPlan()), is_example: true };
-  return readAssistantSummary((await call<AssistantSummaryOut>("POST", "/assistant/summary")).body);
+  return readAssistantSummary((await call<AssistantSummaryOut>("GET", "/assistant/summary")).body);
 }
 
 // ---- Demo panel -----------------------------------------------------------------

@@ -7,7 +7,7 @@
  */
 import type { AssistantPlanOut, AssistantSummaryOut, BufferOut, ConsolidationOut, EstimateOut, MonthDetail, ShortfallsOut } from "./api-types.ts";
 import { ACCENT, type Marked } from "./accent.ts";
-import { notConsolidatingLine } from "./assistantText.ts";
+import { notConsolidatingLine, planSummary } from "./assistantText.ts";
 import { shortfallView, type ShortfallView } from "./bufferState.ts";
 import { ASSIST, HOME } from "./copy.ts";
 import { formatBaht, toSatang, type Money } from "./money.ts";
@@ -112,17 +112,20 @@ export function consolidationView(c: ConsolidationOut): ConsolidationView {
   };
 }
 
-export type AiBubble =
-  | { state: "loading" }
-  | { state: "failed" }
-  | { state: "done"; first: string; rest: string[]; example: boolean };
+export type AiBubble = { state: "loading" } | { state: "done"; first: string; rest: string[] };
 
-/** The assistant's bubble: the summary's first line, the rest behind "อ่านต่อ". */
-export function aiBubble(load: Load<AssistantSummaryOut>): AiBubble {
+const linesOf = (text: string) => text.split("\n").filter((line) => line.trim() !== "");
+
+/**
+ * The assistant's bubble: the summary's first line, the rest behind "อ่านต่อ". The
+ * model's words and the backend's template show the same way, with no tag. A failed
+ * request shows the plan's own words (planSummary): never an error or an empty card.
+ */
+export function aiBubble(load: Load<AssistantSummaryOut>, plan: AssistantPlanOut): AiBubble {
   if (load.state === "loading") return { state: "loading" };
-  if (load.state === "error") return { state: "failed" };
-  const [first = "", ...rest] = load.data.text.split("\n").filter((line) => line.trim() !== "");
-  return { state: "done", first, rest, example: load.data.is_example };
+  const said = load.state === "ready" ? linesOf(load.data.text) : [];
+  const [first = "", ...rest] = said.length > 0 ? said : linesOf(planSummary(plan));
+  return { state: "done", first, rest };
 }
 
 export type HomeView = {

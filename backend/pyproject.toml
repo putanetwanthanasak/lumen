@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "uvicorn==0.54.0",
+    "anthropic==1.14.0",
 ]
 
 [dependency-groups]
@@ -27,6 +28,9 @@ dev = [
 
 [tool.uv]
 package = false
+# Rule 9: every new package at a release at least two weeks old. anthropic (Session
+# 18) brought these in; their newest releases were younger, so resolution stops here.
+exclude-newer-package = { anthropic = "2026-10-15T00:00:00Z", httpx2 = "2026-10-14T00:00:00Z", httpcore2 = "2026-10-14T00:00:00Z", jiter = "2026-10-14T00:00:00Z" }
 
 [tool.ruff]
 line-length = 100

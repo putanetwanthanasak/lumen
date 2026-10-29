@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # CONSOLIDATION_MOCK_DECISION=approve or decline.
     consolidation_mock_decision: Literal["approve", "decline"] = "approve"
 
+    # Home's AI summary card (Session 18, app.ai.provider): LLM_API_KEY is the
+    # Anthropic API key (only checked for being set, then passed to the SDK; never
+    # logged); LLM_MODEL_PLANNER is the model, claude-haiku-5-5 when unset; LLM_PROVIDER
+    # must be "anthropic". Without both, the card shows its fixed template.
     llm_provider: str | None = None
     llm_model_planner: str | None = None
     llm_model_categorizer: str | None = None

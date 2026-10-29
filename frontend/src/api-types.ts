@@ -344,8 +344,12 @@ export type AssistantPlanOut = {
   consolidation: ConsolidationOut;
 };
 
+/** Why the summary is in the model's words (`ok`) or in the app's own (the rest). */
+export type SummaryReason = "ok" | "no_key" | "timeout" | "api_error" | "grounding_failed";
+
 /**
- * The assistant's summary. Not built in the backend (AI is roadmap only): an example
- * worded from the real plan's numbers, labelled ตัวอย่าง (src/api.ts).
+ * GET /assistant/summary: Home's summary, one point per line. The model's words when
+ * they passed the grounding check (`ai`), else the app's own template (`fallback`).
+ * The bubble shows both the same way.
  */
-export type AssistantSummaryOut = { text: string; is_example: boolean };
+export type AssistantSummaryOut = { text: string; source: "ai" | "fallback"; reason: SummaryReason };

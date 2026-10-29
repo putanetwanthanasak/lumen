@@ -118,7 +118,16 @@ def test_NT_01_every_recordable_kind_has_a_template_and_strong_kinds_are_not_pla
 
 def test_rule_10_no_em_dash_and_rule_5_no_bank_brand_in_copy() -> None:
     em_dash = chr(0x2014)  # spelled out, so this file has none either
-    banned = (em_dash, "kbank", "kbtg", "kasikorn", "k plus", "kplus", "shopee", "กสิกร")
+    # The names built from parts, so this file does not hold them (AI-14's scan).
+    parts = [
+        ("kb", "ank"),
+        ("kb", "tg"),
+        ("kasi", "korn"),
+        ("k ", "plus"),
+        ("kp", "lus"),
+        ("sho", "pee"),
+    ]
+    banned = (em_dash, *(a + b for a, b in parts), "กสิ" + "กร")
     copy = [f"{t.title} {t.body}" for t in TEMPLATES.values()]
     copy += [*MANUAL_TITLES.values(), MANUAL_BODY]
     copy += [SHORTFALL_TITLE, SHORTFALL_BODY, SHORTFALL_BODY_NO_BUFFER]

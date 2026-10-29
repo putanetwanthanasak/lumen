@@ -369,7 +369,7 @@ data (UI-33); they format, never add up.
 | Hero, this month | one white card, the only one with a `text-display` number, and no box inside it: a chevron › at the top right (the whole card opens 7.2b), the bar with the budget marked, one status or warning line, one buffer line with its text link | nothing over budget: one status line, no warning, no buffer line |
 | เช็กก่อนผ่อน | the 56px green pill and its hint | never |
 | Wallet | one wide teal button framed in `teal-edge` (2px): shield badge, "กันชนของคุณ ›", the balance at `text-title`; on the right 6 segments and "พอ {n} เดือน" | never; the meter is empty at 0 months |
-| Assistant bubble | a soft gradient panel with an `ai-edge` border; the mascot speaks from the left into a white bubble with a tail | loading: "กำลังสรุป..." at a fixed height, no spinner; error: one line and "ลองอีกครั้ง"; no plan: left out |
+| Assistant bubble | a soft gradient panel with an `ai-edge` border; the mascot speaks from the left into a white bubble with a tail | loading: "กำลังสรุป..." at a fixed height, no spinner; a failed request: the plan's own words, no error state; no plan: left out |
 | Consolidation banner | one slim grey-blue line, 44px, with a `quiet-edge` border, "ⓘ ... ›"; tap to show the reason | it is the offer's shrunk form |
 | Bank offer | a white card framed in `bank-700` (2px) with a solid blue header band: the bank icon, the white title, the "ตัวอย่างการประมาณ" tag. On the white body (`p-4`): two light-blue boxes "ตอนนี้" and "ถ้ารวมหนี้ (ตัวอย่าง)", every amount at `text-lead` bold, the arrow on the gap between them (not a column of its own, so each amount keeps its "บาท" on one line in the 370px frame); one benefit line (left out when the answer has no `monthly_reduction`); the example rate | shown only when the plan says eligible (L70) |
 | Installments | flat (border, no shadow), last | empty: one sentence |
@@ -434,10 +434,13 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
 4. **Wallet** (`GET /buffer`, framed in `teal-edge`): the balance, and segments filled up to the API's
    `months_covered` (at most 6) with "พอ {n} เดือน", "ยังไม่พอ 1 เดือน" at 0, or
    "ไม่มีค่างวด" when nothing is owed. Tap: the buffer screen.
-5. **Assistant bubble** (`AssistantCards.tsx`, `POST /assistant/summary`, loaded
-   when Home opens): "ผู้ช่วย KidNee", the summary's first line, the rest behind
-   "อ่านต่อ ›" / "ย่อ", tagged "ตัวอย่าง" while the text is an example. Mock text now;
-   it only puts words around the plan's numbers.
+5. **Assistant bubble** (`AssistantCards.tsx`, `GET /assistant/summary`, loaded
+   when Home opens): "ผู้ช่วย KidNee สรุปให้ฟัง", the summary's first line, the rest
+   behind "อ่านต่อ ›" / "ย่อ". The text is the model's words (`LLM_MODEL_PLANNER`,
+   default Claude Haiku) behind the backend's grounding check, or the backend's own
+   template from the same numbers; both show the same way, with no tag. At most 3
+   lines: what matters most first, last a next step that points to a screen. It only puts words around the plan's numbers. A failed
+   request shows the plan's own words (`planSummary`), never an error or an empty card.
 6. **Consolidation** (the plan's `consolidation`, L70):
    - not eligible: the banner "ตอนนี้ยังไม่จำเป็นต้องรวมหนี้" for `NOT_NEEDED`, else
      "ตอนนี้ยังไม่คุ้มที่จะรวมหนี้"; it opens to the reason in plain words
@@ -644,7 +647,8 @@ else imported them, so deleting was safe. Their parts now live in 7.2 (cards 4 a
   month: 9 months over, the pause line, the buffer still short, consolidation
   eligible); "มีเดือนเกินงบ กันชนว่าง" (the laptop, then the whole buffer moved back to
   the main account, so the hero has no buffer line); "ผู้ช่วยกำลังสรุป (ตอบช้า)" (the summary takes 15
-  seconds) and "ผู้ช่วยสรุปไม่สำเร็จ" (it fails with 503). The screen on show reloads.
+  seconds) and "เรียกผู้ช่วยไม่สำเร็จ (ใช้คำของแอป)" (it fails with 503, so the bubble
+  shows the plan's own words). The screen on show reloads.
 
 ## 8. Thai copy
 
@@ -678,7 +682,7 @@ Source of truth: `frontend/src/copy.ts`. The key strings:
 | Result bars | เกินงบ {n} เดือน: {first} ถึง {last} · อยู่ในงบ · เกินงบ · เกินเกณฑ์ที่ ธปท. แนะนำ · ค่างวดที่มีอยู่ · ค่างวดชิ้นใหม่ |
 | Installments | งวดที่ {x} จาก {y} · หมด {month} · เริ่ม {month} · ผ่อนครบแล้ว {n} รายการ · ไม่นับในยอดต่อเดือน |
 | Wallet | กันชนของคุณ › · พอ {n} เดือน · ยังไม่พอ 1 เดือน · ไม่มีค่างวด |
-| Assistant | ผู้ช่วย KidNee · ตัวอย่าง · อ่านต่อ › · ย่อ · กำลังสรุป... |
+| Assistant | ผู้ช่วย KidNee สรุปให้ฟัง · อ่านต่อ › · ย่อ · กำลังสรุป... |
 | Consolidation | ตอนนี้ยังไม่จำเป็นต้องรวมหนี้ · ทางเลือกจากธนาคาร · ตอนนี้ · ถ้ารวมหนี้ (ตัวอย่าง) · ยอดรวมทั้งหมด · ค่างวดลดลงเดือนละ {monthly_reduction} ทุกเดือนกลับมาอยู่ในงบ · สนใจรวมหนี้ |
 | Form | ชื่อสินค้า (ไม่บังคับ) · แอปที่ผ่อน (ไม่บังคับ) · เป็นรายการเงินสด? · ยอดเงิน · {n} เดือน · กรอกราคา จำนวนเดือน ค่างวด และเดือนเริ่มจ่ายให้ครบก่อน |
 
@@ -711,7 +715,7 @@ is mounted at `/api` (L73). With `--mode mock` the same calls are answered by
 | Demo | `POST /demo/payday` | `{ month: "YYYY-MM" }` (`{}` as the probe, 7.8) | `PaydayOut` | 404 when demo endpoints are off |
 | 5 | `GET /notifications` | | `NotificationsOut` (`notifications: NotificationOut[]`, newest first: `kind`, `title`, `body`, `created_at`, `installment_id`; and `count`, every alert the user has) | |
 | 2, 2b, 3, 4 | `GET /assistant/plan` | | `AssistantPlanOut`: `months`, `months_truncated`, `back_in_budget_month`, `pause_until`, `safe_new_monthly`, `safe_new_from`, `safe_new_months`, `buffer_plan {shortfall, remaining_gap, balance, covered, still_short}`, `consolidation {eligible, reason, estimate}`; `EstimateOut` adds `current_monthly_total` (the offer's "ตอนนี้") and `monthly_reduction` | 409 `SETTINGS_REQUIRED` |
-| 2 | (no call) the assistant's example | | Worded from `GET /assistant/plan` by `exampleSummary` and always labelled ตัวอย่าง (AI is roadmap only). `POST /assistant/summary` exists only in the mock | |
+| 2 | `GET /assistant/summary` | | `AssistantSummaryOut` (`text`, `source` `ai` or `fallback`, `reason`); shown the same way for both sources. The mock answers it as the backend does without a key, in the plan's own words | 409 `SETTINGS_REQUIRED` |
 | Demo | `POST /demo/scene` **mock only** | `{ scene }` | 204 | |
 
 Error bodies: `{"detail": {"code", "message"}}` for coded errors, a plain string
@@ -728,8 +732,8 @@ through its reader, so a screen never crashes on such a field:
   null, with one console warning per answer and field;
 - the screen leaves out only what needs it: the offer's benefit line, a row's app
   name. Nothing is guessed, and the answer given is not changed;
-- the summary without `text` is an error (the bubble's state with "ลองอีกครั้ง");
-  without `is_example` it keeps its example tag, the safe side for AI text.
+- the summary without readable `text` counts as a failed request: the bubble shows
+  the plan's own words. Its `source` and `reason` change nothing on screen.
 
 Fields not listed here are not checked again on screen.
 
@@ -805,7 +809,7 @@ Home per scene (UI-33 tests the rules behind it):
 | เกินงบตั้งแต่เดือนนี้ | "เกินงบ 9 เดือน (ต.ค. 2569 ถึง มิ.ย. 2570)" | ต.ค. 2569 เกินงบ 2,500.00 บาท, ใช้กันชนจ่ายส่วนที่เกิน | summary | bank offer |
 | มีเดือนเกินงบ กันชนว่าง | as มีเดือนเกินงบ, wallet empty | พ.ย. 2569 เกินงบ 1,500.00 บาท, no button | summary | banner |
 | ผู้ช่วยกำลังสรุป (ตอบช้า) | all in budget | none | loading | banner |
-| ผู้ช่วยสรุปไม่สำเร็จ | all in budget | none | error, retry | banner |
+| เรียกผู้ช่วยไม่สำเร็จ (ใช้คำของแอป) | all in budget | none | the plan's own words | banner |
 
 Shortcuts for slides (mock only): `http://127.0.0.1:5173/?persona#/home` starts with the
 settings saved; `?persona&scene=YELLOW#/think` fills that example and opens its

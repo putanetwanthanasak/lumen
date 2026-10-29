@@ -103,7 +103,7 @@ export function HomeBody({
 
       <Wallet wallet={view.wallet} />
 
-      {view.assistant && <AiBubbleCard />}
+      {view.assistant && plan !== null && <AiBubbleCard plan={plan} />}
 
       {view.consolidation !== null && <ConsolidationCard view={view.consolidation} />}
 

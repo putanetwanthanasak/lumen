@@ -64,10 +64,10 @@ export function ratePercent(rate: string): string {
 }
 
 /**
- * The assistant's example summary (AI is roadmap only): the plan's own words, the
- * same lines the screens show, one point per line. Shown labelled ตัวอย่าง.
+ * The plan's own words, the same lines the screens show, one point per line: the
+ * mock's summary, and the bubble's words when GET /assistant/summary fails.
  */
-export function exampleSummary(plan: AssistantPlanOut): string {
+export function planSummary(plan: AssistantPlanOut): string {
   const lines = planLines(plan);
   const buffer = bufferPlanLines(plan.buffer_plan).lines.join(" ");
   const c = plan.consolidation;

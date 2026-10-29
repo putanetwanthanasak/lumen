@@ -42,7 +42,7 @@ import {
   type MockInstallment,
 } from "./persona.ts";
 import { leftoverAlert, manualEntryAlert, shortfallAlert } from "./alerts.ts";
-import { exampleSummary } from "../assistantText.ts";
+import { planSummary } from "../assistantText.ts";
 import { assistantPlan } from "./assistant.ts";
 import { SCENARIOS } from "./persona.ts";
 import { fromSatang, sum, toSatang } from "./satang.ts";
@@ -683,11 +683,12 @@ export function handle(
       return shortfalls("/debts/months");
     case "GET /assistant/plan":
       return store.settings === null ? SETTINGS_REQUIRED : ok(planNow(store.settings));
-    case "POST /assistant/summary": {
-      // Mock only (AI is roadmap): the example, with the slow and failing scenes.
+    case "GET /assistant/summary": {
+      // The mock has no model: it answers as the backend does without a key, in the
+      // plan's own words, with the slow and failing scenes.
       if (store.settings === null) return SETTINGS_REQUIRED;
       if (store.summary === "failing") return fail(503, "summary unavailable");
-      const out: AssistantSummaryOut = { text: exampleSummary(planNow(store.settings)), is_example: true };
+      const out: AssistantSummaryOut = { text: planSummary(planNow(store.settings)), source: "fallback", reason: "no_key" };
       return store.summary === "slow" ? { ...ok(out), delayMs: SLOW_SUMMARY_MS } : ok(out);
     }
     case "POST /demo/scene":

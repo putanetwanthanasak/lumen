@@ -71,16 +71,12 @@ export function readSummary(summary: DebtSummary): DebtSummary {
 }
 
 /**
- * POST /assistant/summary (the mock only): without its text the bubble shows its error
- * state, with a retry; without `is_example` it keeps the example tag, the safe side for
- * AI text.
+ * GET /assistant/summary: without readable text the answer counts as failed, so the
+ * bubble shows the plan's own words (homeLayout.aiBubble), never an empty card. Its
+ * `source` and `reason` change nothing on screen.
  */
 export function readAssistantSummary(out: AssistantSummaryOut): AssistantSummaryOut {
-  if (typeof out.text !== "string") {
-    warnMissing("POST /assistant/summary", "text", 1, "the assistant's bubble shows its error state");
-    throw new Error("POST /assistant/summary: no text");
-  }
-  if (typeof out.is_example === "boolean") return out;
-  warnMissing("POST /assistant/summary", "is_example", 1, "the summary keeps its example tag");
-  return { ...out, is_example: true };
+  if (typeof out.text === "string" && out.text.trim() !== "") return out;
+  warnMissing("GET /assistant/summary", "text", 1, "the assistant's bubble shows the plan's own words");
+  throw new Error("GET /assistant/summary: no text");
 }
