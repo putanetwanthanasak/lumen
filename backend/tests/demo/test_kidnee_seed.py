@@ -4,6 +4,7 @@ reset, then seed through the app's services as lumen_app. "Today" is fixed at
 2026-11-10. KD-05 (Session 17): each persona tells its one story."""
 
 import contextlib
+import itertools
 from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
@@ -29,6 +30,7 @@ from demo.kidnee import (
     ai_check,
     build,
     model_config_lines,
+    seconds,
     seed,
 )
 from demo.script import reset_database
@@ -253,13 +255,15 @@ def test_AI_25_ai_check_asks_once_per_persona_and_prints_source_reason_and_text(
     kidnee: Engine, first_seed: dict[str, list[str]]
 ) -> None:
     writer = FakeWriter(text="ค่อย ๆ ดูแลค่างวดไปด้วยกัน\nกันชนช่วยได้")
-    report = ai_check(kidnee, day=DAY, writer=writer)
+    ticks = itertools.count(0, 1_250_000_000)  # each persona: 1.25 s between two reads
+    report = ai_check(kidnee, day=DAY, writer=writer, clock=lambda: next(ticks))
     assert list(report) == list(PERSONAS)
     assert len(writer.calls) == 3  # one call per persona, never cached across them
     for lines in report.values():
         assert lines == [
             "source: ai",
             "reason: ok",
+            "seconds: 1.3",  # the call and the check, to a tenth (to compare models)
             "text:",
             "  ค่อย ๆ ดูแลค่างวดไปด้วยกัน",
             "  กันชนช่วยได้",
@@ -271,13 +275,27 @@ def test_AI_25_ai_check_shows_why_the_check_refused_the_model_text(
 ) -> None:
     report = ai_check(kidnee, day=DAY, writer=FakeWriter(text="ค่างวดรวม 123.45 บาท"))
     lines = report["demo-mon"]
-    assert lines[:3] == ["source: fallback", "reason: grounding_failed", "text:"]
-    assert lines[3] == "  เดือน พ.ย. 2569 ค่างวดรวม 3,500.00 บาท อยู่ในงบ 5,000.00 บาท"
+    assert lines[:2] == ["source: fallback", "reason: grounding_failed"]
+    assert lines[3:5] == ["text:", "  ค่างวดทุกเดือนอยู่ในงบ เดือนนี้รวม 3,500 บาท จากงบ 5,000 บาท"]
     assert lines[-3:] == [
         "check: number_not_in_input (123.45)",
         "model text (refused):",
         "  ค่างวดรวม 123.45 บาท",
     ]
+
+
+@pytest.mark.parametrize(
+    ("nanoseconds", "shown"),
+    [
+        (0, "0.0"),
+        (49_999_999, "0.0"),
+        (50_000_000, "0.1"),
+        (1_850_000_000, "1.9"),
+        (12_345_000_000, "12.3"),
+    ],
+)
+def test_AI_25_seconds_to_a_tenth_without_floats(nanoseconds: int, shown: str) -> None:
+    assert seconds(nanoseconds) == shown
 
 
 def test_AI_25_ai_check_without_a_key_says_so_and_never_prints_a_key(

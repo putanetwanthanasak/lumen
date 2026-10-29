@@ -10,13 +10,20 @@ Every answer passes the grounding check (ai.grounding) or is replaced by the fal
 template, built from the same facts. No key, a timeout or any API error also give the
 template, so the card always has text. Answers are cached per user, keyed by a hash
 of the facts, the prompt version and the model, so a reload never asks again until
-the numbers change.
+the numbers change; after a timeout or an API error, the model is asked again once
+RETRY_AFTER_NS has passed.
+
+Both the model and the template lead with what matters most for this person, say at
+most 3 sentences, and end with a next step that points to a screen. Whole baht are
+written without satang ("3,500 บาท"), as the alerts write them.
 """
 
 import hashlib
 import json
 import logging
 import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -45,7 +52,7 @@ from app.notifications.copy import thai_month
 
 logger = logging.getLogger(__name__)
 
-PROMPT_FILE = Path(__file__).resolve().parents[1] / "ai" / "prompts" / "summary_v1.md"
+PROMPT_FILE = Path(__file__).resolve().parents[1] / "ai" / "prompts" / "summary_v2.md"
 PROMPT_VERSION = PROMPT_FILE.stem  # in the cache key: a new prompt asks again
 PROMPT = PROMPT_FILE.read_text(encoding="utf-8")
 MAX_OVER_MONTHS = 12  # months over budget sent in detail; the count covers them all
@@ -149,7 +156,10 @@ def load_facts(session: Session, user_id: str, *, today: date, settings: Setting
 
 
 def baht(amount: Decimal) -> str:
-    """3500.00 -> "3,500.00 บาท", as the screens show money. Decimal only."""
+    """3500.00 -> "3,500 บาท", 4130.12 -> "4,130.12 บาท": satang only when there are
+    some. Decimal only; a whole amount is exact without them."""
+    if amount == amount.to_integral_value():
+        return f"{amount:,.0f} บาท"
     return f"{amount:,.2f} บาท"
 
 
@@ -250,54 +260,69 @@ def facts_text(facts: Facts) -> str:
 
 # --- The fallback: the same facts in fixed words -------------------------------------
 
+# Said only when the verdict is RED (L65): the guidance, never months that meet it.
 ONE_THIRD_NOTE = "บางเดือนค่างวดรวมเกิน 1 ใน 3 ของรายได้ ซึ่ง ธปท. แนะนำว่าไม่ควรเกิน"
+BANK_WILL_CALL = "ถ้าสนใจ ธนาคารจะติดต่อกลับเพื่อพิจารณา"  # L71: the bank decides
+# The last sentence: one next step, on a screen, with no number.
+STEP_CONSOLIDATION = "ดูรายละเอียดได้ที่การ์ดรวมหนี้ในหน้าหลัก"
+STEP_BUFFER = "ดูส่วนที่เกินงบแต่ละเดือนได้ที่หน้ากันชน"
+STEP_MONTHS = "ดูค่างวดแต่ละเดือนได้ที่หน้าภาระผ่อนรายเดือน"
 
 
-def _months_line(facts: Facts) -> str:
-    if not facts.over_months:
-        line = "ทุกเดือนอยู่ในงบ"
-    else:
-        first, last = facts.over_months[0].month, facts.last_over_month
-        if facts.over_month_count is None or last is None:
-            line = f"มีเดือนที่ค่างวดเกินงบตั้งแต่ {thai_month(first)}"
-        elif facts.over_month_count == 1:
-            line = f"มี 1 เดือนที่ค่างวดเกินงบ คือ {thai_month(first)}"
-        else:
-            span = f"ตั้งแต่ {thai_month(first)} ถึง {thai_month(last)}"
-            line = f"มี {facts.over_month_count} เดือนที่ค่างวดเกินงบ {span}"
-        if facts.back_in_budget is not None:
-            line += f" กลับมาอยู่ในงบเดือน {thai_month(facts.back_in_budget)}"
-    return f"{line} {ONE_THIRD_NOTE}" if facts.verdict is Verdict.RED else line
+def _span(facts: Facts) -> str:
+    first, last = facts.over_months[0].month, facts.last_over_month
+    if facts.over_month_count is None or last is None:
+        return f"มีเดือนที่ค่างวดเกินงบตั้งแต่ {thai_month(first)}"
+    if facts.over_month_count == 1:
+        return f"มี 1 เดือนที่ค่างวดเกินงบ คือ {thai_month(first)}"
+    span = f"ตั้งแต่ {thai_month(first)} ถึง {thai_month(last)}"
+    return f"มี {facts.over_month_count} เดือนที่ค่างวดเกินงบ {span}"
 
 
-def _buffer_line(facts: Facts) -> str:
-    if not facts.over_months:
-        return f"กันชนตอนนี้ {baht(facts.buffer_balance)}"
+def _buffer(facts: Facts) -> tuple[str, str]:
+    """The buffer against the months over budget, and the word that joins it on."""
     if facts.all_prepared:
-        return "เตรียมเงินจากกันชนครบทุกเดือนที่เกินงบแล้ว"
+        return "และ", "เตรียมเงินจากกันชนครบทุกเดือนที่เกินงบแล้ว"
     if facts.buffer_covered:
-        return f"กันชน {baht(facts.buffer_balance)} พอจ่ายส่วนที่เกินได้ทั้งหมด"
-    return f"กันชน {baht(facts.buffer_balance)} ยังขาดอีก {baht(facts.still_short)}"
+        return "แต่", f"กันชน {baht(facts.buffer_balance)} พอจ่ายส่วนที่เกินได้ทั้งหมด"
+    return "และ", f"กันชน {baht(facts.buffer_balance)} ยังขาดอีก {baht(facts.still_short)}"
+
+
+def _this_month(facts: Facts) -> str:
+    if facts.total <= facts.budget:
+        return f"เดือนนี้ค่างวดรวม {baht(facts.total)} ยังอยู่ในงบ"
+    line = f"เดือนนี้ค่างวดรวม {baht(facts.total)} เกินงบ {baht(facts.total - facts.budget)}"
+    back = facts.back_in_budget
+    return line if back is None else f"{line} และกลับมาอยู่ในงบตั้งแต่ {thai_month(back)}"
+
+
+def _consolidation(facts: Facts) -> str:
+    if facts.monthly_reduction is None:
+        return f"รวมหนี้เป็นทางเลือกหนึ่ง {BANK_WILL_CALL}"
+    return f"ถ้ารวมหนี้ ค่างวดจะลดลงเดือนละ {baht(facts.monthly_reduction)} {BANK_WILL_CALL}"
 
 
 def fallback_text(facts: Facts) -> str:
-    """The deterministic summary: at most 4 lines, every number from the facts, so it
-    always passes the grounding check (AI-20)."""
-    over = facts.total > facts.budget
-    this = f"เดือน {thai_month(facts.month)} ค่างวดรวม {baht(facts.total)} " + (
-        f"เกินงบ {baht(facts.total - facts.budget)}" if over else f"อยู่ในงบ {baht(facts.budget)}"
-    )
-    lines = [this, _months_line(facts), _buffer_line(facts)]
-    if facts.consolidation_offered:
-        lines.append(
-            "รวมหนี้เป็นทางเลือกหนึ่ง"
-            if facts.monthly_reduction is None
-            else f"ถ้ารวมหนี้ ค่างวดอาจลดลงเดือนละ {baht(facts.monthly_reduction)}"
+    """The deterministic summary in 3 lines: what matters most, one supporting fact, and
+    a next step on a screen. Every number is from the facts, so it always passes the
+    grounding check (AI-20, AI-31)."""
+    red = facts.verdict is Verdict.RED
+    if not facts.over_months:
+        lead = "ค่างวดทุกเดือนอยู่ในงบ " + (
+            f"แต่{ONE_THIRD_NOTE}"
+            if red
+            else f"เดือนนี้รวม {baht(facts.total)} จากงบ {baht(facts.budget)}"
         )
-        lines[-1] += " ถ้าสนใจ ธนาคารจะติดต่อกลับเพื่อพิจารณา"
-    elif over:
-        lines.append("ตอนนี้ยังไม่ควรผ่อนเพิ่ม")
-    return "\n".join(lines)
+        detail = f"กันชนตอนนี้มี {baht(facts.buffer_balance)}"
+        step = STEP_MONTHS
+    else:
+        join, buffer = _buffer(facts)
+        lead = f"{_span(facts)} " + (ONE_THIRD_NOTE if red else f"{join}{buffer}")
+        detail = buffer if red else _this_month(facts)
+        step = STEP_BUFFER
+    if facts.consolidation_offered:
+        detail, step = _consolidation(facts), STEP_CONSOLIDATION
+    return "\n".join([lead, detail, step])
 
 
 # --- Asking, checking and caching ----------------------------------------------------
@@ -314,14 +339,22 @@ class Summary:
     failure: Failure | None = None
 
 
-class SummaryCache:
-    """In memory, per user: the last answer and the key it was for. One lock per user,
-    so two reloads at once ask the model once (AI-18)."""
+# After a timeout or an API error the fallback is kept for 2 minutes, then the model
+# is asked again. Every other answer stays until the numbers change.
+RETRY_AFTER_NS = 120 * 1_000_000_000
+RETRY_REASONS = frozenset({Reason.TIMEOUT, Reason.API_ERROR})
 
-    def __init__(self) -> None:
+
+class SummaryCache:
+    """In memory, per user: the last answer, the key it was for, and when it expires
+    (never, or RETRY_AFTER_NS after a timeout or an API error). One lock per user, so
+    two reloads at once ask the model once (AI-18). `clock` is monotonic nanoseconds."""
+
+    def __init__(self, clock: Callable[[], int] = time.monotonic_ns) -> None:
+        self._clock = clock
         self._guard = threading.Lock()
         self._locks: dict[str, threading.Lock] = {}
-        self._entries: dict[str, tuple[str, Summary]] = {}
+        self._entries: dict[str, tuple[str, Summary, int | None]] = {}
 
     def lock(self, user_id: str) -> threading.Lock:
         with self._guard:
@@ -329,10 +362,15 @@ class SummaryCache:
 
     def get(self, user_id: str, key: str) -> Summary | None:
         entry = self._entries.get(user_id)
-        return entry[1] if entry is not None and entry[0] == key else None
+        if entry is None or entry[0] != key:
+            return None
+        expires = entry[2]
+        return None if expires is not None and self._clock() >= expires else entry[1]
 
     def put(self, user_id: str, key: str, summary: Summary) -> None:
-        self._entries[user_id] = (key, summary)
+        retry = summary.reason in RETRY_REASONS
+        expires = self._clock() + RETRY_AFTER_NS if retry else None
+        self._entries[user_id] = (key, summary, expires)
 
 
 CACHE = SummaryCache()
@@ -369,15 +407,19 @@ def _ask(facts: Facts, writer: Writer) -> Summary:
 def summarize(facts: Facts, *, user_id: str, writer: Writer | None, cache: SummaryCache) -> Summary:
     """The card's text. Without a writer (no key) the model is never asked. Otherwise
     one call per user and facts; every outcome of a call is cached, so a timeout is
-    not waited for again on each reload (no retries)."""
+    not waited for on each reload (no retries), and asked again after RETRY_AFTER_NS.
+    Only a new answer is put: a hit never moves that time on."""
     if writer is None:
         result = _fallback(facts, Reason.NO_KEY)
     else:
         key = cache_key(facts, writer.model)
         with cache.lock(user_id):
-            hit = cache.get(user_id, key)
-            result = hit if hit is not None else _ask(facts, writer)
-            cache.put(user_id, key, result)
+            cached = cache.get(user_id, key)
+            if cached is None:
+                result = _ask(facts, writer)
+                cache.put(user_id, key, result)
+            else:
+                result = cached
     # The reason and the check's name only: never the prompt, the reply or the key.
     logger.info(
         "assistant summary: source=%s reason=%s%s",

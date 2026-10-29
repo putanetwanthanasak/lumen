@@ -6,8 +6,8 @@ test that builds the real client, so no test reaches the network.
 
 Config, env only (the names config.py already had): LLM_API_KEY (its value is only
 passed to the SDK, never logged or printed), LLM_MODEL_PLANNER (default
-claude-haiku-5-5) and LLM_PROVIDER (empty or "anthropic"; anything else means no
-model, so another provider's key is never sent to Anthropic).
+claude-haiku-5-5) and LLM_PROVIDER, which must be "anthropic": unset or anything
+else means no model, so a key meant for another provider is never sent to Anthropic.
 """
 
 from collections.abc import Callable

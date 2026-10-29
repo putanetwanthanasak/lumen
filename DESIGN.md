@@ -436,9 +436,10 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
    "ไม่มีค่างวด" when nothing is owed. Tap: the buffer screen.
 5. **Assistant bubble** (`AssistantCards.tsx`, `GET /assistant/summary`, loaded
    when Home opens): "ผู้ช่วย KidNee สรุปให้ฟัง", the summary's first line, the rest
-   behind "อ่านต่อ ›" / "ย่อ". The text is Claude Haiku's words behind the backend's
-   grounding check, or the backend's own template from the same numbers; both show the
-   same way, with no tag. It only puts words around the plan's numbers. A failed
+   behind "อ่านต่อ ›" / "ย่อ". The text is the model's words (`LLM_MODEL_PLANNER`,
+   default Claude Haiku) behind the backend's grounding check, or the backend's own
+   template from the same numbers; both show the same way, with no tag. At most 3
+   lines: what matters most first, last a next step that points to a screen. It only puts words around the plan's numbers. A failed
    request shows the plan's own words (`planSummary`), never an error or an empty card.
 6. **Consolidation** (the plan's `consolidation`, L70):
    - not eligible: the banner "ตอนนี้ยังไม่จำเป็นต้องรวมหนี้" for `NOT_NEEDED`, else

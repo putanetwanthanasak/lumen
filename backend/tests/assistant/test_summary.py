@@ -1,9 +1,11 @@
-"""AI-10, AI-11 to AI-14 (through the service), AI-15 to AI-18, AI-20, AI-21 and AI-26:
-Home's summary (app.assistant.summary) over the plan's own numbers, with a fake model.
+"""AI-10, AI-11 to AI-14 (through the service), AI-15 to AI-18, AI-20, AI-21, AI-26 and
+AI-31: Home's summary (app.assistant.summary) over the plan's own numbers, with a fake
+model and, for the cache, a fake clock.
 Pure: no database. The three stories are the KidNee personas' (demo.kidnee), with
 "today" in November 2026."""
 
 import logging
+import re
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
@@ -18,13 +20,19 @@ from app.ai.provider import WriterError, WriterTimeoutError
 from app.assistant import summary
 from app.assistant.plan import Debt, PreparedState, build, shortfalls
 from app.assistant.summary import (
+    ONE_THIRD_NOTE,
     PROMPT,
     PROMPT_FILE,
+    RETRY_AFTER_NS,
+    STEP_BUFFER,
+    STEP_CONSOLIDATION,
+    STEP_MONTHS,
     Facts,
     OverMonth,
     Reason,
     SummaryCache,
     allowed_of,
+    baht,
     cache_key,
     facts_of,
     facts_text,
@@ -87,35 +95,51 @@ def ask(
 # --- The stories' facts and fallbacks ---------------------------------------------------
 
 
-def test_AI_20_each_story_has_its_own_fallback_in_the_apps_words() -> None:
+def test_AI_20_31_each_story_leads_with_what_matters_most_for_it() -> None:
+    # In budget: say so first; this month's total out of the budget; the months screen.
     assert fallback_text(MON) == (
-        "เดือน พ.ย. 2569 ค่างวดรวม 3,500.00 บาท อยู่ในงบ 5,000.00 บาท\n"
-        "ทุกเดือนอยู่ในงบ\n"
-        "กันชนตอนนี้ 2,700.00 บาท"
+        "ค่างวดทุกเดือนอยู่ในงบ เดือนนี้รวม 3,500 บาท จากงบ 5,000 บาท\n"
+        "กันชนตอนนี้มี 2,700 บาท\n"
+        "ดูค่างวดแต่ละเดือนได้ที่หน้าภาระผ่อนรายเดือน"
     )
+    # Over budget, covered: the months over and what the buffer does for them first.
     assert fallback_text(OVER) == (
-        "เดือน พ.ย. 2569 ค่างวดรวม 6,500.00 บาท เกินงบ 1,500.00 บาท\n"
-        "มี 2 เดือนที่ค่างวดเกินงบ ตั้งแต่ พ.ย. 2569 ถึง ธ.ค. 2569 กลับมาอยู่ในงบเดือน ม.ค. 2570\n"
-        "กันชน 5,700.00 บาท พอจ่ายส่วนที่เกินได้ทั้งหมด\n"
-        "ตอนนี้ยังไม่ควรผ่อนเพิ่ม"
+        "มี 2 เดือนที่ค่างวดเกินงบ ตั้งแต่ พ.ย. 2569 ถึง ธ.ค. 2569 "
+        "แต่กันชน 5,700 บาท พอจ่ายส่วนที่เกินได้ทั้งหมด\n"
+        "เดือนนี้ค่างวดรวม 6,500 บาท เกินงบ 1,500 บาท และกลับมาอยู่ในงบตั้งแต่ ม.ค. 2570\n"
+        "ดูส่วนที่เกินงบแต่ละเดือนได้ที่หน้ากันชน"
     )
+    # RED and offered: the months over and the third of income, then consolidation as
+    # the card words it, with satang kept when there are some.
     assert CONSOLIDATE.verdict is Verdict.RED  # 7,500.00 x 3 > 20,000.00 (L65)
-    assert CONSOLIDATE.monthly_reduction is not None
+    assert CONSOLIDATE.monthly_reduction == Decimal("4130.12")
     assert fallback_text(CONSOLIDATE) == (
-        "เดือน พ.ย. 2569 ค่างวดรวม 7,500.00 บาท เกินงบ 2,500.00 บาท\n"
-        "มี 9 เดือนที่ค่างวดเกินงบ ตั้งแต่ พ.ย. 2569 ถึง ก.ค. 2570 กลับมาอยู่ในงบเดือน ส.ค. 2570 "
+        "มี 9 เดือนที่ค่างวดเกินงบ ตั้งแต่ พ.ย. 2569 ถึง ก.ค. 2570 "
         "บางเดือนค่างวดรวมเกิน 1 ใน 3 ของรายได้ ซึ่ง ธปท. แนะนำว่าไม่ควรเกิน\n"
-        "กันชน 1,500.00 บาท ยังขาดอีก 9,000.00 บาท\n"
-        f"ถ้ารวมหนี้ ค่างวดอาจลดลงเดือนละ {summary.baht(CONSOLIDATE.monthly_reduction)} "
-        "ถ้าสนใจ ธนาคารจะติดต่อกลับเพื่อพิจารณา"
+        "ถ้ารวมหนี้ ค่างวดจะลดลงเดือนละ 4,130.12 บาท ถ้าสนใจ ธนาคารจะติดต่อกลับเพื่อพิจารณา\n"
+        "ดูรายละเอียดได้ที่การ์ดรวมหนี้ในหน้าหลัก"
     )
+    for facts in (MON, OVER, CONSOLIDATE):
+        assert check(fallback_text(facts), allowed_of(facts)) is None
+
+
+def test_AI_20_31_red_without_the_bank_says_the_buffer_second() -> None:
+    red = replace(CONSOLIDATE, consolidation_offered=False, monthly_reduction=None)
+    assert fallback_text(red).split("\n")[1:] == [
+        "กันชน 1,500 บาท ยังขาดอีก 9,000 บาท",
+        "ดูส่วนที่เกินงบแต่ละเดือนได้ที่หน้ากันชน",
+    ]
+    in_budget = replace(MON, verdict=Verdict.RED)  # a budget above a third (L64)
+    assert fallback_text(in_budget).split("\n")[0] == f"ค่างวดทุกเดือนอยู่ในงบ แต่{ONE_THIRD_NOTE}"
+    for facts in (red, in_budget):
+        assert check(fallback_text(facts), allowed_of(facts)) is None
 
 
 def test_AI_20_one_month_over_budget_is_named() -> None:
     one = plan_facts([EARBUDS, FRIDGE, plan_of("2000.00", 1, 1)], "2700.00")
-    assert fallback_text(one).split("\n")[1:3] == [
-        "มี 1 เดือนที่ค่างวดเกินงบ คือ ธ.ค. 2569 กลับมาอยู่ในงบเดือน ม.ค. 2570",
-        "กันชน 2,700.00 บาท พอจ่ายส่วนที่เกินได้ทั้งหมด",
+    assert fallback_text(one).split("\n")[:2] == [
+        "มี 1 เดือนที่ค่างวดเกินงบ คือ ธ.ค. 2569 แต่กันชน 2,700 บาท พอจ่ายส่วนที่เกินได้ทั้งหมด",
+        "เดือนนี้ค่างวดรวม 3,500 บาท ยังอยู่ในงบ",
     ]
     assert check(fallback_text(one), allowed_of(one)) is None
 
@@ -125,12 +149,37 @@ def test_AI_20_prepared_months_are_said_as_the_buffer_screen_says_them() -> None
     over = [plan_of("2000.00", 6, -4), FRIDGE, LAPTOP]
     partly = plan_facts(over, "4200.00", {nov: Decimal("1000.00")})
     assert partly.over_months[0].state is PreparedState.PARTLY_PREPARED
-    assert fallback_text(partly).split("\n")[2] == "กันชน 4,200.00 บาท พอจ่ายส่วนที่เกินได้ทั้งหมด"
+    assert fallback_text(partly).split("\n")[0].endswith(" แต่กันชน 4,200 บาท พอจ่ายส่วนที่เกินได้ทั้งหมด")
     every = plan_facts(over, "2700.00", {nov: Decimal("1500.00"), dec: Decimal("1500.00")})
     assert every.all_prepared
-    assert fallback_text(every).split("\n")[2] == "เตรียมเงินจากกันชนครบทุกเดือนที่เกินงบแล้ว"
+    assert fallback_text(every).split("\n")[0].endswith(" และเตรียมเงินจากกันชนครบทุกเดือนที่เกินงบแล้ว")
     assert check(fallback_text(partly), allowed_of(partly)) is None
     assert check(fallback_text(every), allowed_of(every)) is None
+
+
+@pytest.mark.parametrize(
+    ("amount", "shown"),
+    [
+        ("3500.00", "3,500 บาท"),
+        ("4130.12", "4,130.12 บาท"),
+        ("4130.10", "4,130.10 บาท"),
+        ("0.00", "0 บาท"),
+        ("0.05", "0.05 บาท"),
+        ("1234567.50", "1,234,567.50 บาท"),
+        ("9999999999.00", "9,999,999,999 บาท"),
+    ],
+)
+def test_AI_31_whole_baht_without_satang_and_satang_only_when_there_are_some(
+    amount: str, shown: str
+) -> None:
+    assert baht(Decimal(amount)) == shown
+
+
+def test_AI_31_the_model_gets_the_amounts_as_the_card_shows_them() -> None:
+    data = model_input(CONSOLIDATE)
+    assert data["this_month"]["total"] == "7,500 บาท"
+    assert data["consolidation"]["monthly_reduction"] == "4,130.12 บาท"
+    assert ".00 บาท" not in facts_text(CONSOLIDATE)
 
 
 # --- AI-10 to AI-14: the model's text, checked -------------------------------------------
@@ -171,7 +220,7 @@ def test_AI_14_consolidation_as_an_option_passes_only_when_offered() -> None:
     reduction = summary.baht(CONSOLIDATE.monthly_reduction or Decimal(0))
     text = (
         "เดือน พ.ย. 2569 ค่างวดรวม 7,500.00 บาท เกินงบ 2,500.00 บาท\n"
-        f"ถ้าสนใจรวมหนี้ ค่างวดอาจลดลงเดือนละ {reduction} ธนาคารจะติดต่อกลับเพื่อพิจารณา"
+        f"ถ้าสนใจรวมหนี้ ค่างวดจะลดลงเดือนละ {reduction} ธนาคารจะติดต่อกลับเพื่อพิจารณา"
     )
     assert ask(CONSOLIDATE, FakeWriter(text=text)).reason is Reason.OK
     assert ask(OVER, FakeWriter(text=text)).reason is Reason.GROUNDING_FAILED
@@ -233,10 +282,69 @@ def test_AI_18_other_numbers_another_user_or_another_model_ask_again() -> None:
     assert len(other.calls) == 1
 
 
+class Clock:
+    """Monotonic nanoseconds that move only when a test moves them."""
+
+    def __init__(self) -> None:
+        self.now = 0
+
+    def __call__(self) -> int:
+        return self.now
+
+
+SECOND = 1_000_000_000
+
+
 def test_AI_18_a_timeout_is_cached_too_so_a_reload_does_not_wait_again() -> None:
-    cache, writer = SummaryCache(), FakeWriter(error=WriterTimeoutError())
+    clock = Clock()
+    cache, writer = SummaryCache(clock), FakeWriter(error=WriterTimeoutError())
     assert ask(OVER, writer, cache).reason is Reason.TIMEOUT
+    clock.now = RETRY_AFTER_NS - 1  # within the 2 minutes
     assert ask(OVER, writer, cache).reason is Reason.TIMEOUT
+    assert len(writer.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [(WriterTimeoutError(), Reason.TIMEOUT), (WriterError("APIConnectionError"), Reason.API_ERROR)],
+)
+def test_AI_18_after_a_timeout_or_api_error_the_model_is_asked_again_after_2_minutes(
+    error: Exception, reason: Reason
+) -> None:
+    assert RETRY_AFTER_NS == 120 * SECOND
+    clock = Clock()
+    cache, writer = SummaryCache(clock), FakeWriter(text=MON_AI, error=error)
+    assert ask(MON, writer, cache).reason is reason
+    clock.now = 60 * SECOND  # a reload within the 2 minutes: the cached fallback
+    assert ask(MON, writer, cache).reason is reason
+    assert len(writer.calls) == 1
+    # That reload did not move the 2 minutes on: at 120 s from the call, ask again.
+    writer.error = None
+    clock.now = RETRY_AFTER_NS
+    result = ask(MON, writer, cache)
+    assert (result.source, result.reason) == ("ai", Reason.OK)
+    assert len(writer.calls) == 2
+
+
+def test_AI_18_an_ai_answer_stays_until_the_numbers_change() -> None:
+    clock = Clock()
+    cache, writer = SummaryCache(clock), FakeWriter(text=MON_AI)
+    assert ask(MON, writer, cache).reason is Reason.OK
+    clock.now = 30 * 24 * 3600 * SECOND  # a month later, the same numbers
+    assert ask(MON, writer, cache).reason is Reason.OK
+    assert len(writer.calls) == 1
+    ask(replace(MON, buffer_balance=Decimal("2700.01")), writer, cache)
+    assert len(writer.calls) == 2
+
+
+def test_AI_18_a_refused_text_stays_until_the_numbers_change() -> None:
+    """The same facts would most likely get the same words: asking again costs a call
+    for the same fallback (Session 19, open question)."""
+    clock = Clock()
+    cache, writer = SummaryCache(clock), FakeWriter(text=MON_AI + " โปะหนี้")
+    assert ask(MON, writer, cache).reason is Reason.GROUNDING_FAILED
+    clock.now = 3600 * SECOND
+    assert ask(MON, writer, cache).reason is Reason.GROUNDING_FAILED
     assert len(writer.calls) == 1
 
 
@@ -292,7 +400,7 @@ def test_AI_26_the_prompt_version_and_the_model_are_in_the_cache_key(
     key = cache_key(MON, "fake-model")
     assert key == cache_key(replace(MON), "fake-model")
     assert key != cache_key(MON, "another-model")
-    monkeypatch.setattr(summary, "PROMPT_VERSION", "summary_v2")
+    monkeypatch.setattr(summary, "PROMPT_VERSION", "summary_v3")
     assert key != cache_key(MON, "fake-model")
 
 
@@ -300,17 +408,19 @@ def test_AI_26_the_prompt_version_and_the_model_are_in_the_cache_key(
 
 
 def test_AI_26_the_prompt_is_a_versioned_file_with_the_rules() -> None:
-    assert PROMPT_FILE.name == "summary_v1.md"
-    assert summary.PROMPT_VERSION == "summary_v1"
-    for rule in ("ธปท. แนะนำ", "กำหนด", "รวมหนี้", "ธนาคารจะติดต่อกลับเพื่อพิจารณา", "Thai"):
+    assert PROMPT_FILE.name == "summary_v2.md"
+    assert summary.PROMPT_VERSION == "summary_v2"
+    for rule in ("ธปท. แนะนำ", "กำหนด", "เกณฑ์", "รวมหนี้", "ประมาณ", "อาจ", "at most 3", "Thai"):
         assert rule in PROMPT
     for dash in ("\u2014", "\u2013"):
         assert dash not in PROMPT  # its Thai examples follow rule 10 too
     # Its example lines are in the app's own words: given their own numbers and months,
     # each one passes every rule of the check.
     examples = PROMPT.split("never copy them):\n")[1].strip().splitlines()
-    assert len(examples) == 4
-    # One story: this month in budget, two later months over, the buffer covers them.
+    assert len(examples) == 3
+    assert examples[-1] == STEP_BUFFER
+    assert ".00" not in "\n".join(examples)
+    # One story: two months over later, the buffer covers them, this month in budget.
     found = extract("\n".join(examples))
     story = Allowed(
         numbers=frozenset(found.numbers),
@@ -325,6 +435,16 @@ def test_AI_26_the_prompt_is_a_versioned_file_with_the_rules() -> None:
     )
     for line in examples:
         assert check(line, story) is None, (line, check(line, story))
+
+
+def test_AI_31_the_prompt_quotes_the_templates_own_sentences() -> None:
+    """The model and the fallback word the third of income, the bank's option and the
+    next step the same way."""
+    for sentence in (ONE_THIRD_NOTE, STEP_CONSOLIDATION, STEP_BUFFER, STEP_MONTHS):
+        assert f'"{sentence}"' in PROMPT
+    assert (
+        '"ถ้ารวมหนี้ ค่างวดจะลดลงเดือนละ <monthly_reduction> ถ้าสนใจ ธนาคารจะติดต่อกลับเพื่อพิจารณา"' in PROMPT
+    )
 
 
 # --- AI-21: only numbers and months reach the model ---------------------------------------
@@ -390,9 +510,36 @@ def test_AI_20_the_fallback_always_passes_the_check(facts: Facts) -> None:
     text = fallback_text(facts)
     assert check(text, allowed_of(facts)) is None, check(text, allowed_of(facts))
     lines = text.split("\n")
-    assert 3 <= len(lines) <= 4
+    assert len(lines) == 3
     assert all(line.strip() for line in lines)
     assert "\u2014" not in text
+
+
+@settings(max_examples=EXAMPLES, deadline=None)
+@given(facts=any_facts())
+def test_AI_31_the_fallback_follows_the_tone_rules(facts: Facts) -> None:
+    lead, detail, step = fallback_text(facts).split("\n")
+    # What matters most first: the months over budget, or that there are none.
+    assert lead.startswith("มี" if facts.over_months else "ค่างวดทุกเดือนอยู่ในงบ")
+    assert ("1 ใน 3" in lead) is (facts.verdict is Verdict.RED)
+    assert "1 ใน 3" not in detail + step  # said once, and only when RED
+    # Never two sentences opening with "เดือน" or "ค่างวดรวม".
+    for opening in ("เดือน", "ค่างวดรวม"):
+        assert sum(line.startswith(opening) for line in (lead, detail, step)) <= 1
+    # One next step on a screen, with no number.
+    expected = (
+        STEP_CONSOLIDATION
+        if facts.consolidation_offered
+        else STEP_BUFFER
+        if facts.over_months
+        else STEP_MONTHS
+    )
+    assert step == expected
+    assert re.search(r"\d", step) is None
+    # Whole baht without ".00", and no hedge on an exact amount.
+    assert re.search(r"\.00(?!\d)", lead + detail) is None
+    for hedge in ("ประมาณ", "อาจ", "เกือบ"):
+        assert hedge not in lead + detail
 
 
 @settings(max_examples=EXAMPLES, deadline=None)

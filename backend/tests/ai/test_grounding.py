@@ -1,4 +1,4 @@
-"""AI-10 to AI-14 and AI-19: the grounding check on the model's text (app.ai.grounding).
+"""AI-10 to AI-14, AI-19 and AI-30: the grounding check on the model's text (app.ai.grounding).
 Pure: no database, no model. Every number and month in the text must be an input
 value, in any format the screens display; the wording rules hold; anything else is
 refused, so the caller shows the fallback."""
@@ -125,7 +125,6 @@ def test_AI_10_grounded_text_passes() -> None:
         "เดือนตุลาคม 2569 ถึงเดือน พ.ย. พ.ศ. 2569",  # a full name, and พ.ศ.
         "ตั้งแต่ ต.ค. ปีนี้",  # a month without a year: its month is in the input
         "ปี 2569",  # a Buddhist year of an input month
-        "ธปท. แนะนำว่าไม่ควรเกิน 1 ใน 3 ของรายได้",  # the fixed phrase of the L65 guidance
         "มี 2 เดือนที่เกินงบ",  # a count, as "N เดือน"
         "เดือนตุลา 2569 ถึง ธ.ค 2569",  # a short name, and no last dot
         "ภาพรวมหนี้ของคุณดูได้ที่หน้าหลัก",  # the debt overview, not consolidation
@@ -240,6 +239,15 @@ def test_AI_14_every_banned_phrase_is_refused(phrase: str) -> None:
         ("  \n ", Check.EMPTY),
         ("ก" * 501, Check.TOO_LONG),
         ("หนึ่ง\nสอง\nสาม\nสี่\nห้า", Check.TOO_MANY_LINES),
+        ("ก\nข\nค\nง", Check.TOO_MANY_LINES),  # at most 3 sentences
+        # Every amount is exact: no hedge next to one.
+        ("ค่างวดอาจลดลงเดือนละ 1,500 บาท", Check.HEDGED_AMOUNT),
+        ("กันชนประมาณ 1,500 บาท", Check.HEDGED_AMOUNT),
+        ("เหลือราว ๆ 1,500 บาท", Check.HEDGED_AMOUNT),
+        ("ค่างวดเกือบ 3,500 บาท", Check.HEDGED_AMOUNT),
+        ("ค่างวด 3,500 บาทโดยประมาณ", Check.HEDGED_AMOUNT),
+        ("ค่างวด ๓,๕๐๐ บาท อาจ", None),  # after the unit, and no amount after it
+        ("กันชนอาจช่วยได้", None),  # no amount next to it
     ],
 )
 def test_AI_14_wording_rules(text: str, why: Check | None) -> None:
@@ -292,8 +300,6 @@ def test_AI_14_the_first_broken_rule_is_reported_with_its_token() -> None:
         ("ทุก ๆ เดือนยังอยู่ในงบ", BASE),
         ("เดือนนี้เกินงบ", BASE),  # this month is in budget
         ("ค่างวดรวม 3,500.00 บาท เกินงบ", ALL_IN),  # nothing is over budget
-        ("บางเดือนเกิน 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ", BASE),  # verdict is not RED
-        ("บางเดือนเกินกว่า 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ", BASE),
         (
             "ค่างวดทุกเดือนไม่เกิน 1 ใน 3 ของรายได้ ตามที่ ธปท. แนะนำ",
             replace(BASE, above_one_third=True),  # RED: some month is above a third
@@ -302,7 +308,7 @@ def test_AI_14_the_first_broken_rule_is_reported_with_its_token() -> None:
         ("เกินงบ 5,000.00 บาท", OVER_NOW),  # the budget, not the amount over it
         ("เกินงบ 2 เดือน", allowed("5000.00", counts=(3,), any_over=True)),  # not the count
         (
-            "ถ้าสนใจรวมหนี้ ค่างวดอาจลดลงเดือนละ 1,500.00 บาท ธนาคารจะติดต่อกลับเพื่อพิจารณา",
+            "ถ้าสนใจรวมหนี้ ค่างวดจะลดลงเดือนละ 1,500.00 บาท ธนาคารจะติดต่อกลับเพื่อพิจารณา",
             OVER_NOW,  # 1,500.00 is the amount over budget, not the reduction
         ),
         ("ค่างวดลดลง 3,500.00 บาท", BASE),  # no reduction in the facts
@@ -323,22 +329,105 @@ def test_AI_30_a_claim_the_facts_do_not_support_is_refused(text: str, allow: All
         ("ค่างวดรวม 6,500.00 บาท ไม่อยู่ในงบ", OVER_NOW),
         ("เกินงบ 2 เดือน", OVER_NOW),  # the count, as "N เดือน"
         (
-            "ถ้าสนใจรวมหนี้ ค่างวดอาจลดลงเดือนละ 4,130.12 บาท ธนาคารจะติดต่อกลับเพื่อพิจารณา",
+            "ถ้ารวมหนี้ ค่างวดจะลดลงเดือนละ 4,130.12 บาท ถ้าสนใจ ธนาคารจะติดต่อกลับเพื่อพิจารณา",
             OVER_NOW,
         ),
         ("เดือนนี้อยู่ในงบ แต่ ธ.ค. 2569 เกินงบ", BASE),
         ("ทุกเดือนอยู่ในงบ และไม่เกินงบเลย", ALL_IN),
-        ("ธปท. แนะนำว่าไม่ควรเกิน 1 ใน 3 ของรายได้", ALL_IN),
-        ("บางเดือนเกิน 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ", replace(BASE, above_one_third=True)),
-        (
-            "บางเดือนเกิน 1 ใน 3 ของรายได้ ซึ่ง ธปท. แนะนำว่าไม่ควรเกิน 1 ใน 3 ของรายได้",
-            replace(BASE, above_one_third=True),
-        ),
         ("กลับมาอยู่ภายในงบเดือน ธ.ค. 2569", OVER_NOW),
+        ("ค่างวดรวม 3,500 บาท อยู่ในงบ 5,000 บาท", ALL_IN),  # whole baht, no ".00"
     ],
 )
 def test_AI_30_a_claim_the_facts_support_passes(text: str, allow: Allowed) -> None:
     assert check(text, allow) is None, check(text, allow)
+
+
+# The demo-mon text the check refused in the first real ai-check (Session 19). Line 2
+# says no month is over budget: a negation, true for demo-mon. Line 3 brings up the
+# third of income for a GREEN verdict, and says the months from now on meet it.
+AI_CHECK_REFUSED = (
+    "เดือน ต.ค. 2569 ค่างวดรวม 3,500.00 บาท อยู่ในงบ 5,000.00 บาท\n"
+    "ตอนนี้ไม่มีเดือนไหนที่ค่างวดเกินงบ\n"
+    "ธปท. แนะนำให้ค่างวดไม่เกิน 1 ใน 3 ของรายได้ และทุกเดือนจากนี้อยู่ในเกณฑ์นี้"
+)
+NO_MONTH_OVER = [
+    "ตอนนี้ไม่มีเดือนไหนที่ค่างวดเกินงบ",  # the exact line ai-check refused
+    "ไม่มีเดือนไหนเกินงบ",
+    "ยังไม่มีเดือนใดที่ค่างวดรวมเกินงบเลย",
+    "ไม่มีสักเดือนที่เกินงบ",
+    "ไม่มีเดือนไหนเลย ที่ค่างวดเกินงบ",
+    "ไม่มีช่วงไหนที่ค่างวดเกินงบ",
+]
+
+
+def test_AI_30_the_ai_check_refusal_now_fails_only_on_the_third_of_income() -> None:
+    lines = AI_CHECK_REFUSED.split("\n")
+    assert check("\n".join(lines[:2]), ALL_IN) is None
+    assert failed(AI_CHECK_REFUSED, ALL_IN) is Check.ONE_THIRD_NOT_RED
+    red = replace(ALL_IN, above_one_third=True)
+    found = check(AI_CHECK_REFUSED, red)  # even when RED: the months do not meet it
+    assert found is not None
+    assert (found.check, found.token) == (Check.CLAIM_NOT_IN_INPUT, "เกณฑ์")
+
+
+@pytest.mark.parametrize("text", NO_MONTH_OVER)
+def test_AI_30_no_month_over_budget_is_a_negation_not_an_over_budget_claim(text: str) -> None:
+    assert check(text, ALL_IN) is None, check(text, ALL_IN)
+    assert failed(text, BASE) is Check.CLAIM_NOT_IN_INPUT  # while a month is over
+    assert failed(text, OVER_NOW) is Check.CLAIM_NOT_IN_INPUT
+
+
+@pytest.mark.parametrize("text", ["ค่างวดไม่ได้เกินงบ", "ค่างวดไม่เคยเกินงบ"])
+def test_AI_30_not_over_budget_in_other_words(text: str) -> None:
+    assert check(text, ALL_IN) is None, check(text, ALL_IN)
+    assert failed(text, OVER_NOW) is Check.CLAIM_NOT_IN_INPUT  # this month is over
+
+
+RED = replace(BASE, above_one_third=True)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "ธปท. แนะนำว่าไม่ควรเกิน 1 ใน 3 ของรายได้",
+        "บางเดือนเกิน 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ",
+        "บางเดือนเกินกว่า 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ",
+        "ค่างวดไม่ถึงหนึ่งในสามของรายได้ ที่แนะนำ",
+        "ธนาคารแห่งประเทศไทยแนะนำให้ผ่อนแต่พอดี",
+    ],
+)
+def test_AI_30_the_third_of_income_is_said_only_when_the_verdict_is_red(text: str) -> None:
+    assert failed(text, BASE) is Check.ONE_THIRD_NOT_RED
+    assert failed(text, ALL_IN) is Check.ONE_THIRD_NOT_RED
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "ธปท. แนะนำให้ค่างวดไม่เกิน 1 ใน 3 ของรายได้ และทุกเดือนจากนี้อยู่ในเกณฑ์นี้",
+        "บางเดือนเกิน 1 ใน 3 ของรายได้ ซึ่ง ธปท. แนะนำ แต่ตั้งแต่ ธ.ค. 2569 จะไม่เกิน 1 ใน 3",
+        "ตั้งแต่ ธ.ค. 2569 ค่างวดจะต่ำกว่า 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ",
+        "หลังจากนี้ค่างวดจะไม่เกินที่ ธปท. แนะนำ",
+        "ทุกเดือนผ่านเกณฑ์ที่ ธปท. แนะนำ",
+        "ค่างวดเดือนนี้เป็นไปตามคำแนะนำของ ธปท.",
+    ],
+)
+def test_AI_30_months_that_meet_the_third_are_never_said(text: str) -> None:
+    assert failed(text, RED) is Check.CLAIM_NOT_IN_INPUT
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "บางเดือนค่างวดรวมเกิน 1 ใน 3 ของรายได้ ซึ่ง ธปท. แนะนำว่าไม่ควรเกิน",  # the template's
+        "บางเดือนเกิน 1 ใน 3 ของรายได้ ซึ่ง ธปท. แนะนำว่าไม่ควรเกิน 1 ใน 3 ของรายได้",
+        "ธปท. แนะนำว่าไม่ควรเกิน 1 ใน 3 ของรายได้",
+        "ธปท. แนะนำให้ค่างวดไม่เกิน 1 ใน 3 ของรายได้",  # the guidance, not a claim
+        "บางเดือนเกิน 1 ใน 3 ของรายได้ ที่ ธปท. แนะนำ",
+    ],
+)
+def test_AI_30_the_guidance_passes_when_the_verdict_is_red(text: str) -> None:
+    assert check(text, RED) is None, check(text, RED)
 
 
 # --- AI-19: the extractor finds every number and month, in every display format ------

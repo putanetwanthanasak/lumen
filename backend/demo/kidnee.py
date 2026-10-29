@@ -28,9 +28,11 @@ import argparse
 import json
 import re
 import sys
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 import uvicorn
@@ -239,10 +241,23 @@ def serve(config: KidneeConfig, *, port: int = PORT) -> None:
         engine.dispose()
 
 
-def ai_check(engine: Engine, *, day: date, writer: Writer | None) -> dict[str, list[str]]:
+def seconds(nanoseconds: int) -> str:
+    """Elapsed time to a tenth of a second, without floats: 1_850_000_000 -> "1.9"."""
+    exact = Decimal(nanoseconds) / Decimal(1_000_000_000)
+    return str(exact.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
+
+def ai_check(
+    engine: Engine,
+    *,
+    day: date,
+    writer: Writer | None,
+    clock: Callable[[], int] = time.perf_counter_ns,
+) -> dict[str, list[str]]:
     """Home's AI summary for each persona, one model call each (a fresh cache), as
-    GET /assistant/summary makes it: source, reason and text. When the check refused
-    the model's text, also why and that text, to tune the prompt. Never the key."""
+    GET /assistant/summary makes it: source, reason, the seconds it took (the call and
+    the check) and the text. When the check refused the model's text, also why and that
+    text, to tune the prompt. Never the key."""
     report: dict[str, list[str]] = {}
     for user in PERSONAS:
         try:
@@ -251,8 +266,14 @@ def ai_check(engine: Engine, *, day: date, writer: Writer | None) -> dict[str, l
         except SettingsRequiredError:
             report[user] = ["not seeded: run python -m demo.kidnee seed"]
             continue
+        start = clock()
         result = summary.summarize(facts, user_id=user, writer=writer, cache=summary.SummaryCache())
-        lines = [f"source: {result.source}", f"reason: {result.reason.value}", "text:"]
+        lines = [
+            f"source: {result.source}",
+            f"reason: {result.reason.value}",
+            f"seconds: {seconds(clock() - start)}",
+            "text:",
+        ]
         lines += [f"  {line}" for line in result.text.split("\n")]
         if result.failure is not None and result.rejected is not None:
             lines.append(f"check: {result.failure.check.value} ({result.failure.token})")

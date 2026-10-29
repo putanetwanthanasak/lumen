@@ -9,13 +9,16 @@ fallback template, so a false rejection only costs the AI wording, never a numbe
 Numbers are also tied to what they may mean: a count only as "N เดือน", a Buddhist
 year only as four bare digits, and the amount after "เกินงบ" or "ลดลง" only an
 over-budget amount or the consolidation's reduction. Claims about the budget must
-match the facts: no "every month is within budget" while a month is over, and so on.
-It cannot prove every sentence true; it refuses the wrong claims we know to look for.
+match the facts: no "every month is within budget" while a month is over, and so on;
+"ไม่มีเดือนไหนที่ค่างวดเกินงบ" is such a claim, not an "over budget" one. It cannot
+prove every sentence true; it refuses the wrong claims we know to look for.
 
 The wording rules come from the product rules: no prepaying or closing early (L69),
 no more debt or investing, consolidation only as an option the bank considers (L71),
 the third of income is what the Bank of Thailand recommends, never "requires" (L65),
-no em dashes (rule 10) and no brand names (rule 5).
+and it comes up only when the verdict is RED, never as months that meet it. No hedge
+("ประมาณ", "อาจ") next to an amount, since every amount is exact; no em dashes
+(rule 10) and no brand names (rule 5).
 """
 
 import re
@@ -29,7 +32,7 @@ from app.affordability.months import Month
 from app.notifications.copy import BUDDHIST_ERA_OFFSET, THAI_MONTHS
 
 MAX_CHARS = 500
-MAX_LINES = 4
+MAX_LINES = 3  # at most 3 sentences, one per line
 
 THAI_MONTH_NAMES = (
     "มกราคม",
@@ -155,16 +158,28 @@ NUMBER_WORDS_RE = re.compile(
 )
 # Claims about the budget, checked against the facts.
 IN_BUDGET = r"(?<!กลับมา)(?<!ไม่)อยู่\s*(?:ภาย)?ในงบ"  # "อยู่ในงบ", "อยู่ภายในงบ"
-ALL_IN_BUDGET_RE = re.compile(
-    rf"ทุก\s*(?:ๆ\s*)?เดือน\s*\S{{0,6}}?\s*(?:ไม่เกินงบ|{IN_BUDGET})"
-    r"|ไม่มี(?:เดือน)?\S{0,8}?เกินงบ|ไม่เกินงบเลย"
+NOT_OVER = "ไม่(?:ได้|เคย)?เกินงบ"  # "ไม่เกินงบ", "ไม่ได้เกินงบ"
+# "No month is over budget": "ไม่มีเดือนไหนที่ค่างวดเกินงบ", "ไม่มีสักเดือนที่เกินงบ".
+NONE_OVER_RE = re.compile(
+    r"ไม่มี\s*(?:สัก\s*)?(?:เดือน|ช่วง|งวด)[^\n\d]{0,24}?เกินงบ|ไม่มี\S{0,8}?เกินงบ|ไม่เกินงบเลย"
 )
-IN_BUDGET_RE = re.compile(f"{IN_BUDGET}|ไม่เกินงบ")
-OVER_BUDGET_RE = re.compile("(?<!ไม่)เกินงบ")
+ALL_IN_BUDGET_RE = re.compile(
+    rf"ทุก\s*(?:ๆ\s*)?เดือน\s*\S{{0,6}}?\s*(?:{NOT_OVER}|{IN_BUDGET})|{NONE_OVER_RE.pattern}"
+)
+IN_BUDGET_RE = re.compile(f"{IN_BUDGET}|{NOT_OVER}")
+OVER_BUDGET_RE = re.compile("(?<!ไม่)(?<!ไม่ได้)(?<!ไม่เคย)เกินงบ")  # read with NONE_OVER_RE removed
 THIS_MONTH_OVER_RE = re.compile(r"เดือนนี้(?:ค่างวด(?:รวม)?)?(?:ก็)?\s*เกินงบ")
+# The third of income comes up only when the verdict is RED (L65), never as months
+# that meet it: "อยู่ในเกณฑ์", "ไม่เกิน 1 ใน 3", "ตามที่ ธปท. แนะนำ". The guidance
+# itself ("ธปท. แนะนำว่าไม่ควรเกิน 1 ใน 3", "แนะนำให้ค่างวดไม่เกิน 1 ใน 3") is not a claim.
+THIRD_RE = re.compile(r"1\s*ใน\s*3|หนึ่งในสาม|1/3|ธปท|ธนาคารแห่งประเทศไทย|แบงก์ชาติ")
 ONE_THIRD = r"\s*(?:กว่า\s*)?(?:1\s*ใน\s*3|หนึ่งในสาม)"
-ABOVE_THIRD_RE = re.compile(f"(?<!ไม่)(?<!ไม่ควร)เกิน{ONE_THIRD}")
-NOT_ABOVE_THIRD_RE = re.compile(f"ไม่เกิน{ONE_THIRD}")  # "ไม่ควรเกิน" is the guidance itself
+WITHIN = "(?:ไม่เกิน|ต่ำกว่า|น้อยกว่า|ไม่ถึง|ภายใน|อยู่ใน|ผ่าน|ตาม)"
+GUIDANCE_RE = re.compile(rf"แนะนำ(?:ว่า|ให้)\s*(?:ค่างวด(?:รวม)?\s*)?ไม่(?:ควร)?เกิน{ONE_THIRD}")
+RULE_MET_RE = re.compile(rf"เกณฑ์|ตามคำแนะนำ|{WITHIN}\S{{0,8}}?\s*ธปท|{WITHIN}{ONE_THIRD}")
+# A hedge next to an exact amount: "อาจลดลงเดือนละ 1,500 บาท", "1,500 บาทโดยประมาณ".
+HEDGE = r"ประมาณ|ราว\s*ๆ|อาจ|เกือบ"
+HEDGE_RE = re.compile(rf"(?:{HEDGE})[^\n\d]{{0,24}}\d|\d\s*บาท\s*(?:โดย)?ประมาณ")
 # More debt in other words: "ยังผ่อนเพิ่มอีกได้", "ซื้อเพิ่มได้อีก".
 MORE_DEBT_RE = re.compile(r"(?:ผ่อน|ซื้อ|รูด|กด)\S{0,8}?(?:เพิ่ม|อีก)\S{0,8}?ได้|รับค่างวดเพิ่ม")
 # An amount right after these words must be one of these facts.
@@ -187,6 +202,8 @@ class Check(StrEnum):
     CONSOLIDATION_NOT_OFFERED = "consolidation_not_offered"
     CONSOLIDATION_WORDING = "consolidation_wording"
     ONE_THIRD_WORDING = "one_third_wording"
+    ONE_THIRD_NOT_RED = "one_third_not_red"
+    HEDGED_AMOUNT = "hedged_amount"
     CLAIM_NOT_IN_INPUT = "claim_not_in_input"
     NUMBER_IN_WORDS = "number_in_words"
     MONTH_NOT_IN_INPUT = "month_not_in_input"
@@ -325,9 +342,14 @@ def _wording(text: str, allowed: Allowed) -> Iterator[Failure]:
             yield Failure(Check.CONSOLIDATION_NOT_OFFERED, "รวมหนี้")
         if "พิจารณา" not in text:
             yield Failure(Check.CONSOLIDATION_WORDING, "รวมหนี้")
-    third = ONE_THIRD_RE.search(text) or re.search("ธปท|หนึ่งในสาม|1/3", text)
+    third = THIRD_RE.search(text)
     if third is not None and "แนะนำ" not in text:
         yield Failure(Check.ONE_THIRD_WORDING, third.group(0))
+    if third is not None and not allowed.above_one_third:
+        yield Failure(Check.ONE_THIRD_NOT_RED, third.group(0))
+    hedge = HEDGE_RE.search(text)
+    if hedge is not None:
+        yield Failure(Check.HEDGED_AMOUNT, hedge.group(0))
     yield from _claims(text, allowed)
     words = NUMBER_WORDS_RE.search(text)
     if words is not None:
@@ -337,16 +359,17 @@ def _wording(text: str, allowed: Allowed) -> Iterator[Failure]:
 def _claims(text: str, allowed: Allowed) -> Iterator[Failure]:
     """Budget claims the facts do not support, and amounts after "เกินงบ" or "ลดลง"
     that are not what those words mean."""
+    no_month_over = NONE_OVER_RE.sub(" ", text)  # a "none is over" claim, not "over"
+    guidance = GUIDANCE_RE.sub(" ", text)  # what the Bank of Thailand recommends
     refused = [
-        (allowed.any_over, ALL_IN_BUDGET_RE),  # "every month is within budget"
-        (not allowed.any_over, OVER_BUDGET_RE),  # "over budget" while nothing is
-        (allowed.over_now, IN_BUDGET_RE),  # "within budget" while this month is over
-        (not allowed.over_now, THIS_MONTH_OVER_RE),  # "this month is over" while it is not
-        (not allowed.above_one_third, ABOVE_THIRD_RE),  # "above a third" while none is
-        (allowed.above_one_third, NOT_ABOVE_THIRD_RE),  # "not above a third" while one is
+        (allowed.any_over, ALL_IN_BUDGET_RE, text),  # "every month is within budget"
+        (not allowed.any_over, OVER_BUDGET_RE, no_month_over),  # "over" while nothing is
+        (allowed.over_now, IN_BUDGET_RE, text),  # "within budget" while this month is over
+        (not allowed.over_now, THIS_MONTH_OVER_RE, text),  # "this month is over" while not
+        (True, RULE_MET_RE, guidance),  # months that meet the third: never said
     ]
-    for applies, pattern in refused:
-        found = pattern.search(text) if applies else None
+    for applies, pattern, said in refused:
+        found = pattern.search(said) if applies else None
         if found is not None:
             yield Failure(Check.CLAIM_NOT_IN_INPUT, found.group(0))
     for m in OVER_BY_RE.finditer(text):
