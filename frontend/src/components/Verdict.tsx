@@ -85,21 +85,41 @@ const STATUS_LEGEND: [Tone, string][] = [
 /** Whether a month has installments besides the new item, so its bar has a grey part. */
 const hasExisting = (row: MonthRow, candidate: Money): boolean => toSatang(row.total) > toSatang(candidate);
 
-// The widest Thai month label is about 29px at 14px (34px with other system fonts), and
-// the chart is 298px wide in the 370px frame: up to 7 months, every label fits with
-// room between; beyond that, every k-th month gets one, centred under its own bar.
-const LABELLED_MONTHS = 7;
+// At 11px (text-axis) the widest Thai month label, "เม.ย.", is 22.7px in Noto Sans Thai,
+// and a month's slot is 24px in the 288px plot of a 360px phone: up to 12 months, every
+// month has its label; beyond that, every k-th month, from the first.
+const LABELLED_MONTHS = 12;
 
 /** Every how many months a label shows, so no label clips or touches the next (UI-40). */
 export function labelStep(months: number): number {
   return months <= LABELLED_MONTHS ? 1 : Math.ceil(months / LABELLED_MONTHS); // ui-06-allow: a count of months
 }
 
+// Chrome draws each bar's edges on whole pixels. With slots of 318 / 12 = 26.5px the
+// bars' edges fall at alternating fractions and round apart, so widths and gaps differ
+// by 1px and the bars read as pairs. A whole-pixel slot puts every bar at the same
+// fraction, so all round alike; the spare pixels (fewer than one per month) go to a side
+// column at each end, which the budget line spans too. Beyond 36 months a slot is under
+// 10px and the spare could be a tenth of the plot, so the slot is the exact share.
+// The 0.25px: Chrome makes 100% / 12 of 288px 23.99999px, which rounds down to 23.
+const WHOLE_PIXEL_MONTHS = 36;
+
+/** The plot's columns: a side column, one slot per month, a side column (UI-40). */
+export function plotColumns(months: number): string {
+  // The first and last bar's centres stay 12px (half the widest label) inside the plot,
+  // so their labels never stick out: (n - 1) slots fit in the plot less 24px. Up to 12
+  // months at 360px or wider, the equal share is the smaller of the two.
+  const share = months === 1 ? "100%" : `min(100% / ${months}, (100% - 24px) / ${months - 1})`;
+  const slot = months <= WHOLE_PIXEL_MONTHS ? `round(down, ${share} + 0.25px / ${months}, 1px)` : share;
+  return `minmax(0, 1fr) repeat(${months}, ${slot}) minmax(0, 1fr)`;
+}
+
 type BarsProps = { months: MonthRow[]; budget: Money; candidate?: Money | null; caption?: string };
 
 /**
- * Bars, labels and the budget line share one grid of equal columns, so each label sits
- * under its own bar at any number of months, and nothing overflows the card (UI-40).
+ * Bars, labels and the budget line share one grid of equal whole-pixel slots, so each
+ * label sits under its own bar, every bar and gap is drawn the same width, and nothing
+ * overflows the card (UI-40).
  * `candidate` is the new item's monthly amount: the top of each bar, in the month's
  * status colour, above the grey rest and a 2px white gap. Every row of the preview
  * includes it (L65); its height is a share of the bar, never an amount.
@@ -109,7 +129,7 @@ export function MonthBars({ months, budget, candidate = null, caption = THINK.mo
   const step = labelStep(months.length);
   const over = overRange(months);
   const tones = new Set(months.map(barTone));
-  const grid: CSSProperties = { gridTemplateColumns: `repeat(${months.length}, minmax(0, 1fr))` };
+  const grid: CSSProperties = { gridTemplateColumns: plotColumns(months.length) };
   return (
     <figure className="flex flex-col gap-3">
       <figcaption className="text-body font-semibold text-ink">{caption}</figcaption>
@@ -124,7 +144,7 @@ export function MonthBars({ months, budget, candidate = null, caption = THINK.mo
             key={row.month}
             className="relative row-start-1 flex w-4/5 flex-col self-end justify-self-center"
             style={{
-              gridColumn: i + 1,
+              gridColumn: i + 2, // after the side column
               height: `${Math.max(barPermille(row.total, scale) / 10, 2)}%`, // ui-06-allow: a drawing size
             }}
           >
@@ -144,8 +164,8 @@ export function MonthBars({ months, budget, candidate = null, caption = THINK.mo
           i % step === 0 ? (
             <span
               key={row.month}
-              className="row-start-2 justify-self-center pt-1.5 text-caption whitespace-nowrap text-ink-muted"
-              style={{ gridColumn: i + 1 }}
+              className="row-start-2 justify-self-center pt-1.5 text-axis whitespace-nowrap text-ink-muted"
+              style={{ gridColumn: i + 2 }}
             >
               {thaiMonthShort(row.month)}
             </span>

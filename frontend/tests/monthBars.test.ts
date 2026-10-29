@@ -1,7 +1,9 @@
 /**
  * The result's month bars (DESIGN.md section 5.4), rendered with react-dom/server:
- * UI-40: bars, labels and the budget line share one grid of equal columns; a label
- *   every k-th month, so none clips or touches the next; solid fills, no hatch and no
+ * UI-40: bars, labels and the budget line share one grid of equal whole-pixel slots; a
+ *   label for every month up to 12, beyond that every k-th from the first, so none
+ *   clips or touches the next (Chrome measures both in scripts/month-labels-check.mjs);
+ *   solid fills, no hatch and no
  *   hollow part; a ⚠ above every bar over one third of income; the new item's share is
  *   the top of each bar in its month's status colour, everything else one grey below a
  *   2px white gap; the legend shows only what the chart has: the grey, then "ชิ้นใหม่:"
@@ -15,7 +17,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ManualEntryIn, MonthRow, PreviewOut } from "../src/api-types.ts";
 import { KeepMonths } from "../src/components/ui.tsx";
-import { labelStep, MonthBars } from "../src/components/Verdict.tsx";
+import { labelStep, MonthBars, plotColumns } from "../src/components/Verdict.tsx";
 import { PERSONA_SETTINGS, SCENARIOS } from "../src/mock/persona.ts";
 import { handle, resetMock } from "../src/mock/server.ts";
 import { Result } from "../src/screens/Result.tsx";
@@ -88,41 +90,64 @@ const hollow = (cls: string) => {
 
 test("UI_40_bars_labels_and_the_budget_line_share_one_grid_of_equal_columns", () => {
   const plot = plotOf(bars(same(10, ["3000.00", false, false])));
-  assert.equal(plot.style, "grid-template-columns:repeat(10, minmax(0, 1fr))");
-  // The budget line spans every column, drawn first, behind the bars: at the top when
+  // A slot per month, in whole pixels: Chrome draws a bar's edges on whole pixels, so
+  // with 318 / 12 = 26.5px slots alternate bars rounded 1px apart. No wider than leaves
+  // 12px from each end bar's centre to the plot's edge, for its label. The spare pixels
+  // go to a side column at each end.
+  assert.equal(
+    plot.style,
+    "grid-template-columns:minmax(0, 1fr) repeat(10, round(down, min(100% / 10, (100% - 24px) / 9) + 0.25px / 10, 1px)) minmax(0, 1fr)",
+  );
+  assert.equal(plotColumns(1), "minmax(0, 1fr) repeat(1, round(down, 100% + 0.25px / 1, 1px)) minmax(0, 1fr)");
+  assert.ok(plotColumns(36).includes("repeat(36, round(down, "), plotColumns(36));
+  // Beyond 36 months a slot is under 10px: the exact share, so the spare is not a tenth of the plot.
+  assert.equal(plotColumns(37), "minmax(0, 1fr) repeat(37, min(100% / 37, (100% - 24px) / 36)) minmax(0, 1fr)");
+  // The budget line spans every column, the side ones too, drawn first, behind the bars: at the top when
   // the budget is the largest value (the scale), lower when a month is above it.
   const line = '<div class="col-span-full row-start-1 self-end border-t-2 border-dashed border-ink-muted" style="height:';
   assert.ok(plot.inner.startsWith(`${line}100%">`), plot.inner.slice(0, 160));
   assert.ok(plotOf(bars(rows([["7500.00", true, true]]))).inner.startsWith(`${line}66.6%">`));
-  // Bar i in column i; each label in its own bar's column, centred, on one line.
+  // Month i in column i + 2, after the side column; each label in its own bar's column,
+  // centred, on one line, at 11px.
   assert.deepEqual(
     barsOf(plot.inner).map((b) => /grid-column:(\d+)/.exec(b.style)?.[1]),
-    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+    ["2", "3", "4", "5", "6", "7", "8", "9", "10", "11"],
   );
   const labels = labelsOf(plot.inner);
   assert.deepEqual(
     labels.map((l) => [/grid-column:(\d+)/.exec(l.style)?.[1], l.text]),
-    [["1", "พ.ย."], ["3", "ม.ค."], ["5", "มี.ค."], ["7", "พ.ค."], ["9", "ก.ค."]],
+    [["2", "พ.ย."], ["3", "ธ.ค."], ["4", "ม.ค."], ["5", "ก.พ."], ["6", "มี.ค."], ["7", "เม.ย."], ["8", "พ.ค."], ["9", "มิ.ย."], ["10", "ก.ค."], ["11", "ส.ค."]],
   );
   for (const l of labels) {
-    assert.ok(l.cls.split(" ").includes("justify-self-center") && l.cls.split(" ").includes("whitespace-nowrap"), l.cls);
+    assert.ok(["justify-self-center", "whitespace-nowrap", "text-axis"].every((c) => l.cls.split(" ").includes(c)), l.cls);
     // Plain: no bold or amber label for a month over budget (the bar's colour says it).
     assert.ok(!/font-bold|warn/.test(l.cls), l.cls);
   }
 });
 
-test("UI_40_a_label_every_kth_month_leaves_room_between_labels_at_370px", () => {
-  // In the 370px frame the plot is 298px wide (measured in Chrome); the widest Thai month
-  // label at 14px is 29px in Noto Sans Thai, 34px allowing for other system fonts. So
-  // label centres must be at least 42px apart: k columns of 298 / n px each.
+test("UI_40_every_month_has_a_label_up_to_12_months_and_every_kth_from_the_first_beyond", () => {
+  // At 11px the widest label is 22.7px and a slot is 24px at 360px, so 12 fit; beyond 12
+  // months, every k-th month, k = ceil(months / 12), starting with the first.
+  const cases: [number, number][] = [[1, 1], [6, 1], [10, 1], [12, 1], [13, 2], [24, 2], [36, 3], [600, 50]];
+  for (const [n, k] of cases) {
+    assert.equal(labelStep(n), k, `${n} months`);
+    const labels = labelsOf(plotOf(bars(same(n, ["3000.00", false, false]))).inner);
+    // The month each label is under (its column, less the side column and 1).
+    const under = labels.map((l) => Number(/grid-column:(\d+)/.exec(l.style)?.[1]) - 2);
+    const every = Array.from({ length: n }, (_, i) => i).filter((i) => i % k === 0);
+    assert.deepEqual(under, every, `${n} months, every ${k}`);
+    assert.equal(under[0], 0, `${n} months: the first month is labelled`);
+    assert.equal(labels[0]?.text, "พ.ย.", `${n} months`);
+  }
+  // Every term the API allows (1 to 600): at most 12 labels, with the smallest step that
+  // keeps it so, and every month labelled up to 12.
   for (let n = 1; n <= 600; n += 1) {
     const k = labelStep(n);
-    assert.ok(k >= 1, `${n}`);
-    assert.ok(k * 298 >= 42 * n, `${n} months, every ${k}: too close`);
-    const shown = (n - 1 - ((n - 1) % k)) / k + 1; // labels at 0, k, 2k, ... (integers)
-    assert.ok(n <= 7 ? shown === n : shown >= 4 && shown <= 7, `${n} months: ${shown} labels`);
+    const shown = Array.from({ length: n }, (_, i) => i).filter((i) => i % k === 0).length;
+    assert.ok(shown <= 12, `${n} months, every ${k}: ${shown} labels`);
+    if (n <= 12) assert.equal(shown, n, `${n} months`);
+    else assert.ok(Array.from({ length: n }, (_, i) => i).filter((i) => i % (k - 1) === 0).length > 12, `${n} months: every ${k - 1} would do`);
   }
-  assert.deepEqual([1, 7, 8, 12, 24, 36].map(labelStep), [1, 1, 2, 2, 4, 6]);
 });
 
 test("UI_40_bars_are_solid_and_a_marker_sits_above_each_bar_over_one_third", () => {

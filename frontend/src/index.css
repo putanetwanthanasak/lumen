@@ -78,7 +78,11 @@
   --color-quiet-edge: #7a8a9d; /* the banner's edge against the page, at least 3:1 */
 
   /* Type scale. Body is 16px and every sentence uses it. Caption (14px) is only for
-     short labels: the footer, nav labels, chart legend, "Demo" tags, list meta. */
+     short labels: the footer, nav labels, chart legend, "Demo" tags, list meta. Axis
+     (11px) is the month labels under the result's bars only, so 12 fit a 360px phone;
+     its line is the caption's 19.6px, so nothing under the bars moves. */
+  --text-axis: 0.6875rem;
+  --text-axis--line-height: 1.225rem;
   --text-caption: 0.875rem;
   --text-caption--line-height: 1.4;
   --text-body: 1rem;
