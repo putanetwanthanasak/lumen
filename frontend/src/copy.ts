@@ -202,8 +202,8 @@ export const THINK = {
   legendOk: "อยู่ในงบ",
   legendOver: "เกินงบ",
   legendRisk: "เกินเกณฑ์ที่ ธปท. แนะนำ",
-  legendExisting: "ค่างวดที่มีอยู่", // the solid lower part of a bar
-  legendCandidate: "ค่างวดชิ้นใหม่", // the white top: the item being checked
+  legendExisting: "ค่างวดที่มีอยู่", // the grey lower part of a bar
+  legendCandidate: "ชิ้นใหม่:", // before the statuses: the coloured top is the item being checked
   nowTotal: (total: string) => `ตอนนี้ค่างวดรวมเดือนละ ${total}`,
   record: "บันทึก",
   recording: "กำลังบันทึก...",

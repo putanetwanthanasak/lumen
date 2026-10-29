@@ -1,10 +1,11 @@
 /**
  * The result's month bars (DESIGN.md section 5.4), rendered with react-dom/server:
  * UI-40: bars, labels and the budget line share one grid of equal columns; a label
- *   every k-th month, so none clips or touches the next; solid fills, no hatch; a ⚠
- *   above every bar over one third of income; the new item's share is the same white
- *   top on every bar, outlined in the bar's colour; the legend shows only what the
- *   chart has, each entry one square.
+ *   every k-th month, so none clips or touches the next; solid fills, no hatch and no
+ *   hollow part; a ⚠ above every bar over one third of income; the new item's share is
+ *   the top of each bar in its month's status colour, everything else one grey below a
+ *   2px white gap; the legend shows only what the chart has: the grey, then "ชิ้นใหม่:"
+ *   and the statuses its months have, each swatch the colour it names.
  * UI-41 (result): one plain line under the bars says how many months are over budget
  *   and from when to when. The verdict card holds the warning; nothing else repeats it.
  */
@@ -43,25 +44,47 @@ function plotOf(html: string): { style: string; inner: string } {
   assert.ok(m !== null, "the plot");
   return { style: m[1] ?? "", inner: m[2] ?? "" };
 }
-/** The bars: their class and style, in order. */
+/** The bars, in order: their class and style, and the parts that paint them (empty divs, top first). */
 const barsOf = (inner: string) =>
-  [...inner.matchAll(/<div class="relative row-start-1 ([^"]*)" style="([^"]*)">/g)].map((m) => ({ cls: m[1] ?? "", style: m[2] ?? "" }));
+  [...inner.matchAll(/<div class="relative row-start-1 ([^"]*)" style="([^"]*)">((?:<div [^>]*><\/div>)*)/g)].map((m) => ({
+    cls: m[1] ?? "",
+    style: m[2] ?? "",
+    parts: [...(m[3] ?? "").matchAll(/<div class="([^"]*)"(?: style="([^"]*)")?><\/div>/g)].map((p): [string, string] => [p[1] ?? "", p[2] ?? ""]),
+  }));
 /** The month labels: their style and text, in order. */
 const labelsOf = (inner: string) =>
   [...inner.matchAll(/<span class="row-start-2 ([^"]*)" style="([^"]*)">([^<]*)<\/span>/g)].map((m) => ({ cls: m[1] ?? "", style: m[2] ?? "", text: m[3] ?? "" }));
 
 const ALERT = 'd="M12 3 2 20h20L12 3Zm0 6v5m0 3.5v.5"'; // Icon.tsx "alert"
 
-/** The legend's entries in order: its swatch (one empty square, or why not), whether it has the ⚠, and its words. */
-function legendOf(html: string): { swatch: string; alert: boolean; text: string }[] {
-  const m = /<div class="flex flex-col gap-1 text-caption text-ink-muted" aria-hidden="true">(.*?)<\/div>/.exec(html);
+type Entry = { swatch: string; alert: boolean; text: string };
+
+/**
+ * The legend's rows in order, each its label ("" for none) and its entries: an entry's
+ * swatch (one empty square, or why not), whether it has the ⚠, and its words.
+ */
+function legendOf(html: string): { label: string; entries: Entry[] }[] {
+  const m = /<div class="flex flex-col gap-1 text-caption text-ink-muted" aria-hidden="true">(.*?)<table class="sr-only">/.exec(html);
   assert.ok(m !== null, "the legend");
-  return [...(m[1] ?? "").matchAll(/<li class="flex items-center gap-1\.5">(.*?)<\/li>/g)].map((e) => {
-    const inner = e[1] ?? "";
-    const swatch = /^<span class="([^"]*)"><\/span>/.exec(inner)?.[1] ?? `not one empty square: ${inner}`;
-    return { swatch, alert: inner.includes(ALERT), text: inner.replace(/<[^>]+>/g, "") };
-  });
+  return [...(m[1] ?? "").matchAll(/(?:<span class="[^"]*">([^<]*)<\/span>)?<ul class="flex flex-wrap gap-x-4 gap-y-1">(.*?)<\/ul>/g)].map((row) => ({
+    label: row[1] ?? "",
+    entries: [...(row[2] ?? "").matchAll(/<li class="flex items-center gap-1\.5">(.*?)<\/li>/g)].map((e) => {
+      const inner = e[1] ?? "";
+      const swatch = /^<span class="([^"]*)"><\/span>/.exec(inner)?.[1] ?? `not one empty square: ${inner}`;
+      return { swatch, alert: inner.includes(ALERT), text: inner.replace(/<[^>]+>/g, "") };
+    }),
+  }));
 }
+/** The legend's words, one array per row: its label, then its entries. */
+const legendWords = (html: string) => legendOf(html).map((row) => [row.label, ...row.entries.map((e) => e.text)]);
+
+const GREY = "bg-bar-existing";
+const GAP = "border-t-2 border-card"; // the grey part's top edge: the 2px white gap
+/** Whether a part is hollow or white: no bar colour, a white or clear fill, or any outline but the gap. */
+const hollow = (cls: string) => {
+  const rest = cls.replace(GAP, "");
+  return !/\bbg-bar-/.test(rest) || /\bbg-(card|white|transparent)\b|\bborder\b/.test(rest);
+};
 
 test("UI_40_bars_labels_and_the_budget_line_share_one_grid_of_equal_columns", () => {
   const plot = plotOf(bars(same(10, ["3000.00", false, false])));
@@ -114,9 +137,10 @@ test("UI_40_bars_are_solid_and_a_marker_sits_above_each_bar_over_one_third", () 
   // No hatch anywhere, no tinted column behind a bar.
   assert.ok(!/repeating-linear-gradient|background-image/.test(html));
   const drawn = barsOf(plotOf(html).inner);
+  // With no item, each bar is one part, wholly its month's status colour (no grey: the colour is all there is to say).
   assert.deepEqual(
-    drawn.map((b) => b.cls.split(" ").find((c) => c.startsWith("bg-"))),
-    ["bg-bar-ok", "bg-bar-over", "bg-bar-risk", "bg-bar-risk", "bg-bar-ok"],
+    drawn.map((b) => b.parts),
+    ["bg-bar-ok", "bg-bar-over", "bg-bar-risk", "bg-bar-risk", "bg-bar-ok"].map((bg) => [[`rounded-t-md ${bg}`, "height:100%"]]),
   );
   // One ⚠ per bar over one third, inside that bar; one more in the legend.
   const inner = plotOf(html).inner;
@@ -129,81 +153,96 @@ test("UI_40_bars_are_solid_and_a_marker_sits_above_each_bar_over_one_third", () 
   );
 });
 
-test("UI_40_the_new_items_share_is_the_same_white_top_on_every_bar_outlined_in_its_bars_colour", () => {
+test("UI_40_the_new_items_share_takes_its_months_status_colour_above_one_grey_and_a_white_gap", () => {
   const months = rows([
     ["6500.00", true, false],
     ["4500.00", false, false],
     ["7500.00", true, true],
+    ["4500.00", false, true], // over a third while in budget (a budget above a third of income): red wins
     ["3000.00", false, false], // nothing else due that month: the share is the whole bar
+    ["3000.01", false, false], // one satang else: a grey sliver, still under its gap
   ]);
   const html = bars(months, "3000.00");
-  const shares = [...plotOf(html).inner.matchAll(/<div class="shrink-0 rounded-t-md ([^"]*)" style="height:([\d.]+%)"><\/div>/g)].map(
-    (m): [string, string] => [m[1] ?? "", m[2] ?? ""],
+  const drawn = barsOf(plotOf(html).inner);
+  // The share's colour is its month's status, from the API's flags; everything else is the
+  // same grey on every bar, whatever the status, its top edge the 2px white gap. Each share's
+  // height is its part of that month's bar: 3,000 of 6,500, of 4,500, ... (per mille, rounded down).
+  assert.deepEqual(
+    drawn.map((b) => b.parts),
+    [
+      [["rounded-t-md bg-bar-over", "height:46.1%"], [`flex-1 ${GAP} ${GREY}`, ""]],
+      [["rounded-t-md bg-bar-ok", "height:66.6%"], [`flex-1 ${GAP} ${GREY}`, ""]],
+      [["rounded-t-md bg-bar-risk", "height:40%"], [`flex-1 ${GAP} ${GREY}`, ""]],
+      [["rounded-t-md bg-bar-risk", "height:66.6%"], [`flex-1 ${GAP} ${GREY}`, ""]],
+      [["rounded-t-md bg-bar-ok", "height:100%"]],
+      [["rounded-t-md bg-bar-ok", "height:99.9%"], [`flex-1 ${GAP} ${GREY}`, ""]],
+    ],
   );
-  // One white fill on every bar, whatever its status; only the outline takes the bar's colour.
-  // A closed outline on every side: with no solid part below, nothing else closes the box.
-  // Its height is its share of that month's bar: 3,000 of 6,500, of 4,500, of 7,500, of 3,000 (per mille, rounded down).
-  assert.deepEqual(shares, [
-    ["border-2 bg-card border-bar-over", "46.1%"],
-    ["border-2 bg-card border-bar-ok", "66.6%"],
-    ["border-2 bg-card border-bar-risk", "40%"],
-    ["border-2 bg-card border-bar-ok", "100%"],
-  ]);
-  // Each outline is its own bar's colour.
-  const solid = barsOf(plotOf(html).inner).map((b) => b.cls.split(" ").find((c) => c.startsWith("bg-bar-"))?.slice("bg-".length));
-  assert.deepEqual(shares.map(([cls]) => cls.split(" ").find((c) => c.startsWith("border-bar-"))?.slice("border-".length)), solid);
-  // Without an item (no candidate), no white top and no part entries.
+  // Nothing hollow or white: every part is a solid bar colour, and the gap is the only edge.
+  assert.deepEqual(drawn.flatMap((b) => b.parts.filter(([cls]) => hollow(cls))), []);
+  assert.ok(!/\bbg-(card|white)\b|\bborder-2\b|border-bar-/.test(plotOf(html).inner), "no white fill and no outline in the plot");
+  // The bar itself paints nothing: its parts do, so no other colour shows at their edges.
+  assert.ok(drawn.every((b) => !/\bbg-/.test(b.cls)), drawn.map((b) => b.cls).join(" | "));
+  // Without an item (no candidate): no grey part and no part entries.
   const none = bars(months);
-  assert.ok(!none.includes("shrink-0 rounded-t-md") && !none.includes("ค่างวดชิ้นใหม่") && !none.includes("ค่างวดที่มีอยู่"));
+  assert.ok(!none.includes(GREY) && !none.includes("ชิ้นใหม่") && !none.includes("ค่างวดที่มีอยู่"));
 });
 
 test("UI_40_the_legend_shows_only_the_statuses_and_the_parts_this_chart_has", () => {
   const ok: [string, boolean, boolean] = ["4500.00", false, false];
   const over: [string, boolean, boolean] = ["6500.00", true, false];
   const red: [string, boolean, boolean] = ["7500.00", true, true];
-  const words = (months: MonthRow[], candidate: string | null) => legendOf(bars(months, candidate)).map((e) => e.text);
-  // In budget only: no amber or red entry, and no ⚠ anywhere.
+  const words = (months: MonthRow[], candidate: string | null) => legendWords(bars(months, candidate));
+  // In budget only: the grey, then "ชิ้นใหม่:" with the green entry alone, and no ⚠ anywhere.
   const green = bars(rows([ok, ok]), "3000.00");
-  assert.deepEqual(legendOf(green).map((e) => e.text), ["อยู่ในงบ", "ค่างวดที่มีอยู่", "ค่างวดชิ้นใหม่"]);
+  assert.deepEqual(legendWords(green), [["", "ค่างวดที่มีอยู่"], ["ชิ้นใหม่:", "อยู่ในงบ"]]);
   assert.ok(!green.includes(ALERT));
   // Over budget, none over a third: no red entry.
-  assert.deepEqual(words(rows([over, ok]), "3000.00"), ["อยู่ในงบ", "เกินงบ", "ค่างวดที่มีอยู่", "ค่างวดชิ้นใหม่"]);
+  assert.deepEqual(words(rows([over, ok]), "3000.00"), [["", "ค่างวดที่มีอยู่"], ["ชิ้นใหม่:", "อยู่ในงบ", "เกินงบ"]]);
   // Every month over budget: no green entry.
-  assert.deepEqual(words(rows([over, over]), "3000.00"), ["เกินงบ", "ค่างวดที่มีอยู่", "ค่างวดชิ้นใหม่"]);
-  // A month over a third: its entry carries the ⚠, in the same order as ever.
+  assert.deepEqual(words(rows([over, over]), "3000.00"), [["", "ค่างวดที่มีอยู่"], ["ชิ้นใหม่:", "เกินงบ"]]);
+  // A month over a third: its entry carries the ⚠, in the same order as ever, whatever the months' order.
   assert.deepEqual(
-    legendOf(bars(rows([red, over, ok]), "3000.00")).map((e) => [e.text, e.alert]),
+    legendOf(bars(rows([red, over, ok]), "3000.00")).map((row) => [row.label, ...row.entries.map((e) => [e.text, e.alert])]),
     [
-      ["อยู่ในงบ", false],
-      ["เกินงบ", false],
-      ["เกินเกณฑ์ที่ ธปท. แนะนำ", true],
-      ["ค่างวดที่มีอยู่", false],
-      ["ค่างวดชิ้นใหม่", false],
+      ["", ["ค่างวดที่มีอยู่", false]],
+      ["ชิ้นใหม่:", ["อยู่ในงบ", false], ["เกินงบ", false], ["เกินเกณฑ์ที่ ธปท. แนะนำ", true]],
     ],
   );
-  // Nothing else due in the term (each total is the item alone): no solid part, so no "ค่างวดที่มีอยู่".
+  // Nothing else due in the term (each total is the item alone): no grey part, so no "ค่างวดที่มีอยู่".
   const alone: [string, boolean, boolean] = ["3000.00", false, false];
-  assert.deepEqual(words(rows([alone, alone]), "3000.00"), ["อยู่ในงบ", "ค่างวดชิ้นใหม่"]);
+  assert.deepEqual(words(rows([alone, alone]), "3000.00"), [["ชิ้นใหม่:", "อยู่ในงบ"]]);
   // One satang of something else in one month is enough.
-  assert.deepEqual(words(rows([alone, ["3000.01", false, false]]), "3000.00"), ["อยู่ในงบ", "ค่างวดที่มีอยู่", "ค่างวดชิ้นใหม่"]);
-  // No item: the statuses only.
-  assert.deepEqual(words(rows([ok, over]), null), ["อยู่ในงบ", "เกินงบ"]);
+  assert.deepEqual(words(rows([alone, ["3000.01", false, false]]), "3000.00"), [["", "ค่างวดที่มีอยู่"], ["ชิ้นใหม่:", "อยู่ในงบ"]]);
+  // No item: the statuses only, the colours of whole bars, with no "ชิ้นใหม่:".
+  assert.deepEqual(words(rows([ok, over]), null), [["", "อยู่ในงบ", "เกินงบ"]]);
 });
 
-test("UI_40_each_legend_entry_is_one_square_and_the_new_items_is_white_with_a_grey_outline", () => {
-  const legend = legendOf(bars(rows([["4500.00", false, false], ["6500.00", true, false], ["7500.00", true, true]]), "3000.00"));
-  // One empty square each, never a two-colour mini bar. The parts' squares are neutral,
-  // since both parts take each month's colour on the bars; the new item's is white like its fill.
+test("UI_40_each_legend_swatch_is_one_solid_square_in_the_colour_it_names_on_the_bars", () => {
+  const months = rows([["4500.00", false, false], ["6500.00", true, false], ["7500.00", true, true]]);
+  const html = bars(months, "3000.00");
+  // One empty square each, never a two-colour mini bar, never hollow: the grey of the
+  // existing part, then the status colours of the new item's share.
   assert.deepEqual(
-    legend.map((e) => [e.text, e.swatch]),
+    legendOf(html).map((row) => [row.label, ...row.entries.map((e) => [e.text, e.swatch])]),
     [
-      ["อยู่ในงบ", "inline-block h-3 w-3 rounded-sm bg-bar-ok"],
-      ["เกินงบ", "inline-block h-3 w-3 rounded-sm bg-bar-over"],
-      ["เกินเกณฑ์ที่ ธปท. แนะนำ", "inline-block h-3 w-3 rounded-sm bg-bar-risk"],
-      ["ค่างวดที่มีอยู่", "inline-block h-3 w-3 rounded-sm bg-ink-muted"],
-      ["ค่างวดชิ้นใหม่", "inline-block h-3 w-3 rounded-sm border-2 border-ink-muted bg-card"],
+      ["", ["ค่างวดที่มีอยู่", `inline-block h-3 w-3 rounded-sm ${GREY}`]],
+      [
+        "ชิ้นใหม่:",
+        ["อยู่ในงบ", "inline-block h-3 w-3 rounded-sm bg-bar-ok"],
+        ["เกินงบ", "inline-block h-3 w-3 rounded-sm bg-bar-over"],
+        ["เกินเกณฑ์ที่ ธปท. แนะนำ", "inline-block h-3 w-3 rounded-sm bg-bar-risk"],
+      ],
     ],
   );
+  // Each swatch is the very colour it names on the bars: the grey is each bar's lower
+  // part, and the statuses, in month order here, are the shares' colours.
+  const fill = (cls: string) => cls.split(" ").find((c) => c.startsWith("bg-"));
+  const [existing, statuses] = legendOf(html);
+  const drawn = barsOf(plotOf(html).inner);
+  const grey = fill(existing?.entries[0]?.swatch ?? "");
+  assert.deepEqual(drawn.map((b) => fill(b.parts[1]?.[0] ?? "")), [grey, grey, grey]);
+  assert.deepEqual(drawn.map((b) => fill(b.parts[0]?.[0] ?? "")), statuses?.entries.map((e) => fill(e.swatch)));
 });
 
 test("UI_41_the_line_under_the_bars_is_plain_and_says_from_when_to_when", () => {

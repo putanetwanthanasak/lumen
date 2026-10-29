@@ -72,14 +72,12 @@ const GRAPHICS: [string, string][] = [
   ["ink", "leaf-50"], // the hero's budget mark, on the track and on either colour
   ["ink", "bar-ok"],
   ["ink", "bar-over"],
-  ["bar-ok", "card"], // the result's solid bars, on the card (UI-40)
+  ["bar-ok", "card"], // the result's new item's share, on the card and against the white gap (UI-40)
   ["bar-over", "card"],
   ["bar-risk", "card"],
+  ["bar-existing", "card"], // the grey of every other installment, on the card and against the white gap
   ["risk-ink", "card"], // the ⚠ above a bar over one third of income
-  ["card", "bar-ok"], // the new item's white top against the rest of its bar
-  ["card", "bar-over"],
-  ["card", "bar-risk"],
-  ["ink-muted", "card"], // the legend's part swatches: the solid square and the outline
+  ["ink-muted", "card"], // the dashed budget line
   ["teal-700", "teal-50"], // the wallet's filled segment and icon
   ["teal-700", "teal-200"], // filled against empty segments
   ["bank-700", "bank-50"], // the offer's button border
