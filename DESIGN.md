@@ -533,6 +533,15 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
   teal; the line still says what was moved). Prepared: green then teal. A month within
   budget but over a third of income (a budget above a third is allowed, L64) is one red
   part, as before this change. Over or within budget is the API's `over_budget` flag.
+- **A 2px white gap between the parts** (`GAP` in `BarParts.tsx`, UI-54), as on the
+  result chart: green and teal side by side are only 1.44:1 apart, so each part after
+  the first starts with a 2px border in the card's white, and the eye reads each part
+  against white (`bar-ok` 4.39, `teal-700` 6.32, `bar-over` 3.40, `bar-risk` 8.15).
+  It is drawn inside the part, so the places stay `barSegments`' per mille; a sliver
+  narrower than 2px gives way to the gap. The same gap is on Home's bar.
+- **Intentional change (Session 20, accepted on review):** a month within budget but over
+  a third of income is all red on Home's bar too, where Home used to draw it green. It
+  now matches this screen and the result chart, so a risk month never looks safe.
 - A month the buffer fully prepared gets the teal chip "กันชนเตรียมเงินแล้ว" (shield,
   `BUFFER_CHIP`); partly prepared keeps "เกินงบ". Over a third of income always keeps
   "เกินเกณฑ์ที่ ธปท. แนะนำ" and a red ring on the bar (`ring-bar-risk`), even when

@@ -29,6 +29,7 @@ import type {
   ShortfallsOut,
 } from "../src/api-types.ts";
 import { barSegments, type Segment } from "../src/barSegments.ts";
+import { BarParts, GAP } from "../src/components/BarParts.tsx";
 import { shortfallsByMonth, shortfallView } from "../src/bufferState.ts";
 import { BUFFER_STATE, MONTHS_VIEW } from "../src/copy.ts";
 import { heroView } from "../src/homeLayout.ts";
@@ -266,7 +267,7 @@ function month(m: string, total: Money, overOneThird = false): MonthDetail {
   };
 }
 
-type Card = { chip: string; chipClass: string; ring: boolean; parts: string[]; text: string };
+type Card = { chip: string; chipClass: string; ring: boolean; parts: string[]; gaps: boolean[]; text: string };
 
 /** Each month's card: its chip's words and class, whether the bar has the red ring, its parts. */
 function cards(months: MonthDetail[], rows: ShortfallMonth[], balance: Money = "9000.00"): Card[] {
@@ -289,6 +290,7 @@ function cards(months: MonthDetail[], rows: ShortfallMonth[], balance: Money = "
       chipClass: chip?.[1] ?? "",
       ring: (track?.[1] ?? "").includes("ring-bar-risk"),
       parts: [...(track?.[2] ?? "").matchAll(/<span class="absolute inset-y-0 (bg-[a-z0-9-]+)/g)].map((p) => p[1] ?? ""),
+      gaps: [...(track?.[2] ?? "").matchAll(/<span class="absolute inset-y-0 ([^"]*)"/g)].map((p) => (p[1] ?? "").includes(GAP)),
       text: plain(card),
     };
   });
@@ -343,6 +345,21 @@ test("UI_54_within_budget_but_over_one_third_is_red_with_its_chip_and_ring", () 
     got.map((c) => [c.chip, c.chipClass, c.ring, c.parts]),
     [[MONTHS_VIEW.risk, "bg-risk-bg text-risk-ink", true, ["bg-bar-risk"]]],
   );
+});
+
+test("UI_54_every_part_after_the_first_starts_with_a_white_gap_and_keeps_its_place", () => {
+  // The 2px white gap is drawn only: barSegments' per mille places are unchanged (UI-52).
+  const rows = [at("2026-11", row("6500.00", "600.00")), at("2026-12", row("6500.00", "1500.00"))];
+  const got = cards([month("2026-10", "3500.00"), month("2026-11", "6500.00"), month("2026-12", "6500.00")], rows);
+  assert.deepEqual(
+    got.map((c) => c.gaps),
+    [[false], [false, true, true], [false, true]],
+  );
+  assert.equal(GAP, "border-l-2 border-card");
+  // The widths are still the parts' own: green to the budget, then the teal, then the gap.
+  const html = renderToStaticMarkup(createElement(BarParts, { segments: barSegments({ total: "6500.00", budget: BUDGET, scale: "6500.00", row: rows[0] ?? null, overBudget: true, overOneThird: false }) }));
+  const places = [...html.matchAll(/style="left:([0-9.]+)%;width:([0-9.]+)%"/g)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(places, [["0", "76.9"], ["76.9", "9.3"], ["86.2", "13.8"]]);
 });
 
 // ---- UI-55: the prepared line ---------------------------------------------------------

@@ -19,6 +19,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ACCENT, EDGE, FILL, SOLID } from "../src/accent.ts";
 import type { AssistantPlanOut, BufferOut, ConsolidationOut, DebtSummary, MonthsOut, SettingsOut, ShortfallsOut } from "../src/api-types.ts";
 import { ConsolidationCard } from "../src/components/AssistantCards.tsx";
+import { GAP } from "../src/components/BarParts.tsx";
 import { ASSIST, HOME } from "../src/copy.ts";
 import { consolidationView } from "../src/homeLayout.ts";
 import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
@@ -214,8 +215,10 @@ test("UI_42_the_hero_is_one_card_with_a_chevron_and_the_whole_card_opens_the_mon
   for (const name of ["persona", "over_budget", "over_budget_now", "over_budget_empty_buffer"]) {
     const hero = heroOf(homeIn(name));
     // One card: nothing inside it has a border, a shadow or a tint of its own (the old strip had all three).
+    // The bar's 2px white gap between parts (GAP, UI-54) is a drawn line, not a box.
     const inside = elements(hero.replace(/^<section[^>]*>/, ""));
-    const boxed = inside.filter((e) => [...e.classes].some((c) => /^(border|rounded-field|shadow)|^bg-warn-bg$/.test(c)));
+    const gap = new Set(tokens(GAP));
+    const boxed = inside.filter((e) => [...e.classes].some((c) => !gap.has(c) && /^(border|rounded-field|shadow)|^bg-warn-bg$/.test(c)));
     assert.deepEqual(boxed, [], name);
     // The chevron at the top right replaces "ดูทุกเดือน ›"; its words stay for screen readers.
     assert.ok(hero.includes(NEXT), `${name}: the chevron`);
