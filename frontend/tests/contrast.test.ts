@@ -80,6 +80,9 @@ const GRAPHICS: [string, string][] = [
   ["ink-muted", "card"], // the dashed budget line
   ["teal-700", "teal-50"], // the wallet's filled segment and icon
   ["teal-700", "teal-200"], // filled against empty segments
+  ["teal-700", "card"], // a month bar's buffer part (BUFFER_BAR, UI-52), on the months' card
+  ["teal-700", "leaf-50"], // and on the hero's track
+  ["white", "teal-700"], // the hero's budget mark has a white halo against the buffer part (ink on teal-700 is 2.6:1)
   ["bank-700", "bank-50"], // the offer's button border
   ["ai-ink", "ai-from"],
 ];

@@ -68,3 +68,12 @@ export const FILL = {
 
 /** The wallet's month segments: filled and empty. */
 export const BUFFER_METER = { on: "bg-teal-700", off: "bg-teal-200" } as const;
+
+/**
+ * A month bar's buffer part: what was moved from the buffer for that month (barSegments,
+ * UI-52), the wallet's filled teal, at least 3:1 against the white card (UI-35).
+ */
+export const BUFFER_BAR = "bg-teal-700";
+
+/** The months screen's chip for a month the buffer covered: its own tint, ink and shield. */
+export const BUFFER_CHIP = `${ACCENT.buffer.tint} ${ACCENT.buffer.ink}`;

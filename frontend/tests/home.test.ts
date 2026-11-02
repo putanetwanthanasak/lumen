@@ -87,7 +87,11 @@ test("UI_33_upcoming_months_over_only_and_the_buffer_covers", () => {
   assert.deepEqual(view.hero?.warning, { accent: "warn", icon: "alert", text: "เกินงบ 2 เดือน (พ.ย. 2569 ถึง ธ.ค. 2569)" });
   // The first month over: Nov, 6,500.00 - 5,000.00 = 1,500.00 over, nothing moved yet.
   // Buffer 4,800.00 + 3,000.00 saved = 7,800.00, so the move is the whole gap.
-  assert.deepEqual(view.hero?.buffer, {
+  const buffer = view.hero?.buffer;
+  assert.ok(buffer);
+  const { row, ...shown } = buffer; // the API's row as it came, for the bar
+  assert.deepEqual([row.month, row.state], ["2026-11", "not_prepared"]);
+  assert.deepEqual(shown, {
     month: "2026-11",
     state: "not_prepared",
     total: "6500.00",
@@ -353,7 +357,7 @@ test("UI_46_not_prepared_partly_prepared_and_prepared_say_the_apis_state", () =>
   assert.deepEqual(partly.prepare?.amount, "900.00");
   // Prepared: a check, the same shortfall (the budget numbers never change), no button.
   const done = shortfallView(over("prepared", "1500.00", "0.00"), "4200.00");
-  assert.deepEqual(done.line, { accent: "buffer", icon: "check", text: "พ.ย. 2569 เกินงบ 1,500.00 บาท เตรียมเงินจากกันชนแล้ว" });
+  assert.deepEqual(done.line, { accent: "buffer", icon: "check", text: "พ.ย. 2569 เกินงบ 1,500.00 บาท ย้ายจากกันชนเข้าบัญชีหลักแล้ว อย่าลืมจ่ายค่างวดในแอปผ่อน" });
   assert.equal(done.prepare, null);
   // The words are the brief's own.
   assert.equal(BUFFER_STATE.use, "ใช้กันชนจ่ายส่วนที่เกิน");
@@ -389,7 +393,7 @@ test("UI_46_the_hero_shows_the_first_month_over_budget_and_it_turns_prepared_aft
   assert.deepEqual(heroView(rows, after)?.buffer?.line, {
     accent: "buffer",
     icon: "check",
-    text: "พ.ย. 2569 เกินงบ 1,500.00 บาท เตรียมเงินจากกันชนแล้ว",
+    text: "พ.ย. 2569 เกินงบ 1,500.00 บาท ย้ายจากกันชนเข้าบัญชีหลักแล้ว อย่าลืมจ่ายค่างวดในแอปผ่อน",
   });
   // The months themselves never change after a move: the hero's total and warning stay.
   assert.deepEqual(months(), rows);

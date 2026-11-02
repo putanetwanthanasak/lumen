@@ -5,7 +5,7 @@
  * comes from the API layer (src/api.ts) and is only formatted here; nothing is added
  * up. Every coloured part is a Marked item: an icon and text with its accent (UI-34).
  */
-import type { AssistantPlanOut, AssistantSummaryOut, BufferOut, ConsolidationOut, EstimateOut, MonthDetail, ShortfallsOut } from "./api-types.ts";
+import type { AssistantPlanOut, AssistantSummaryOut, BufferOut, ConsolidationOut, EstimateOut, MonthDetail, ShortfallMonth, ShortfallsOut } from "./api-types.ts";
 import { ACCENT, type Marked } from "./accent.ts";
 import { notConsolidatingLine, planSummary } from "./assistantText.ts";
 import { shortfallView, type ShortfallView } from "./bufferState.ts";
@@ -20,6 +20,8 @@ export type HeroView = {
   month: string;
   total: Money;
   barOver: boolean;
+  overOneThird: boolean; // this month's flag (L65): the bar's gap is red
+  barRow: ShortfallMonth | null; // this month's row of GET /buffer/shortfalls, for the bar (UI-53)
   line: Marked | null; // this month in budget; null when this month is over (the warning covers it)
   warning: Marked | null; // the one warning line: how many months over, from when to when
   buffer: ShortfallView | null; // the first month over budget and the buffer (UI-46)
@@ -48,6 +50,9 @@ export function heroView(months: readonly MonthDetail[], shortfalls: ShortfallsO
     month: now.month,
     total: now.total,
     barOver: now.over_budget,
+    overOneThird: now.over_one_third,
+    // The bar is this month's, whatever the first month over budget is (the line's).
+    barRow: shortfalls?.months.find((row) => row.month === now.month) ?? null,
     line,
     warning:
       over === null

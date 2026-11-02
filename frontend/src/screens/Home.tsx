@@ -9,9 +9,11 @@ import { Fragment, useId, useState } from "react";
 import { getAssistantPlan, getBuffer, getDebtSummary, getMonths, getSettings, getShortfalls } from "../api.ts";
 import type { AssistantPlanOut, BufferOut, DebtSummary, InstallmentLine, MonthsOut, SettingsOut, ShortfallsOut } from "../api-types.ts";
 import { ACCENT, BUFFER_METER, EDGE, SOLID } from "../accent.ts";
+import { barSegments } from "../barSegments.ts";
 import { openBufferAt } from "../bufferState.ts";
 import { BUFFER_STATE, HOME } from "../copy.ts";
 import { AiBubbleCard, ConsolidationCard } from "../components/AssistantCards.tsx";
+import { BarParts } from "../components/BarParts.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Button, ErrorState, Loading, MarkedText, SettingsMissing } from "../components/ui.tsx";
@@ -170,7 +172,7 @@ function Hero({ hero, budget }: { hero: HeroView; budget: Money }) {
         {/* Inside a button: spans only (phrasing content). */}
         <span className="text-display font-bold text-ink">{formatBaht(hero.total)}</span>
         <span className="text-body text-ink-muted">{HOME.ofBudget(formatBaht(budget))}</span>
-        <BudgetBar total={hero.total} budget={budget} over={hero.barOver} />
+        <BudgetBar hero={hero} budget={budget} />
         {hero.line !== null && <MarkedText item={hero.line} className="font-semibold" />}
         {hero.warning !== null && <MarkedText item={hero.warning} className="font-semibold" />}
       </button>
@@ -200,20 +202,20 @@ function Hero({ hero, budget }: { hero: HeroView; budget: Money }) {
 
 /**
  * This month against the budget on one scale, the larger of the two: green up to the
- * budget, amber only for the part above it, and a mark where the budget is (UI-42).
- * Widths come from barPermille (exact, BigInt); the flag is the API's.
+ * budget, then teal for what was moved from the buffer for this month and amber (red
+ * over one third of income) for the gap left, and a mark where the budget is (UI-42,
+ * UI-53). The parts are barSegments of this month's own shortfall row, never the first
+ * month over budget. Widths come from barPermille (exact, BigInt); the flags are the API's.
  */
-function BudgetBar({ total, budget, over }: { total: Money; budget: Money; over: boolean }) {
-  const scale = largest([budget, total]);
+function BudgetBar({ hero, budget }: { hero: HeroView; budget: Money }) {
+  const scale = largest([budget, hero.total]);
   const mark = barPermille(budget, scale) / 10;
+  const segments = barSegments({ total: hero.total, budget, scale, row: hero.barRow, overOneThird: hero.overOneThird });
   return (
     <span className="relative my-1 block h-3 rounded-pill bg-leaf-50" role="presentation">
-      <span
-        className={`absolute inset-y-0 left-0 bg-bar-ok ${over ? "rounded-l-pill" : "rounded-pill"}`}
-        style={{ width: `${over ? mark : barPermille(total, scale) / 10}%` }}
-      />
-      {over && <span className="absolute inset-y-0 right-0 rounded-r-pill bg-bar-over" style={{ left: `${mark}%` }} />}
-      <span className="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-pill bg-ink" style={{ left: `${mark}%` }} />
+      <BarParts segments={segments} />
+      {/* A white halo: ink on the buffer's teal alone is under 3:1 (UI-35). */}
+      <span className="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-pill bg-ink ring-1 ring-card" style={{ left: `${mark}%` }} />
     </span>
   );
 }

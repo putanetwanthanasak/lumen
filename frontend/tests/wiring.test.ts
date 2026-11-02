@@ -160,7 +160,7 @@ test("UI_47_a_prepared_month_has_a_check_and_no_button_and_the_other_keeps_its",
   assert.equal(call("POST", "/buffer/move-to-main", { client_request_id: "n", amount: "1500.00", for_month: "2026-11" }).status, 201);
   const html = bufferScreen();
   const text = plain(html);
-  assert.ok(text.includes("พ.ย. 2569 เกินงบ 1,500.00 บาท เตรียมเงินจากกันชนแล้ว"));
+  assert.ok(text.includes("พ.ย. 2569 เกินงบ 1,500.00 บาท ย้ายจากกันชนเข้าบัญชีหลักแล้ว อย่าลืมจ่ายค่างวดในแอปผ่อน"));
   assert.equal(html.split("ใช้กันชนจ่ายส่วนที่เกิน").length - 1, 1, "only Dec still has the button");
   assert.ok(!text.includes("ค่างวด พ.ย. 2569"), "no steps left for Nov");
   // Partly prepared: the gap left, and the move is that gap.

@@ -229,19 +229,25 @@ test("UI_42_the_hero_is_one_card_with_a_chevron_and_the_whole_card_opens_the_mon
   }
 });
 
-/** The bar's parts: the green, the amber (if any), the budget mark, with their style. */
-function barOf(hero: string): { green: string; amber: string | null; mark: string } {
+/** The bar's parts: the green, the amber and the red (if any), the budget mark, with their style. */
+function barOf(hero: string): { green: string; amber: string | null; red: string | null; mark: string } {
   const bar = /<span class="relative my-1 block h-3 [^"]*" role="presentation">(.*?)<\/span><\/span>(?:<\/span>)?/.exec(hero)?.[1] ?? "";
   const style = (cls: string) => new RegExp(`<span class="[^"]*\\b${cls}\\b[^"]*" style="([^"]*)"`).exec(bar)?.[1] ?? null;
-  return { green: style("bg-bar-ok") ?? "", amber: style("bg-bar-over"), mark: style("bg-ink") ?? "" };
+  return { green: style("bg-bar-ok") ?? "", amber: style("bg-bar-over"), red: style("bg-bar-risk"), mark: style("bg-ink") ?? "" };
 }
 
 test("UI_42_the_bar_marks_the_budget_amber_only_above_it_and_never_all_amber", () => {
   // In budget: 3,500.00 of 5,000.00, on the budget's scale: green to 70%, the mark at the end.
-  assert.deepEqual(barOf(heroOf(homeIn("persona"))), { green: "width:70%", amber: null, mark: "left:100%" });
+  assert.deepEqual(barOf(heroOf(homeIn("persona"))), { green: "left:0%;width:70%", amber: null, red: null, mark: "left:100%" });
   // Over: 7,500.00 against 5,000.00, on the total's scale: green to the budget (5,000 / 7,500
-  // is 666 per mille, rounded down), amber only from there on.
-  assert.deepEqual(barOf(heroOf(homeIn("over_budget_now"))), { green: "width:66.6%", amber: "left:66.6%", mark: "left:66.6%" });
+  // is 666 per mille, rounded down), the gap only from there on. October is also over one
+  // third of income, so the gap is red, not amber (UI-52).
+  assert.deepEqual(barOf(heroOf(homeIn("over_budget_now"))), {
+    green: "left:0%;width:66.6%",
+    amber: null,
+    red: "left:66.6%;width:33.4%",
+    mark: "left:66.6%",
+  });
 });
 
 test("UI_42_UI_46_one_warning_line_and_one_buffer_line_with_its_button_and_no_chips_or_total", () => {
