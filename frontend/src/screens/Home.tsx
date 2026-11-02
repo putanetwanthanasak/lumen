@@ -210,7 +210,14 @@ function Hero({ hero, budget }: { hero: HeroView; budget: Money }) {
 function BudgetBar({ hero, budget }: { hero: HeroView; budget: Money }) {
   const scale = largest([budget, hero.total]);
   const mark = barPermille(budget, scale) / 10;
-  const segments = barSegments({ total: hero.total, budget, scale, row: hero.barRow, overOneThird: hero.overOneThird });
+  const segments = barSegments({
+    total: hero.total,
+    budget,
+    scale,
+    row: hero.barRow,
+    overBudget: hero.barOver,
+    overOneThird: hero.overOneThird,
+  });
   return (
     <span className="relative my-1 block h-3 rounded-pill bg-leaf-50" role="presentation">
       <BarParts segments={segments} />

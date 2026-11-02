@@ -236,7 +236,7 @@ function barOf(hero: string): { green: string; amber: string | null; red: string
   return { green: style("bg-bar-ok") ?? "", amber: style("bg-bar-over"), red: style("bg-bar-risk"), mark: style("bg-ink") ?? "" };
 }
 
-test("UI_42_the_bar_marks_the_budget_amber_only_above_it_and_never_all_amber", () => {
+test("UI_42_UI_52_the_bar_marks_the_budget_and_colours_only_the_part_above_it", () => {
   // In budget: 3,500.00 of 5,000.00, on the budget's scale: green to 70%, the mark at the end.
   assert.deepEqual(barOf(heroOf(homeIn("persona"))), { green: "left:0%;width:70%", amber: null, red: null, mark: "left:100%" });
   // Over: 7,500.00 against 5,000.00, on the total's scale: green to the budget (5,000 / 7,500

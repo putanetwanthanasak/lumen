@@ -1,6 +1,7 @@
 /**
  * One month's bar as segments, left to right (UI-52, DESIGN.md section 7.2b):
- * - ok: green, up to the budget (or the whole total when it is within budget);
+ * - ok: green, up to the budget (or the whole total when it is within budget; red then if
+ *   that total is still over one third of income, which a budget above a third allows, L64);
  * - buffer: teal, what was moved from the buffer for this month, never past the shortfall;
  * - gap: amber (red when over one third of income), the remaining_gap the API sent.
  * Every amount is the API's (GET /debts/months and GET /buffer/shortfalls). Positions are
@@ -21,16 +22,17 @@ export type BarInput = {
   budget: Money;
   scale: Money;
   row: ShortfallMonth | null; // this month's row of GET /buffer/shortfalls, if over budget
-  overOneThird: boolean; // the API's flag (L65)
+  overBudget: boolean; // the API's flags (L65), never worked out here
+  overOneThird: boolean;
 };
 
 const OK = "bg-bar-ok";
 const OVER = "bg-bar-over";
 const RISK = "bg-bar-risk";
 
-export function barSegments({ total, budget, scale, row, overOneThird }: BarInput): Segment[] {
+export function barSegments({ total, budget, scale, row, overBudget, overOneThird }: BarInput): Segment[] {
   const t = barPermille(total, scale);
-  if (toSatang(total) <= toSatang(budget)) return [{ kind: "ok", from: 0, to: t, className: OK }];
+  if (!overBudget) return [{ kind: "ok", from: 0, to: t, className: overOneThird ? RISK : OK }];
   const b = barPermille(budget, scale);
   const ok: Segment = { kind: "ok", from: 0, to: b, className: OK };
   const gap = (from: number): Segment => ({ kind: "gap", from, to: t, className: overOneThird ? RISK : OVER });

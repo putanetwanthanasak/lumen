@@ -147,7 +147,14 @@ export function monthChip(month: MonthDetail, buffer: ShortfallView | null): Chi
 
 function MonthCard({ month, budget, scale, budgetMark, buffer, expanded, onToggle }: MonthCardProps) {
   const chip = monthChip(month, buffer);
-  const segments = barSegments({ total: month.total, budget, scale, row: buffer?.row ?? null, overOneThird: month.over_one_third });
+  const segments = barSegments({
+    total: month.total,
+    budget,
+    scale,
+    row: buffer?.row ?? null,
+    overBudget: month.over_budget,
+    overOneThird: month.over_one_third,
+  });
   const panelId = `month-${month.month}`;
   return (
     <li className="overflow-hidden rounded-card bg-card shadow-card">

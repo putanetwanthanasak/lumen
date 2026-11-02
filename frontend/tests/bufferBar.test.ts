@@ -68,8 +68,10 @@ function row(total: Money, prepared: Money, state?: PreparedState, gap?: Money):
   };
 }
 
+/** The API's over_budget flag, as L65 defines it (total above the budget). */
+const overOf = (total: Money) => toSatang(total) > toSatang(BUDGET);
 const bar = (total: Money, r: ShortfallMonth | null, scale: Money = total, overOneThird = false) =>
-  barSegments({ total, budget: BUDGET, scale, row: r, overOneThird });
+  barSegments({ total, budget: BUDGET, scale, row: r, overBudget: overOf(total), overOneThird });
 
 /** [kind, from, to] of each part, for short assertions. */
 const shape = (segments: Segment[]) => segments.map((s): [string, number, number] => [s.kind, s.from, s.to]);
@@ -190,6 +192,7 @@ test("UI_52_every_state_on_every_scale_touches_and_ends_at_the_total", () => {
           assertContiguous(parts, total, scale);
           if (!over) {
             assert.deepEqual(parts.map((s) => s.kind), ["ok"]);
+            assert.equal(parts[0]?.className, overOneThird ? "bg-bar-risk" : "bg-bar-ok");
             continue;
           }
           assert.equal(parts[0]?.to, barPermille(BUDGET, scale), "green ends at the budget");
@@ -330,6 +333,16 @@ test("UI_54_over_one_third_keeps_its_chip_and_a_red_ring_even_when_prepared", ()
   );
   // The line under it still says the buffer prepared it.
   assert.ok(got[2]?.text.includes("ย้ายจากกันชนเข้าบัญชีหลักแล้ว"));
+});
+
+test("UI_54_within_budget_but_over_one_third_is_red_with_its_chip_and_ring", () => {
+  // A budget above a third of income is allowed (L64): 4,500.00 is within 5,000.00 yet over
+  // a third of 12,000.00. Nothing is over budget, so the whole bar is the red level, as before.
+  const got = cards([month("2026-11", "4500.00", true)], []);
+  assert.deepEqual(
+    got.map((c) => [c.chip, c.chipClass, c.ring, c.parts]),
+    [[MONTHS_VIEW.risk, "bg-risk-bg text-risk-ink", true, ["bg-bar-risk"]]],
+  );
 });
 
 // ---- UI-55: the prepared line ---------------------------------------------------------
