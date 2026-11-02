@@ -167,8 +167,12 @@ Accents: `teal-800` on `teal-50` 7.96, on card 8.76; white on `teal-700` 6.32;
 (`leaf-50`): `ink` 15.44, `ink-muted` 6.78, `leaf-800` 8.12, `warn-ink` 7.85,
 `teal-800` 8.23. Non-text: `teal-700` on `teal-50` 5.75, on `teal-200` 3.98 (the
 meter's filled and empty segments); `bank-700` on `bank-50` 6.93; the hero bar on
-its `leaf-50` track, `bar-ok` 4.12 and `bar-over` 3.19, and its budget mark, `ink`,
-15.44 on the track, 3.75 on `bar-ok` and 4.84 on `bar-over`. The offer's title,
+its `leaf-50` track, `bar-ok` 4.12, `bar-over` 3.19 and `bar-risk` 7.66, and its budget mark, `ink`,
+15.44 on the track, 3.75 on `bar-ok` and 4.84 on `bar-over`. A bar's buffer part
+(`BUFFER_BAR`, `teal-700`): 6.32 on the card, 5.94 on the track. `ink` on `teal-700`
+is only 2.60, so both budget marks have a 1px white halo (`ring-1 ring-card`, white on
+`teal-700` 6.32); green and teal side by side are 1.44 apart, so the mark between them
+and the words (chip and line) tell them apart, never the colour alone. The offer's title,
 white on `bank-700`, 7.71; its tag, `bank-800` on white, 10.39.
 Card edges against the page (surface / card), at least 3:1 (1.4.11): `bank-700`
 7.19 / 7.71, `ai-edge` 3.47 / 3.72, `quiet-edge` 3.29 / 3.53, `teal-edge` 3.73 /
@@ -390,7 +394,7 @@ data (UI-33); they format, never add up.
 
 | Card | Shape | Shrinks or goes when |
 |---|---|---|
-| Hero, this month | one white card, the only one with a `text-display` number, and no box inside it: a chevron › at the top right (the whole card opens 7.2b), the bar with the budget marked, one status or warning line, one buffer line with its text link | nothing over budget: one status line, no warning, no buffer line |
+| Hero, this month | one white card, the only one with a `text-display` number, and no box inside it: a chevron › at the top right (the whole card opens 7.2b), the bar with the budget marked (this month's own buffer part in teal, 7.2b), one status or warning line, one buffer line with its text link | nothing over budget: one status line, no warning, no buffer line |
 | เช็กก่อนผ่อน | the 56px green pill and its hint | never |
 | Wallet | one wide teal button framed in `teal-edge` (2px): shield badge, "กันชนของคุณ ›", the balance at `text-title`; on the right 6 segments and "พอ {n} เดือน" | never; the meter is empty at 0 months |
 | Assistant bubble | a soft gradient panel with an `ai-edge` border; the mascot speaks from the left into a white bubble with a tail | loading: "กำลังสรุป..." at a fixed height, no spinner; a failed request: the plan's own words, no error state; no plan: left out |
@@ -447,10 +451,14 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
    `GET /buffer/shortfalls` (UI-46), as the API's `state` says: "{month} เกินงบ
    {shortfall}" (amber triangle, not prepared), "{month} เกินงบ {shortfall}
    เตรียมจากกันชนแล้ว {prepared} ยังขาด {gap}" (amber, partly prepared), or
-   "{month} เกินงบ {shortfall} เตรียมเงินจากกันชนแล้ว" (teal check, prepared). While
+   "{month} เกินงบ {shortfall} ย้ายจากกันชนเข้าบัญชีหลักแล้ว อย่าลืมจ่ายค่างวดในแอปผ่อน"
+   (teal check, prepared: the money is in the main account, and the user still pays in
+   the app, so never "จ่ายแล้ว", UI-55). While
    the buffer can pay some of the gap, the filled teal button "ใช้กันชนจ่ายส่วนที่เกิน"
    opens the buffer screen at that month. The line stays on the first month over, so
-   after a move it shows that month prepared. No month over, or no answer, gives no
+   after a move it shows that month prepared. The bar, though, is this month's own:
+   it reads this month's row of `GET /buffer/shortfalls`, never the first month over
+   (UI-53), and is drawn like 7.2b's bars (`barSegments`). No month over, or no answer, gives no
    buffer line. No month chips, no
    amount over budget and no total over all months: 7.2b has them month by month.
    There is no separate upcoming-months card.
@@ -516,6 +524,17 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
 - Per month: "3,500.00 บาท จากงบ 5,000.00 บาท", a bar on one scale for all months
   with a budget mark, and a status chip with icon + text: "อยู่ในงบ" (check),
   "เกินงบ" (triangle) or "เกินเกณฑ์ที่ ธปท. แนะนำ" (octagon; wins over เกินงบ).
+- **The bar shows what the buffer covered** (`barSegments.ts`, Session 20, UI-52,
+  UI-54), in parts that touch and end at the total, all widths from `barPermille`:
+  green up to the budget; then teal (`BUFFER_BAR`) for what was moved for the month,
+  never past the shortfall; then the API's `remaining_gap` in amber, or red over a
+  third of income. Not prepared: green then the gap. Partly prepared: green, teal,
+  gap (the gap's start is held at the budget mark, so a tiny move may draw a zero-wide
+  teal; the line still says what was moved). Prepared: green then teal.
+- A month the buffer fully prepared gets the teal chip "กันชนเตรียมเงินแล้ว" (shield,
+  `BUFFER_CHIP`); partly prepared keeps "เกินงบ". Over a third of income always keeps
+  "เกินเกณฑ์ที่ ธปท. แนะนำ" and a red ring on the bar (`ring-bar-risk`), even when
+  prepared: the buffer covers the payment, not the burden on income.
 - Tap a month (a button with `aria-expanded`) to list its installments: name, app
   if given, monthly amount, "งวดที่ x จาก y", and "งวดสุดท้าย" on its last month.
 - **On top, the plan card** (`GET /assistant/plan`, PR B): "กลับมาอยู่ในงบเดือน
@@ -525,8 +544,9 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
   warn border. A caption says the amount is for a 12-month plan, within the budget
   and within a third of income. No ranking of which debt to pay first (L69).
 - No money arithmetic: totals, flags and instalment numbers come from the API.
-- Its colours already follow the accents: green in budget, amber over budget. Red
-  above a third of income is a level only this screen and the verdict show.
+- Its colours already follow the accents: green in budget, amber over budget, teal
+  for the buffer's part. Red above a third of income is a level only this screen,
+  the hero's bar and the verdict show.
 - States: loading, error, settings missing, no months.
 
 ### 7.3 Screen 3: เช็กก่อนผ่อน, the form (`#/think`)
@@ -700,7 +720,8 @@ Source of truth: `frontend/src/copy.ts`. The key strings:
 | Settings missing | บอกรายได้และงบผ่อนต่อเดือนก่อน KidNee ถึงจะช่วยคิดให้ได้ |
 | Money errors | กรอกจำนวนเงินด้วยนะ · ทศนิยมได้ไม่เกิน 2 ตำแหน่ง · จำนวนเงินต้องมากกว่า 0 |
 | Hero | เดือนนี้และอีก {n} เดือนอยู่ในงบ · เดือนนี้ยังอยู่ในงบ · เกินงบ {n} เดือน ({first} ถึง {last}) · ดูทุกเดือน (the chevron, to screen readers) |
-| Buffer state line (hero, 7.2b, 7.4) | {month} เกินงบ {shortfall} · เตรียมจากกันชนแล้ว {prepared} ยังขาด {gap} · เตรียมเงินจากกันชนแล้ว · ใช้กันชนจ่ายส่วนที่เกิน |
+| Buffer state line (hero, 7.2b, 7.4) | {month} เกินงบ {shortfall} · เตรียมจากกันชนแล้ว {prepared} ยังขาด {gap} · ย้ายจากกันชนเข้าบัญชีหลักแล้ว อย่าลืมจ่ายค่างวดในแอปผ่อน · ใช้กันชนจ่ายส่วนที่เกิน |
+| Months chip, buffer covered | กันชนเตรียมเงินแล้ว |
 | Buffer steps | ใช้กันชน {amount} · ย้ายเข้าบัญชีหลัก +{amount} · จ่ายค่างวดในแอปผ่อน (ผู้ใช้ทำเอง) ค่างวด {month} {total} · ย้ายก่อนวันที่แอปผ่อนตัดเงิน แนะนำทำในวันเงินเดือนเข้า · ย้าย {amount}เข้าบัญชีหลักแล้ว กันชนเหลือ {balance} จ่ายค่างวดในแอปผ่อนได้เลย |
 | Months, last line | ยอดในแอปผ่อนไม่ตรงกับที่นี่? อาจมีรายการที่คุณไม่ได้ทำ ติดต่อแอปผ่อนโดยตรงจากช่องทางในแอป อย่าโอนเงินให้ใครที่โทรมาทวง |
 | Rejected field (422) | ระบบไม่รับค่านี้ ลองแก้แล้วกดอีกครั้ง |

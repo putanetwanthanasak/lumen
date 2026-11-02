@@ -173,7 +173,7 @@ function MonthCard({ month, budget, scale, budgetMark, buffer, expanded, onToggl
         >
           <BarParts segments={segments} />
           <span
-            className="absolute -top-1 -bottom-1 w-0.5 bg-ink-muted"
+            className="absolute -top-1 -bottom-1 w-0.5 bg-ink-muted ring-1 ring-card"
             style={{ left: `calc(${budgetMark}% - 1px)` }}
           />
         </span>

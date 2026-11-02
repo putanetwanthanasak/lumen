@@ -69,6 +69,7 @@ const TEXT: [string, string][] = [
 const GRAPHICS: [string, string][] = [
   ["bar-ok", "leaf-50"], // the hero's bar on its track
   ["bar-over", "leaf-50"],
+  ["bar-risk", "leaf-50"], // the hero's gap over one third of income (UI-52)
   ["ink", "leaf-50"], // the hero's budget mark, on the track and on either colour
   ["ink", "bar-ok"],
   ["ink", "bar-over"],
