@@ -530,7 +530,9 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
   never past the shortfall; then the API's `remaining_gap` in amber, or red over a
   third of income. Not prepared: green then the gap. Partly prepared: green, teal,
   gap (the gap's start is held at the budget mark, so a tiny move may draw a zero-wide
-  teal; the line still says what was moved). Prepared: green then teal.
+  teal; the line still says what was moved). Prepared: green then teal. A month within
+  budget but over a third of income (a budget above a third is allowed, L64) is one red
+  part, as before this change. Over or within budget is the API's `over_budget` flag.
 - A month the buffer fully prepared gets the teal chip "กันชนเตรียมเงินแล้ว" (shield,
   `BUFFER_CHIP`); partly prepared keeps "เกินงบ". Over a third of income always keeps
   "เกินเกณฑ์ที่ ธปท. แนะนำ" and a red ring on the bar (`ring-bar-risk`), even when
