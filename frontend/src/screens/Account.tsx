@@ -156,7 +156,15 @@ export function Movements({ movements }: { movements: Movement[] }) {
             {shown.map((m) => (
               <li key={m.id} className="flex items-start justify-between gap-3 py-3">
                 <span className="flex flex-col">
-                  <span className="text-body text-ink">{movementLabel(m)}</span>
+                  <span className="text-body text-ink">
+                    {ACCOUNT.movement[m.kind]}
+                    {m.for_month !== null && (
+                      <>
+                        {" "}
+                        <span className="whitespace-nowrap">{ACCOUNT.forMonth(thaiMonth(m.for_month))}</span>
+                      </>
+                    )}
+                  </span>
                   <span className="text-caption text-ink-muted">{thaiDate(m.at)}</span>
                 </span>
                 <span className={`whitespace-nowrap text-body font-bold ${m.direction === "in" ? "text-ok-ink" : "text-ink"}`}>
@@ -171,6 +179,7 @@ export function Movements({ movements }: { movements: Movement[] }) {
   );
 }
 
+/** The row's words as one line of text (the row keeps "สำหรับ {month}" on one line). */
 export function movementLabel(m: Pick<Movement, "kind" | "for_month">): string {
   const label = ACCOUNT.movement[m.kind];
   return m.for_month === null ? label : `${label} ${ACCOUNT.forMonth(thaiMonth(m.for_month))}`;
