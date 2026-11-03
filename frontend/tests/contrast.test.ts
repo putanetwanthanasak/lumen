@@ -67,8 +67,9 @@ const TEXT: [string, string][] = [
 ];
 
 const GRAPHICS: [string, string][] = [
-  ["bar-ok", "leaf-50"], // the hero's bar on its track
+  ["bar-ok", "leaf-50"], // the hero's bar on its track; bar-ok, bar-over and bar-risk on card also cover the white gap between a month bar's parts
   ["bar-over", "leaf-50"],
+  ["bar-risk", "leaf-50"], // the hero's gap over one third of income (UI-52)
   ["ink", "leaf-50"], // the hero's budget mark, on the track and on either colour
   ["ink", "bar-ok"],
   ["ink", "bar-over"],
@@ -80,6 +81,9 @@ const GRAPHICS: [string, string][] = [
   ["ink-muted", "card"], // the dashed budget line
   ["teal-700", "teal-50"], // the wallet's filled segment and icon
   ["teal-700", "teal-200"], // filled against empty segments
+  ["teal-700", "card"], // a month bar's buffer part (BUFFER_BAR, UI-52), on the months' card and against the 2px white gap between parts (UI-54)
+  ["teal-700", "leaf-50"], // and on the hero's track
+  ["white", "teal-700"], // the hero's budget mark has a white halo against the buffer part (ink on teal-700 is 2.6:1)
   ["bank-700", "bank-50"], // the offer's button border
   ["ai-ink", "ai-from"],
 ];

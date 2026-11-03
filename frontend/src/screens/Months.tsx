@@ -10,11 +10,13 @@
 import { useState } from "react";
 import { getAssistantPlan, getMonths, getSettings, getShortfalls } from "../api.ts";
 import type { AssistantPlanOut, MonthDetail, MonthsOut, SettingsOut, ShortfallsOut } from "../api-types.ts";
-import { ACCENT } from "../accent.ts";
+import { ACCENT, BUFFER_CHIP } from "../accent.ts";
 import { planLines } from "../assistantText.ts";
+import { barSegments } from "../barSegments.ts";
 import { openBufferAt, shortfallsByMonth, type ShortfallView } from "../bufferState.ts";
 import { ASSIST, BUFFER_STATE, HOME, MONTHS_VIEW } from "../copy.ts";
-import { Icon } from "../components/Icon.tsx";
+import { BarParts } from "../components/BarParts.tsx";
+import { Icon, type IconName } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Button, Card, ErrorState, Loading, MarkedText, SettingsMissing } from "../components/ui.tsx";
 import { monthStatus, type MonthStatus } from "../monthStatus.ts";
@@ -79,10 +81,10 @@ function PlanCard({ plan }: { plan: AssistantPlanOut }) {
   );
 }
 
-const TONE: Record<MonthStatus["tone"], { text: string; bar: string; chip: string }> = {
-  ok: { text: "text-ok-ink", bar: "bg-bar-ok", chip: "bg-ok-bg text-ok-ink" },
-  over: { text: "text-warn-ink", bar: "bg-bar-over", chip: "bg-warn-bg text-warn-ink" },
-  risk: { text: "text-risk-ink", bar: "bg-bar-risk", chip: "bg-risk-bg text-risk-ink" },
+const TONE: Record<MonthStatus["tone"], { chip: string }> = {
+  ok: { chip: "bg-ok-bg text-ok-ink" },
+  over: { chip: "bg-warn-bg text-warn-ink" },
+  risk: { chip: "bg-risk-bg text-risk-ink" },
 };
 
 export function MonthList({ months, budget, buffer }: { months: MonthDetail[]; budget: Money; buffer: ReadonlyMap<string, ShortfallView> }) {
@@ -128,9 +130,31 @@ type MonthCardProps = {
   onToggle: () => void;
 };
 
-function MonthCard({ month, budget, scale, budgetMark, buffer, expanded, onToggle }: MonthCardProps) {
+type Chip = { icon: IconName; label: string; className: string };
+
+/**
+ * The month's chip (UI-54): over one third of income always says so, even when the buffer
+ * covered the month (the payment is covered, the burden on income is not); else a month
+ * the buffer fully prepared says "กันชนเตรียมเงินแล้ว"; else the month's status.
+ */
+export function monthChip(month: MonthDetail, buffer: ShortfallView | null): Chip {
   const status = monthStatus(month);
-  const tone = TONE[status.tone];
+  if (!month.over_one_third && buffer?.state === "prepared") {
+    return { icon: ACCENT.buffer.icon, label: MONTHS_VIEW.bufferReady, className: BUFFER_CHIP };
+  }
+  return { icon: status.icon, label: status.label, className: TONE[status.tone].chip };
+}
+
+function MonthCard({ month, budget, scale, budgetMark, buffer, expanded, onToggle }: MonthCardProps) {
+  const chip = monthChip(month, buffer);
+  const segments = barSegments({
+    total: month.total,
+    budget,
+    scale,
+    row: buffer?.row ?? null,
+    overBudget: month.over_budget,
+    overOneThird: month.over_one_third,
+  });
   const panelId = `month-${month.month}`;
   return (
     <li className="overflow-hidden rounded-card bg-card shadow-card">
@@ -143,19 +167,20 @@ function MonthCard({ month, budget, scale, budgetMark, buffer, expanded, onToggl
       >
         <span className="flex items-center justify-between gap-2">
           <span className="text-lead font-bold text-ink">{thaiMonth(month.month)}</span>
-          <span className={`inline-flex items-center gap-1 rounded-pill px-2.5 py-0.5 text-caption font-semibold ${tone.chip}`}>
-            <Icon name={status.icon} size={16} />
-            {status.label}
+          <span className={`inline-flex items-center gap-1 rounded-pill px-2.5 py-0.5 text-caption font-semibold ${chip.className}`}>
+            <Icon name={chip.icon} size={16} />
+            {chip.label}
           </span>
         </span>
         <span className="text-body text-ink">{MONTHS_VIEW.ofBudget(formatBaht(month.total), formatBaht(budget))}</span>
-        <span className="relative block h-3 rounded-pill bg-leaf-50" role="presentation">
+        {/* Over one third of income: a red ring, whatever the buffer covered (the chip says why). */}
+        <span
+          className={`relative block h-3 rounded-pill bg-leaf-50${month.over_one_third ? " ring-2 ring-bar-risk ring-offset-1 ring-offset-card" : ""}`}
+          role="presentation"
+        >
+          <BarParts segments={segments} />
           <span
-            className={`block h-full rounded-pill ${tone.bar}`}
-            style={{ width: `${barPermille(month.total, scale) / 10}%` }}
-          />
-          <span
-            className="absolute -top-1 -bottom-1 w-0.5 bg-ink-muted"
+            className="absolute -top-1 -bottom-1 w-0.5 bg-ink-muted ring-1 ring-card"
             style={{ left: `calc(${budgetMark}% - 1px)` }}
           />
         </span>

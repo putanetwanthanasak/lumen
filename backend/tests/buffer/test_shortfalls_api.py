@@ -262,6 +262,41 @@ def test_BS_05_a_move_through_the_api_prepares_its_month_once(plan_api: Api) -> 
     ]
 
 
+def test_BS_05_new_installment_after_prepared_reopens_gap(plan_api: Api) -> None:
+    """Session 20: a month fully prepared, then a new installment due that month, is only
+    partly prepared: its shortfall grows, the move stays, and the gap is the difference.
+    The months screen draws this gap in amber and offers the move again (UI-56)."""
+    api = plan_api
+    configure(api, buffer="2700.00")
+    manual(api, "6500.00", 2, date(2026, 11, 1))  # Nov and Dec, 1,500 over each
+    move = {"client_request_id": "prep-nov", "amount": "1500.00", "for_month": "2026-11"}
+    assert api.call("POST", "/buffer/move-to-main", move).status_code == 201
+    assert rows(api)[0] == ("2026-11", "1500.00", "1500.00", "0.00", "prepared")
+
+    recorded = api.call(
+        "POST",
+        "/installments",
+        {
+            "client_request_id": "after-prep",
+            "kind": "purchase",
+            "item_price": "400.00",
+            "months": 1,
+            "monthly_amount": "400.00",
+            "first_due_month": "2026-11",
+            "item_name": "สายชาร์จ",
+        },
+    )
+    assert recorded.status_code == 201
+
+    # Nov: 6,900 against 5,000 is 1,900 over; 1,500 moved leaves 400. Dec is untouched.
+    assert rows(api) == [
+        ("2026-11", "1900.00", "1500.00", "400.00", "partly_prepared"),
+        ("2026-12", "1500.00", "0.00", "1500.00", "not_prepared"),
+    ]
+    body = api.call("GET", "/buffer/shortfalls").json()
+    assert (body["shortfall"], body["remaining_gap"]) == ("3400.00", "1900.00")
+
+
 def test_BS_06_prepared_by_month_reads_this_month_on_only(plan_api: Api) -> None:
     # Its own month bound, not only the plan's: the plan also ignores past months, so
     # without this test a query that reads every month would go unseen (B139).

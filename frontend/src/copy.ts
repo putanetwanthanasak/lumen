@@ -237,7 +237,9 @@ export const BUFFER_STATE = {
   over: (month: string, shortfall: string) => `${month} เกินงบ ${shortfall}`,
   partly: (month: string, shortfall: string, prepared: string, gap: string) =>
     `${month} เกินงบ ${shortfall} เตรียมจากกันชนแล้ว ${prepared} ยังขาด ${gap}`,
-  prepared: (month: string, shortfall: string) => `${month} เกินงบ ${shortfall} เตรียมเงินจากกันชนแล้ว`,
+  // The money is in the main account; the user still pays in the app (never "จ่ายแล้ว", UI-55).
+  prepared: (month: string, shortfall: string) =>
+    `${month} เกินงบ ${shortfall} ย้ายจากกันชนเข้าบัญชีหลักแล้ว อย่าลืมจ่ายค่างวดในแอปผ่อน`,
   use: "ใช้กันชนจ่ายส่วนที่เกิน",
   // The buffer screen's move for a month, as three steps (UI-47). "ย้าย" between the
   // user's own accounts, never "โอน".
@@ -261,6 +263,7 @@ export const MONTHS_VIEW = {
   ok: "อยู่ในงบ",
   over: "เกินงบ",
   risk: "เกินเกณฑ์ที่ ธปท. แนะนำ",
+  bufferReady: "กันชนเตรียมเงินแล้ว", // a month over budget the buffer covered (UI-54)
   showItems: "ดูรายการ",
   hideItems: "ซ่อนรายการ",
   instalmentOf: (n: number, total: number) => `งวดที่ ${n} จาก ${total}`,

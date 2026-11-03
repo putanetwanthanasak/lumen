@@ -3,7 +3,7 @@
  * the same words on Home's hero, the buffer screen and ภาระผ่อนรายเดือน (UI-46).
  * - not prepared: amber, "{month} เกินงบ {shortfall}", and "ใช้กันชนจ่ายส่วนที่เกิน";
  * - partly prepared: amber, what was moved and the gap left, and the button;
- * - prepared: a check, "... เตรียมเงินจากกันชนแล้ว", no button.
+ * - prepared: a check, "... ย้ายจากกันชนเข้าบัญชีหลักแล้ว อย่าลืมจ่ายค่างวดในแอปผ่อน", no button.
  * The state, the shortfall and the gap are the API's; the budget numbers never change
  * after a move, only the state does. Nothing is added up here: the amount to move is
  * the smaller of two API amounts, the gap and what the buffer holds.
@@ -18,7 +18,14 @@ import { thaiMonth } from "./thaiMonth.ts";
 /** "ใช้กันชนจ่ายส่วนที่เกิน" for one month: move `amount` with `for_month` = `month`. */
 export type Prepare = { month: string; amount: Money; total: Money };
 
-export type ShortfallView = { month: string; state: PreparedState; total: Money; line: Marked; prepare: Prepare | null };
+export type ShortfallView = {
+  month: string;
+  state: PreparedState;
+  total: Money;
+  line: Marked;
+  prepare: Prepare | null;
+  row: ShortfallMonth; // the API's row as it came, for the month's bar (barSegments)
+};
 
 const smaller = (a: Money, b: Money): Money => (toSatang(a) <= toSatang(b) ? a : b);
 
@@ -38,7 +45,7 @@ export function shortfallView(row: ShortfallMonth, bufferBalance: Money): Shortf
   const shortfall = formatBaht(row.shortfall);
   if (row.state === "prepared") {
     const line: Marked = { accent: "buffer", icon: "check", text: BUFFER_STATE.prepared(month, shortfall) };
-    return { month: row.month, state: row.state, total: row.total, line, prepare: null };
+    return { month: row.month, state: row.state, total: row.total, line, prepare: null, row };
   }
   const text =
     row.state === "partly_prepared"
@@ -52,6 +59,7 @@ export function shortfallView(row: ShortfallMonth, bufferBalance: Money): Shortf
     total: row.total,
     line: { accent: "warn", icon: "alert", text },
     prepare: toSatang(amount) > 0n ? { month: row.month, amount, total: row.total } : null,
+    row,
   };
 }
 
