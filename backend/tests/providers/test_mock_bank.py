@@ -180,3 +180,31 @@ def test_LO_06_applied_to_savings_refuses_a_key_used_for_another_transfer(move: 
         bank.transfer_from_savings("u1", Decimal("1.00"), idempotency_key="k1")
     with pytest.raises(ValueError, match="idempotency key reused"):
         bank.applied_to_savings("u1", "k1")
+
+
+# --- KD-04 (Session 21): restoring a credit the ledger already holds ----------------------
+
+
+def test_KD_04_mark_credited_moves_nothing_and_a_retry_under_its_key_moves_nothing() -> None:
+    # The KidNee serve opens a fresh bank from the savings rows: a move to main already
+    # in the rows is marked credited, so its retry (a DUPLICATE) is not credited again.
+    bank = MockBankAccountProvider(Decimal("100.00"))
+    bank.mark_credited("u1", Decimal("40.00"), idempotency_key="m1")
+    assert bank.get_balance("u1") == Decimal("100.00")
+    bank.transfer_from_savings("u1", Decimal("40.00"), idempotency_key="m1")
+    assert bank.get_balance("u1") == Decimal("100.00")
+    bank.mark_credited("u1", Decimal("40.00"), idempotency_key="m1")  # again: the same, fine
+    bank.transfer_from_savings("u1", Decimal("40.00"), idempotency_key="m2")
+    assert bank.get_balance("u1") == Decimal("140.00")
+
+
+@pytest.mark.parametrize(("user", "amount"), [("u2", "40.00"), ("u1", "41.00")])
+def test_KD_04_mark_credited_refuses_a_key_used_for_another_transfer(
+    user: str, amount: str
+) -> None:
+    bank = MockBankAccountProvider()
+    bank.transfer_from_savings("u1", Decimal("40.00"), idempotency_key="m1")
+    with pytest.raises(ValueError, match="different transfer"):
+        bank.mark_credited(user, Decimal(amount), idempotency_key="m1")
+    with pytest.raises(ValueError, match="amount must be > 0"):
+        bank.mark_credited("u1", Decimal("0.00"), idempotency_key="m9")

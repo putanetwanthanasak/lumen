@@ -55,6 +55,7 @@ from app.notifications import service as notifications
 from app.providers import get_bank_provider, get_push_provider
 from app.providers.base import BankAccountProvider, PushProvider
 from app.providers.mock_bank import DEFAULT_OPENING_BALANCE, MockBankAccountProvider
+from app.savings import service as savings
 from app.serve import FRONTEND_DIST, create_serving_app
 from app.user_settings import service as user_settings
 from app.user_settings.schemas import SettingsIn
@@ -229,25 +230,32 @@ def main_balances(session: Session) -> dict[str, Decimal]:
     return {user: DEFAULT_OPENING_BALANCE + net for user, net in rows}
 
 
-def opened_bank(engine: Engine) -> MockBankAccountProvider:
-    """The serving process's bank, opened at main_balances. A balance below zero can
-    only come from rows written before this existed (each serve opened at 10,000.00):
-    that user keeps the default opening balance, and the console says to reset."""
-    bank = MockBankAccountProvider()
-    with Session(engine) as session:
-        balances = main_balances(session)
-    for user, balance in sorted(balances.items()):
+def open_bank(session: Session, bank: MockBankAccountProvider) -> None:
+    """Open the serving process's bank at main_balances, and mark every move to main in
+    the rows as credited: a move commits before its credit, so after a restart its
+    retry must not be credited again (round 2 F1). A balance below zero can only come
+    from rows written before this existed (each serve opened at 10,000.00): that user
+    keeps the default opening balance, and the console says to reset."""
+    for user, balance in sorted(main_balances(session).items()):
         if balance < 0:
             print(f"{user}: savings exceed the opening balance; run reset to refresh")
             continue
         bank.set_balance(user, balance)
-    return bank
+    moves = session.execute(
+        select(
+            SavingsTransaction.user_id,
+            SavingsTransaction.client_request_id,
+            SavingsTransaction.amount,
+        ).where(SavingsTransaction.type == SavingsType.WITHDRAWAL)
+    ).all()
+    for user, request_id, amount in moves:
+        bank.mark_credited(user, amount, idempotency_key=savings.move_key(user, request_id))
 
 
 def build(config: KidneeConfig, engine: Engine, dist: Path | None = FRONTEND_DIST) -> Starlette:
     """The serving app: the API with every session on `engine` (lumen_kidnee, never
     the DATABASE_URL database), the demo payday endpoint on, the bank opened from the
-    savings rows (opened_bank), plus the build."""
+    savings rows (open_bank), plus the build."""
     _allowed(config)
     sessions = sessionmaker(bind=engine, expire_on_commit=False)
 
@@ -257,8 +265,12 @@ def build(config: KidneeConfig, engine: Engine, dist: Path | None = FRONTEND_DIS
 
     api = create_app(get_settings().model_copy(update={"demo_endpoints_enabled": True}))
     api.dependency_overrides[get_session] = kidnee_session
-    bank = opened_bank(engine)
-    api.dependency_overrides[get_bank_provider] = lambda: bank
+    # The process's one bank, which every path uses (the webhook processor reads it
+    # directly), opened from the rows (round 2 F2). Only the mock keeps state to open.
+    bank = get_bank_provider()
+    if isinstance(bank, MockBankAccountProvider):
+        with Session(engine) as session:
+            open_bank(session, bank)
     return create_serving_app(api, dist)
 
 
