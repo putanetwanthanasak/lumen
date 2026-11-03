@@ -14,6 +14,7 @@ import type {
   BufferOut,
   CodedDetail,
   DebtSummary,
+  MainAccountOut,
   ManualEntryIn,
   MonthsOut,
   MoveIn,
@@ -154,6 +155,11 @@ export async function getMonths(count?: number): Promise<MonthsOut> {
 
 export async function getBuffer(): Promise<BufferOut> {
   return (await call<BufferOut>("GET", "/buffer")).body;
+}
+
+/** GET /bank/main-account: the host app's main account and its movements to and from the buffer. */
+export async function getMainAccount(): Promise<MainAccountOut> {
+  return (await call<MainAccountOut>("GET", "/bank/main-account")).body;
 }
 
 /** GET /buffer/shortfalls: each month over budget, and whether money was moved for it. */

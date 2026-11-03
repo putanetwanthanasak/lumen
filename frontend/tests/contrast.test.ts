@@ -64,6 +64,16 @@ const TEXT: [string, string][] = [
   ["leaf-800", "leaf-50"],
   ["warn-ink", "leaf-50"],
   ["teal-800", "leaf-50"],
+  // The host shell (#/account, Session 21): white and muted text on every host colour,
+  // the gradient's two ends included (the text can sit anywhere on it).
+  ["white", "host-from"],
+  ["white", "host-to"],
+  ["white", "host-card"],
+  ["white", "host-bar"],
+  ["host-muted", "host-from"],
+  ["host-muted", "host-to"],
+  ["host-muted", "host-card"],
+  ["host-muted", "host-bar"],
 ];
 
 const GRAPHICS: [string, string][] = [
@@ -86,6 +96,14 @@ const GRAPHICS: [string, string][] = [
   ["white", "teal-700"], // the hero's budget mark has a white halo against the buffer part (ink on teal-700 is 2.6:1)
   ["bank-700", "bank-50"], // the offer's button border
   ["ai-ink", "ai-from"],
+  // The host shell: the account card's and the shortcuts' edges, and the bar's top
+  // line, against the gradient; the white cards against it; the selected underline.
+  ["host-line", "host-from"],
+  ["host-line", "host-to"],
+  ["host-line", "host-bar"],
+  ["card", "host-from"],
+  ["card", "host-to"],
+  ["white", "host-bar"],
 ];
 
 test("UI_35_every_accent_text_pair_is_at_least_4_5_to_1", () => {

@@ -20,7 +20,11 @@ export type IconName =
   | "arrow"
   | "edit"
   | "down"
-  | "calendar";
+  | "calendar"
+  | "transfer"
+  | "bill"
+  | "topup"
+  | "scan";
 
 const PATHS: Record<IconName, string> = {
   check: "M20 6 9 17l-5-5",
@@ -43,6 +47,11 @@ const PATHS: Record<IconName, string> = {
   edit: "M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4",
   down: "m6 9 6 6 6-6",
   calendar: "M4 6h16v14H4V6Zm0 4h16M8 3v4m8-4v4m-7 7 2 2 4-4",
+  // The host shell's shortcuts (#/account): plain shapes of our own.
+  transfer: "M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4",
+  bill: "M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6m-6 4h3",
+  topup: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 5v8m-4-4h8",
+  scan: "M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5m0-3h16",
 };
 
 type Props = { name: IconName; size?: number; className?: string; label?: string };

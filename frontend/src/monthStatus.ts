@@ -8,6 +8,13 @@ import { MONTHS_VIEW } from "./copy.ts";
 
 export type MonthStatus = { tone: "ok" | "over" | "risk"; icon: "check" | "alert" | "stop"; label: string };
 
+/** The chip of each status (Months and the host app's KidNee card): a tint and its ink. */
+export const STATUS_CHIP: Record<MonthStatus["tone"], string> = {
+  ok: "bg-ok-bg text-ok-ink",
+  over: "bg-warn-bg text-warn-ink",
+  risk: "bg-risk-bg text-risk-ink",
+};
+
 export function monthStatus(row: Pick<MonthRow, "over_budget" | "over_one_third">): MonthStatus {
   if (row.over_one_third) return { tone: "risk", icon: "stop", label: MONTHS_VIEW.risk };
   if (row.over_budget) return { tone: "over", icon: "alert", label: MONTHS_VIEW.over };

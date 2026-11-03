@@ -5,7 +5,7 @@
  * the one-third rule is "ธปท. แนะนำ" (guidance), never "ธปท. กำหนด" (L64, L65).
  * Amounts come in already formatted by money.ts; this file never touches money.
  */
-import type { ConsolidationReason, PaydayOutcome, Verdict } from "./api-types.ts";
+import type { ConsolidationReason, MovementKind, PaydayOutcome, Verdict } from "./api-types.ts";
 
 export const APP_NAME = "KidNee";
 export const APP_NAME_TH = "คิดหนี้";
@@ -121,6 +121,7 @@ export const SETTINGS = {
 };
 
 export const HOME = {
+  toAccount: "บัญชีหลัก", // the way back to the host app's home (#/account)
   greeting: (name: string) => `สวัสดี ${name}`,
   greetingPlain: "สวัสดี",
   thisMonthTitle: (month: string) => `ค่างวดรวมเดือน ${month}`,
@@ -292,6 +293,7 @@ export const BUFFER = {
   aboveBalance: "ยอดในกันชนไม่พอสำหรับจำนวนนี้ ลองใส่จำนวนที่น้อยลง",
   failed: "ยังไม่แน่ใจว่าย้ายสำเร็จหรือไม่ กดย้ายอีกครั้งด้วยจำนวนเดิมได้เลย ระบบจะไม่ย้ายซ้ำ",
   another: "ย้ายอีกจำนวน",
+  seeInAccount: "ดูในบัญชีหลัก", // after a move: opens #/account
 };
 
 export const PAYDAY_OUTCOME: Record<PaydayOutcome, string> = {
@@ -383,4 +385,32 @@ export const DEMO = {
   personaTitle: "ผู้ใช้ตัวอย่าง",
   personaNote: "สลับผู้ใช้ที่ seed ไว้ใน lumen_kidnee (X-Demo-User)",
   personaPlain: "ผู้ใช้",
+};
+
+/**
+ * The host bank app's home (#/account, Session 21). Generic on purpose: no bank,
+ * product or company name, and a masked placeholder in place of an account number.
+ */
+export const ACCOUNT = {
+  title: "บัญชีหลัก",
+  savings: "บัญชีออมทรัพย์",
+  maskedNumber: "xxx-x-x1234-x",
+  available: "ยอดเงินที่ใช้ได้",
+  baht: "บาท",
+  mockData: "ข้อมูลจำลองสำหรับเดโม",
+  shortcutsLabel: "ทางลัด",
+  shortcuts: { transfer: "โอนเงิน", bill: "จ่ายบิล", topup: "เติมเงิน", scan: "สแกน" },
+  shortcutNote: "ปุ่มตัวอย่าง ใช้ไม่ได้ในเดโม",
+  thisMonth: (total: string) => `ภาระผ่อนเดือนนี้ ${total}`,
+  buffer: (balance: string) => `กันชน ${balance}`,
+  setUp: "ยังไม่ได้ตั้งค่า KidNee แตะเพื่อเริ่มใช้",
+  recent: "รายการล่าสุด",
+  movement: {
+    auto_save: "กันเงินเข้ากันชน KidNee",
+    leftover_save: "เก็บงบที่ใช้ไม่หมดเข้ากันชน",
+    withdrawal: "ย้ายเงินจากกันชน KidNee",
+  } satisfies Record<MovementKind, string>,
+  forMonth: (month: string) => `สำหรับ ${month}`,
+  empty: "ยังไม่มีรายการ",
+  nav: { menu: "เมนูบัญชี", home: "หน้าแรก", kidnee: "KidNee" },
 };

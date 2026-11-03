@@ -189,7 +189,8 @@ export function BufferBody({ buffer, shortfalls, onMoved }: { buffer: BufferOut;
         {moved !== null ? (
           <>
             <Alert tone="ok" title={BUFFER.moved(formatBaht(moved.amount))}>
-              {BUFFER.balanceAfter(formatBaht(moved.balance))}
+              <p>{BUFFER.balanceAfter(formatBaht(moved.balance))}</p>
+              <SeeInAccount />
             </Alert>
             <Button
               variant="secondary"
@@ -334,7 +335,11 @@ function PrepareCard({
           </Step>
         </ol>
       )}
-      {done !== null && <Alert tone="ok" title={BUFFER_STATE.success(formatBaht(done.out.amount), formatBaht(done.out.balance))} />}
+      {done !== null && (
+        <Alert tone="ok" title={BUFFER_STATE.success(formatBaht(done.out.amount), formatBaht(done.out.balance))}>
+          <SeeInAccount />
+        </Alert>
+      )}
       {prepare !== null && (
         <>
           <p className="text-body text-ink-muted">{BUFFER_STATE.helper}</p>
@@ -362,5 +367,15 @@ function Step({ n, done, children }: { n: number; done: boolean; children: strin
       </span>
       <span className="pt-0.5">{children}</span>
     </li>
+  );
+}
+
+/** After a move: where the money landed, the host app's main account (#/account). */
+function SeeInAccount() {
+  return (
+    <a href="#/account" className="inline-flex min-h-11 items-center gap-1 font-semibold underline">
+      {BUFFER.seeInAccount}
+      <Icon name="next" size={18} />
+    </a>
   );
 }
