@@ -7,6 +7,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.affordability.router import router as affordability_router
 from app.assistant.router import router as assistant_router
+from app.bank.router import router as bank_router
 from app.buffer.router import router as buffer_router
 from app.config import Settings, get_settings
 from app.consolidation.router import router as consolidation_router
@@ -53,6 +54,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(installments_router)
     app.include_router(affordability_router)
     app.include_router(buffer_router)
+    app.include_router(bank_router)
     app.include_router(assistant_router)
     app.include_router(consolidation_router)
     app.include_router(notifications_router)

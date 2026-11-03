@@ -273,6 +273,31 @@ export type NotificationOut = {
 };
 export type NotificationsOut = { notifications: NotificationOut[]; count: number };
 
+// ---- /bank/main-account (backend/app/bank/schemas.py, Session 21) ------------------
+
+/**
+ * A movement between the main account and the buffer, as stored in
+ * savings_transactions: `auto_save` and `leftover_save` go out of the main account,
+ * `withdrawal` (POST /buffer/move-to-main) comes in. No salary rows: nothing records one.
+ */
+export type MovementKind = "auto_save" | "leftover_save" | "withdrawal";
+
+export type Movement = {
+  id: string;
+  at: string; // ISO datetime in Bangkok time, "+07:00"
+  kind: MovementKind;
+  direction: "in" | "out"; // the sign to show; never computed from `kind`
+  amount: Money; // always positive
+  for_month: string | null; // "YYYY-MM": a move's month, or a leftover's payday month
+};
+
+/** GET /bank/main-account. No account number in the API. */
+export type MainAccountOut = {
+  balance: Money; // the main account, from the bank provider
+  movements: Movement[]; // newest first, at most 20
+  movements_truncated: boolean;
+};
+
 // ---- Assistant plan (GET /assistant/plan, merged backend) -------------------------
 
 /**
