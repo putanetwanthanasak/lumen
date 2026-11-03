@@ -1,9 +1,11 @@
 """The main account's recent movements (Session 21): money the system moved between
 the user's main account and the buffer. Read only.
 
-Every row of savings_transactions is a transfer that happened: a skipped saving
-(safety net, consent off, cash kinds) writes no row. Salary is not recorded anywhere,
-so it is not listed.
+Every row of savings_transactions is a movement the system recorded; a skipped saving
+(safety net, consent off, cash kinds) writes no row. An auto-save and a payday leftover
+commit only after the bank debit. A move to main commits its row first and credits the
+bank after (buffer/router.py); a retry under the same client_request_id completes the
+credit. Salary is not recorded anywhere, so it is not listed.
 """
 
 from dataclasses import dataclass

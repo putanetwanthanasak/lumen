@@ -100,16 +100,17 @@ const pad = (n: number) => String(n).padStart(2, "0");
 /**
  * Record a movement the way the backend's savings_transactions row would read. `at`
  * is the store's day in Bangkok time, a minute later per movement, so the order is
- * the order things happened (the backend orders by created_at).
+ * the order things happened (the backend orders by created_at). `id` is the row's id:
+ * a move to main passes its transaction_id, as the backend lists the same row.
  */
-function recordMovement(kind: Movement["kind"], amount: Money, forMonth: string | null): void {
+function recordMovement(kind: Movement["kind"], amount: Money, forMonth: string | null, id: string = crypto.randomUUID()): void {
   const seq = store.movements.length;
   const minute = seq % 60;
   const hour = 9 + (seq - minute) / 60;
   const d = store.today;
   const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   store.movements.unshift({
-    id: crypto.randomUUID(),
+    id,
     at: `${day}T${pad(hour)}:${pad(minute)}:00+07:00`,
     kind,
     direction: kind === "withdrawal" ? "in" : "out",
@@ -492,9 +493,11 @@ function moveToMain(body: unknown): MockResponse {
   }
   store.bufferBalance = fromSatang(toSatang(store.bufferBalance) - toSatang(b.amount));
   store.mainBalance = fromSatang(toSatang(store.mainBalance) + toSatang(b.amount));
-  recordMovement("withdrawal", b.amount, forMonth);
+  const transactionId = crypto.randomUUID();
+  // Stored as Numeric(12,2) on the backend: "1500" reads back as "1500.00".
+  recordMovement("withdrawal", fromSatang(toSatang(b.amount)), forMonth, transactionId);
   const out: MovedOut = {
-    transaction_id: crypto.randomUUID(),
+    transaction_id: transactionId,
     status: "created",
     amount: b.amount,
     for_month: forMonth,

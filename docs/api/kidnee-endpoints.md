@@ -320,7 +320,7 @@ Errors:
 
 ## บัญชีหลัก (Session 21)
 ### `GET /bank/main-account` (new)
-Model: `bank/schemas.py` (`MainAccountOut`, `MovementOut`). Read only: it writes nothing and moves nothing. Example from the MA tests (hand-written from the models; ids differ per run):
+Model: `bank/schemas.py` (`MainAccountOut`, `MovementOut`). Read only: it writes nothing and moves nothing. Example hand-written from the models, with values like those in the MA tests (ids differ per run; the balance is the provider's and is not the opening balance minus these rows):
 ```json
 {"balance": "9700.00",
  "movements": [
@@ -338,6 +338,7 @@ Model: `bank/schemas.py` (`MainAccountOut`, `MovementOut`). Read only: it writes
 - `direction` is the sign to show; the screen never derives it. `amount` is always positive.
 - `at` is when the row was recorded, in Bangkok time (`+07:00`), so its date part is the Bangkok date.
 - Only movements the system recorded: no salary rows (nothing credits salary, `/demo/payday` included). A skipped saving writes no row, so it is not listed.
+- A `withdrawal` row is committed before the bank credit (`POST /buffer/move-to-main`); a retry under the same `client_request_id` completes the credit. With the mock bank the credit cannot fail.
 
 ## Home: "ควรรวมหนี้ไหม" and the monthly plan (L69, L70)
 ### `GET /assistant/plan`

@@ -2,11 +2,11 @@
  * UI-62: the mock's GET /bank/main-account (Session 21). The mock records a movement
  * exactly where it moves money between the main account and the buffer: an
  * auto-save, the payday leftover and a move to main. Critical (money), so it has a
- * break test in the progress log. The screen's tests are in mainAccount.test.ts.
+ * break test in the progress log.
  */
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import type { MainAccountOut, ManualEntryIn, RecordedOut } from "../src/api-types.ts";
+import type { MainAccountOut, ManualEntryIn, MovedOut, RecordedOut } from "../src/api-types.ts";
 import { PERSONA_MAIN_BALANCE, PERSONA_SETTINGS } from "../src/mock/persona.ts";
 import { handle, resetMock } from "../src/mock/server.ts";
 
@@ -83,4 +83,12 @@ test("UI_62_lists_the_20_newest_and_says_there_are_more", () => {
     call("POST", "/buffer/move-to-main", { client_request_id: `m${i}`, amount: "1.00" });
   }
   assert.equal(account().movements_truncated, false);
+});
+
+test("UI_62_a_move_is_listed_under_its_transaction_id_with_the_amount_as_stored", () => {
+  // As the backend does: the movement is the withdrawal row, and Numeric(12,2) reads back two places.
+  const moved = call("POST", "/buffer/move-to-main", { client_request_id: "m1", amount: "1500" }).body as MovedOut;
+  const [listed] = account().movements;
+  assert.equal(listed?.id, moved.transaction_id);
+  assert.equal(listed?.amount, "1500.00");
 });
