@@ -36,7 +36,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 import uvicorn
-from sqlalchemy import Engine, make_url, select, text
+from sqlalchemy import Engine, case, func, make_url, select, text
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.applications import Starlette
 
@@ -50,10 +50,11 @@ from app.db import get_session, make_engine
 from app.installments.schemas import ManualEntryIn
 from app.installments.service import Outcome, record
 from app.main import create_app
-from app.models import UserSettings
+from app.models import SavingsTransaction, SavingsType, UserSettings
 from app.notifications import service as notifications
 from app.providers import get_bank_provider, get_push_provider
 from app.providers.base import BankAccountProvider, PushProvider
+from app.providers.mock_bank import DEFAULT_OPENING_BALANCE, MockBankAccountProvider
 from app.serve import FRONTEND_DIST, create_serving_app
 from app.user_settings import service as user_settings
 from app.user_settings.schemas import SettingsIn
@@ -211,9 +212,42 @@ def personas_present(engine: Engine) -> list[str]:
         )
 
 
+def main_balances(session: Session) -> dict[str, Decimal]:
+    """Each user's main account as its savings rows left it: the opening balance, less
+    every auto-save and leftover saving, plus every move back to main (Session 21).
+
+    The seed runs in its own process, and the mock bank lives in memory, so without
+    this the served bank opens every persona at 10,000.00 while บัญชีหลัก lists their
+    savings under it (review F2). Decimal only; the SUM is over Numeric(12,2)."""
+    signed = case(
+        (SavingsTransaction.type == SavingsType.WITHDRAWAL, SavingsTransaction.amount),
+        else_=-SavingsTransaction.amount,
+    )
+    rows = session.execute(
+        select(SavingsTransaction.user_id, func.sum(signed)).group_by(SavingsTransaction.user_id)
+    ).all()
+    return {user: DEFAULT_OPENING_BALANCE + net for user, net in rows}
+
+
+def opened_bank(engine: Engine) -> MockBankAccountProvider:
+    """The serving process's bank, opened at main_balances. A balance below zero can
+    only come from rows written before this existed (each serve opened at 10,000.00):
+    that user keeps the default opening balance, and the console says to reset."""
+    bank = MockBankAccountProvider()
+    with Session(engine) as session:
+        balances = main_balances(session)
+    for user, balance in sorted(balances.items()):
+        if balance < 0:
+            print(f"{user}: savings exceed the opening balance; run reset to refresh")
+            continue
+        bank.set_balance(user, balance)
+    return bank
+
+
 def build(config: KidneeConfig, engine: Engine, dist: Path | None = FRONTEND_DIST) -> Starlette:
     """The serving app: the API with every session on `engine` (lumen_kidnee, never
-    the DATABASE_URL database) and the demo payday endpoint on, plus the build."""
+    the DATABASE_URL database), the demo payday endpoint on, the bank opened from the
+    savings rows (opened_bank), plus the build."""
     _allowed(config)
     sessions = sessionmaker(bind=engine, expire_on_commit=False)
 
@@ -223,6 +257,8 @@ def build(config: KidneeConfig, engine: Engine, dist: Path | None = FRONTEND_DIS
 
     api = create_app(get_settings().model_copy(update={"demo_endpoints_enabled": True}))
     api.dependency_overrides[get_session] = kidnee_session
+    bank = opened_bank(engine)
+    api.dependency_overrides[get_bank_provider] = lambda: bank
     return create_serving_app(api, dist)
 
 

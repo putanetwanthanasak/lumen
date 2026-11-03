@@ -18,9 +18,10 @@ from sqlalchemy.orm import Session
 
 from app.assistant import service as assistant
 from app.config import get_settings
-from app.db import Base, make_engine
+from app.db import Base, get_session, make_engine
 from app.ledger import reconcile
 from app.models import Installment, Notification, SavingsTransaction
+from app.providers import get_bank_provider
 from app.providers.mock_bank import MockBankAccountProvider
 from app.providers.mock_push import MockPushProvider
 from demo.kidnee import (
@@ -29,6 +30,7 @@ from demo.kidnee import (
     KidneeConfig,
     ai_check,
     build,
+    main_balances,
     model_config_lines,
     seconds,
     seed,
@@ -175,12 +177,60 @@ def test_KD_04_the_served_api_reads_the_kidnee_database(
     served = build(config, kidnee, dist=None)
     api = served.routes[0].app  # type: ignore[attr-defined]
     # Checked before any request, so a broken override never reaches another database.
-    [override] = [api.dependency_overrides[k] for k in api.dependency_overrides]
-    with contextlib.closing(override()) as sessions:
+    # Two overrides: the session, and the bank opened from the seeded rows (Session 21).
+    assert set(api.dependency_overrides) == {get_session, get_bank_provider}
+    with contextlib.closing(api.dependency_overrides[get_session]()) as sessions:
         assert next(sessions).get_bind().url.database == DB_NAME
     with TestClient(served) as client:
         response = client.get("/api/debts/summary", headers={"X-Demo-User": "demo-mon"})
     assert (response.status_code, response.json()["monthly_total"]) == (200, "3500.00")
+
+
+def test_KD_04_the_served_main_account_opens_at_what_the_seed_left(
+    kidnee: Engine, first_seed: Any, config: KidneeConfig
+) -> None:
+    # The seed ran in another process, whose in-memory bank is gone. Served, each
+    # persona's main account opens at 10,000.00 minus the savings its rows list, so
+    # the balance on บัญชีหลัก agrees with the movements under it (review F2, Session 21).
+    served = build(config, kidnee, dist=None)
+    with TestClient(served) as client:
+        bodies = {
+            user: client.get("/api/bank/main-account", headers={"X-Demo-User": user}).json()
+            for user in PERSONAS
+        }
+    assert {user: body["balance"] for user, body in bodies.items()} == {
+        "demo-mon": "7300.00",  # 10,000.00 - 1,200.00 - 1,500.00
+        "demo-over": "4300.00",  # - 5,700.00
+        "demo-consolidate": "8500.00",  # - 1,500.00
+    }
+    for body in bodies.values():
+        listed = sum(Decimal(m["amount"]) for m in body["movements"])
+        assert Decimal(body["balance"]) == Decimal("10000.00") - listed
+
+
+def test_KD_04_a_move_to_main_adds_back_and_a_leftover_takes_out(kidnee: Engine) -> None:
+    with Session(kidnee) as session:
+        session.add_all(
+            [
+                SavingsTransaction(
+                    user_id="demo-mon",
+                    type="withdrawal",
+                    amount=Decimal("700.00"),
+                    client_request_id="kd-move",
+                ),
+                SavingsTransaction(
+                    user_id="demo-mon",
+                    type="leftover_save",
+                    amount=Decimal("100.00"),
+                    payday_month=date(2026, 10, 1),
+                ),
+            ]
+        )
+        session.flush()
+        opened = main_balances(session)
+        session.rollback()  # the module's data stays as seeded
+    # 10,000.00 - 2,700.00 saved + 700.00 moved back - 100.00 leftover
+    assert opened["demo-mon"] == Decimal("7900.00")
 
 
 # --- KD-05: one story per persona (Session 17) ---------------------------------------------

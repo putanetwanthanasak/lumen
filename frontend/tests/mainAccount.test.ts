@@ -26,6 +26,7 @@ import { ROUTES } from "../src/router.ts";
 import { AccountBody, AccountContent, KidNeeCard, movementLabel, Movements, Shortcuts, signed } from "../src/screens/Account.tsx";
 import { HomeScreen } from "../src/screens/Home.tsx";
 import { thaiDate } from "../src/thaiMonth.ts";
+import { BANNED_EXACT_PATTERN, BANNED_PATTERN } from "./banned.ts";
 
 const TODAY = new Date(2026, 9, 27); // Oct 2026
 const call = (method: string, path: string, body?: unknown) => handle(method, path, body, "demo-mon");
@@ -235,18 +236,20 @@ test("UI_60_both_buffer_success_messages_link_to_the_main_account", () => {
 
 // ---- UI-61: no brand, no real-looking number ------------------------------------------
 
-const BRANDS = /KBank|KBTG|Kasikorn|กสิกร|K PLUS|K\+|\bMAKE\b|Shopee|ธนาคาร/i;
+// The banned names come from banned.ts (built from parts); "ธนาคาร" (bank) is not a
+// name, but the host shell must not say it either: nothing there claims to be a bank.
+const named = (text: string) => BANNED_PATTERN.test(text) || BANNED_EXACT_PATTERN.test(text) || text.includes("ธนาคาร");
 const NEW_FILES = [
   ["screens", "Account.tsx"],
   ["components", "HostScreen.tsx"],
 ];
 
 test("UI_61_the_host_shell_names_no_bank_product_or_company", () => {
-  for (const path of NEW_FILES) assert.ok(!BRANDS.test(read(...path)), path.join("/"));
+  for (const path of NEW_FILES) assert.ok(!named(read(...path)), path.join("/"));
   const strings = JSON.stringify(ACCOUNT);
-  assert.ok(!BRANDS.test(strings), strings);
+  assert.ok(!named(strings), strings);
   const text = plain(renderToStaticMarkup(createElement(AccountContent, { load: { state: "ready", data: data() }, onRetry: () => undefined })));
-  assert.ok(!BRANDS.test(text), text);
+  assert.ok(!named(text), text);
   assert.ok(!text.includes("—"), "no em dash");
 });
 

@@ -15,6 +15,7 @@ import { join, relative } from "node:path";
 import { test } from "node:test";
 import { HOME, NAV, THINK } from "../src/copy.ts";
 import { DEMO_USER, PERSONA_NAME } from "../src/mock/persona.ts";
+import { BANNED, BANNED_EXACT, BANNED_EXACT_PATTERN, BANNED_PATTERN } from "./banned.ts";
 
 // npm runs the tests from frontend/ (the tests are compiled to .test-build first).
 const ROOT = process.cwd();
@@ -84,21 +85,21 @@ test("UI_10_no_em_dash_in_src_or_design_md", () => {
   assert.deepEqual(scan([...files, DESIGN], /—/), []);
 });
 
-// Built from parts so this file does not contain the names it forbids.
-const BANNED = [
-  ["K", "Bank"],
-  ["KB", "TG"],
-  ["Kasi", "korn"],
-  ["K ", "PLUS"],
-  ["K", "PLUS"],
-  ["Sho", "pee"],
-  ["กสิ", "กร"],
-  ["ช้อป", "ปี้"],
-].map(([a, b]) => `${a}${b}`);
+// The names are built from parts in banned.ts, so no file spells out what it forbids.
+// The tests are scanned too (review F1, Session 21): a guard's own list once named them.
+const testFiles = sourceFiles(join(ROOT, "tests"));
 
-test("UI_10_no_banned_brand_names_in_src_or_design_md", () => {
-  const pattern = new RegExp(BANNED.map((n) => n.replace(/ /g, "\\s*")).join("|"), "i");
-  assert.deepEqual(scan([...files, DESIGN], pattern), []);
+test("UI_10_no_banned_brand_names_in_src_design_md_or_tests", () => {
+  assert.deepEqual(scan([...files, DESIGN, ...testFiles], BANNED_PATTERN), []);
+  assert.deepEqual(scan([...files, DESIGN, ...testFiles], BANNED_EXACT_PATTERN), []);
+});
+
+test("UI_10_the_brand_scan_catches_each_name_and_spares_ordinary_code", () => {
+  for (const name of BANNED) assert.ok(BANNED_PATTERN.test(name.toLowerCase()), name);
+  for (const name of BANNED_EXACT) assert.ok(BANNED_EXACT_PATTERN.test(`app ${name} home`), name);
+  for (const line of ["make(lock)", "the loan would make a month RED", "typecheck + production", "i + 1"]) {
+    assert.ok(!BANNED_EXACT_PATTERN.test(line), line);
+  }
 });
 
 test("UI_32_check_before_installment_is_spelt_เช็ก_everywhere", () => {
