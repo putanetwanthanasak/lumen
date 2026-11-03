@@ -99,6 +99,11 @@ warning sign (UI-44).
    or real shopping platforms (CLAUDE.md rule 5), and no wording that suggests an
    official bank service. The only vendor name is **ShopDemo**. A green family
    common in Thai personal-finance apps is used; no logo or mark is copied.
+   The host app's home (`#/account`, 7.7) is generic on purpose: the plain text
+   "บัญชีหลัก", flat colours, no logo, no bank, product or company name, a masked
+   placeholder number ("xxx-x-x1234-x") and "ข้อมูลจำลองสำหรับเดโม". It was designed
+   without looking at any real banking app (organisers' written answer, 3 Nov:
+   bank-app-like colours are allowed, names and logos are not).
 2. **Footer on every screen:** "Concept prototype สำหรับการแข่งขัน".
 3. **Thai text has no em dash**, anywhere (rule 10). Use a space, a colon or a
    new sentence.
@@ -152,6 +157,7 @@ Components use tokens only, never raw hex.
 | `bank-50` / `200` / `700` / `800` | `#eef3fd` / `#b3c9f2` / `#2a4fa0` / `#1f3d7d` | the bank's consolidation offer |
 | `ai-from` / `ai-to` / `ai-line` / `ai-ink` / `ai-edge` | `#f3effe` / `#e8f4fd` / `#d6ccf6` / `#4b3699` / `#8a76d6` | the assistant only (soft gradient; `ai-edge` is the panel's edge) |
 | `quiet-bg` / `quiet-line` / `quiet-ink` / `quiet-edge` | `#eef2f6` / `#d3dce6` / `#3f5166` / `#7a8a9d` | a note with nothing to act on (`quiet-edge` is the banner's edge) |
+| `host-from` / `host-to` / `host-card` / `host-line` / `host-bar` / `host-muted` | `#0b5a43` / `#0b4f5e` / `#1a6b5a` / `#7cc2b2` / `#083f37` / `#d4ece5` | the host app's home only (`#/account`, 7.7): the deep green to deep teal gradient, the account card, its edges, the bottom bar, secondary text. Used only through `HOST` in `accent.ts` |
 
 Contrast (WCAG 2.2, measured): white on `leaf-700` 6.31; `ink` on card 16.44;
 `ink-muted` on card 7.22 and on surface 6.73; `ok-ink`/`ok-bg` 7.81;
@@ -176,7 +182,11 @@ and the words (chip and line) tell them apart, never the colour alone. The offer
 white on `bank-700`, 7.71; its tag, `bank-800` on white, 10.39.
 Card edges against the page (surface / card), at least 3:1 (1.4.11): `bank-700`
 7.19 / 7.71, `ai-edge` 3.47 / 3.72, `quiet-edge` 3.29 / 3.53, `teal-edge` 3.73 /
-3.99. The light lines they replace blend in: `bank-200`
+3.99. The host shell (`#/account`): white on `host-from` 8.21, `host-to` 9.15,
+`host-card` 6.37, `host-bar` 11.82; `host-muted` on them 6.62 / 7.38 / 5.14 / 9.53;
+`host-line` (the account card's and the shortcuts' edges, the bar's top line) 3.99 on
+`host-from`, 4.45 on `host-to`, 5.75 on `host-bar`; the white cards against the
+gradient 8.21 / 9.15. The light lines they replace blend in: `bank-200`
 1.56, `ai-line` 1.42, `quiet-line` 1.29, `warn-line` 1.52, `teal-100` 1.19 on surface. Test UI-35 recomputes these pairs
 from `index.css`, the edges from `EDGE` in `accent.ts`.
 
@@ -407,9 +417,11 @@ data (UI-33); they format, never add up.
 - On a desktop the app sits in a 390x844 phone frame centred on the `desk`
   background. Below 640px wide it fills the screen.
 - Hash routes, no router package (`src/router.ts`): `#/settings`, `#/home`,
-  `#/months`, `#/think`, `#/result` (PR B adds `#/buffer` and `#/alerts`). There is
-  no `#/payoff` or `#/consolidate` (UI-30).
-- With no route, a user without settings starts on screen 1; otherwise Home.
+  `#/months`, `#/think`, `#/result` (PR B adds `#/buffer` and `#/alerts`; Session 21
+  adds `#/account`, the host app's home). There is no `#/payoff` or `#/consolidate`
+  (UI-30).
+- With no route, a user without settings starts on screen 1; otherwise Home. The
+  demo opens `#/account` directly; it is never the default landing (UI-60).
 
 ## 7. Screens and their states
 
@@ -684,6 +696,33 @@ Screens 6 (`#/payoff`) and 7 (`#/consolidate`) and their code were deleted in pa
 else imported them, so deleting was safe. Their parts now live in 7.2 (cards 4 and
 6), 7.2b (the plan card), 7.3 (the hint) and 7.4 (the buffer plan).
 
+### 7.7 บัญชีหลัก, the host app's home (`#/account`, `screens/Account.tsx`, Session 21)
+KidNee is pitched as a feature inside a bank app. This screen shows where it lives,
+and where the buffer's money lands after "ใช้กันชน".
+- **Its own shell** (`components/HostScreen.tsx`), not KidNee's: the `host-from` to
+  `host-to` gradient with white text; a top bar with the plain text "บัญชีหลัก"
+  centred and the Demo button on the right; a two-item bottom bar, "หน้าแรก" (this
+  screen, selected: bold, white, underlined, `aria-current`) and "KidNee" (`#/home`),
+  with no raised button; the footer. The same layer rules as 5.8: only `<main>`
+  scrolls, the body and the bar are each `isolate`, no z-index (UI-27).
+- **Account card:** flat `host-card` with a `host-line` edge, no artwork:
+  "บัญชีออมทรัพย์", "xxx-x-x1234-x", "ยอดเงินที่ใช้ได้", the balance from
+  `GET /bank/main-account` in display type, and "ข้อมูลจำลองสำหรับเดโม".
+- **Four shortcuts** (โอนเงิน, จ่ายบิล, เติมเงิน, สแกน), outline circles with our own
+  icons. Examples only: a press shows "ปุ่มตัวอย่าง ใช้ไม่ได้ในเดโม" and nothing else (UI-59).
+- **KidNee card, the focus:** white, the logo, "KidNee คิดหนี้", "ภาระผ่อนเดือนนี้
+  {total}" with this month's status chip (`monthStatus`: in budget, over budget, over
+  one third; icon and text), and "กันชน {balance}". It opens `#/home` (UI-58). Before
+  KidNee is set up it says "ยังไม่ได้ตั้งค่า KidNee แตะเพื่อเริ่มใช้".
+- **รายการล่าสุด:** the 5 newest movements in the API's order. Labels: `auto_save`
+  "กันเงินเข้ากันชน KidNee", `leftover_save` "เก็บงบที่ใช้ไม่หมดเข้ากันชน", `withdrawal`
+  "ย้ายเงินจากกันชน KidNee", plus "สำหรับ {month}" (kept on one line) when the API
+  names one. "+" or "−" (U+2212) from the API's `direction`, never computed; the
+  Thai date from `at`. Empty: "ยังไม่มีรายการ" (UI-57).
+- **The way back:** Home has a "‹ บัญชีหลัก" link above the greeting (the logo stays
+  in the header); both buffer success messages have "ดูในบัญชีหลัก ›" (UI-60).
+- States: loading (skeleton) and error (retry) inside the host shell (UI-63).
+
 ### 7.8 Demo panel (`components/DemoPanel.tsx`)
 - A dashed "Demo" button in the header opens a sheet over the phone frame, marked
   "สำหรับนำเสนอเท่านั้น ไม่ใช่ส่วนหนึ่งของแอป".
@@ -774,6 +813,8 @@ is mounted at `/api` (L73). With `--mode mock` the same calls are answered by
 | 2, 2b, 3, 4 | `GET /assistant/plan` | | `AssistantPlanOut`: `months`, `months_truncated`, `back_in_budget_month`, `pause_until`, `safe_new_monthly`, `safe_new_from`, `safe_new_months`, `buffer_plan {shortfall, remaining_gap, balance, covered, still_short}`, `consolidation {eligible, reason, estimate}`; `EstimateOut` adds `current_monthly_total` (the offer's "ตอนนี้") and `monthly_reduction` | 409 `SETTINGS_REQUIRED` |
 | 2 | `GET /assistant/summary` | | `AssistantSummaryOut` (`text`, `source` `ai` or `fallback`, `reason`); shown the same way for both sources. The mock answers it as the backend does without a key, in the plan's own words | 409 `SETTINGS_REQUIRED` |
 | Demo | `POST /demo/scene` **mock only** | `{ scene }` | 204 | |
+| account | `GET /bank/main-account` | | `MainAccountOut` (`balance`, `movements: Movement[]` newest first, at most 20: `id, at, kind, direction, amount, for_month`; `movements_truncated`) | |
+| account | `GET /debts/months?count=1`, `GET /buffer`, `GET /settings` | | this month's row, the buffer; no settings: the KidNee card invites to set up | |
 
 Error bodies: `{"detail": {"code", "message"}}` for coded errors, a plain string
 `detail` for older ones, and FastAPI's list for 422. `ApiError` exposes `status`,
@@ -882,7 +923,7 @@ Node 22.12 or later (Vite 8). From `frontend/`:
 npm ci              # exact versions from package-lock.json
 npm run dev         # http://127.0.0.1:5173 (loopback only, never 0.0.0.0), calls the API on 127.0.0.1:8000
 npm run dev -- --mode mock   # the same screens on the in-browser mock, with the scenes
-npm test            # UI-01 to UI-51 (compiled with tsc, run with node --test)
+npm test            # UI-01 to UI-63 (compiled with tsc, run with node --test)
 npm run typecheck   # tsc --noEmit, strict
 npm run build       # typecheck + production build to dist/
 npm audit
