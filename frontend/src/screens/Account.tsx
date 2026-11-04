@@ -91,9 +91,12 @@ export function Passbook({ balance }: { balance: string }) {
       <span aria-hidden="true" className={`w-4 shrink-0 ${HOST.spine}`} />
       <div className={`flex min-w-0 flex-1 flex-col gap-1 p-5 ${HOST.rules}`}>
         <span className="flex items-start justify-between gap-2">
-          <h2 className="flex items-center gap-1 text-body font-semibold">
-            {ACCOUNT.savings}
-            <Icon name="down" size={18} />
+          <h2 className="text-body font-semibold">
+            {/* The chevron looks like an account switcher, so it is an example too (UI-64). */}
+            <ExampleButton className="-my-2 -ml-1 inline-flex min-h-11 items-center gap-1 rounded-field px-1">
+              {ACCOUNT.savings}
+              <Icon name="down" size={18} />
+            </ExampleButton>
           </h2>
           <Icon name="passbook" size={26} />
         </span>

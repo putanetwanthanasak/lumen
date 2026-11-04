@@ -1,8 +1,9 @@
 /**
  * Session 22: บัญชีหลัก (#/account) reads as a bank app's home at first glance.
  * UI-64 (break test): every example control (the header's profile, bell and power, the
- *   tabs บัตร, สินเชื่อ and ลงทุน, "บัญชีของฉัน", seven shortcuts, three bar items) shows
- *   the note "ปุ่มตัวอย่าง ใช้ไม่ได้ในเดโม" and changes nothing else.
+ *   tabs บัตร, สินเชื่อ and ลงทุน, the card's "ออมทรัพย์ ⌄", "บัญชีของฉัน", seven
+ *   shortcuts, three bar items) shows the note "ปุ่มตัวอย่าง ใช้ไม่ได้ในเดโม" and changes
+ *   nothing else; every press is announced again.
  * UI-65 (break test): KidNee opens from its shortcut, its card and the bar, and only
  *   those three lead to #/home.
  * UI-66 (break test): "ดูรายการล่าสุด ›" scrolls to รายการล่าสุด and focuses it.
@@ -58,6 +59,7 @@ const EXAMPLES = [
   "บัตร",
   "สินเชื่อ",
   "ลงทุน",
+  "ออมทรัพย์", // the card's title with its chevron (review round 1 F1)
   "บัญชีของฉัน",
   "โอนเงิน",
   "จ่ายบิล",
@@ -73,7 +75,7 @@ const EXAMPLES = [
 
 // ---- UI-64: example controls only show the note --------------------------------------
 
-test("UI_64_the_screen_has_seventeen_example_buttons_and_one_real_one", () => {
+test("UI_64_the_screen_has_eighteen_example_buttons_and_one_real_one", () => {
   const html = screen();
   // Every button on the screen is an example, except "ดูรายการล่าสุด" (the Demo button
   // appears only once the API has answered, so not in a static render).
@@ -84,21 +86,30 @@ test("UI_64_the_screen_has_seventeen_example_buttons_and_one_real_one", () => {
   }
   // บัญชี is the selected tab, not a button.
   assert.match(html, /<span aria-current="page"[^>]*>บัญชี<\/span>/);
-  // The header's icon-only buttons each have a label.
-  assert.equal(EXAMPLES.length, 17);
+  assert.equal(EXAMPLES.length, 18);
 });
 
 test("UI_64_the_example_handler_shows_the_note_and_does_nothing_else", () => {
   const host = read("components", "HostScreen.tsx");
   const example = /export function ExampleButton[\s\S]*?\n}\n/.exec(host)?.[0] ?? "";
   assert.deepEqual([...example.matchAll(/onClick=\{([^}]*)\}/g)].map((m) => m[1]), ["() => show()"]);
-  assert.match(host, /<ShowNote\.Provider value=\{\(\) => setShown\(true\)\}>/);
+  assert.match(host, /<ShowNote\.Provider value=\{\(\) => setPresses\(\(n\) => n \+ 1\)\}>/);
   assert.ok(!/navigate|href|location|fetch|get[A-Z]|move/.test(example), example);
   // Every example is an ExampleButton: the shell's one <button> is ExampleButton's own,
   // and the screen's one <button> is "ดูรายการล่าสุด".
   assert.equal([...host.matchAll(/<button\b/g)].length, 1);
   const account = read("screens", "Account.tsx");
   assert.deepEqual([...account.matchAll(/<button\b[\s\S]*?onClick=\{([^}]*)\}/g)].map((m) => m[1]), ["showRecent"]);
+});
+
+test("UI_64_every_press_puts_a_new_note_in_the_status_region", () => {
+  // Review round 1 F2: with a flag, the second press changed nothing in the DOM, so a
+  // screen reader announced only the first. The note is keyed on the press count: each
+  // press mounts a new <p> inside the role="status" region.
+  const host = read("components", "HostScreen.tsx");
+  const region = /<div role="status"[^>]*>([\s\S]*?)<\/div>/.exec(host)?.[1] ?? "";
+  assert.match(region, /\{presses > 0 && \(\s*<p key=\{presses\}/);
+  assert.match(host, /useState\(note \? 1 : 0\)/);
 });
 
 test("UI_64_with_the_note_shown_everything_else_is_the_same", () => {

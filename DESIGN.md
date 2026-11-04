@@ -718,10 +718,11 @@ app's home at first glance, with generic patterns only.
   - The same layer rules as 5.8: only `<main>` scrolls; the body, the note strip and
     the bar are each `isolate`, the bar drawn last, no z-index (UI-27).
 - **Example controls** (UI-64): the profile, bell and power buttons, the three other
-  tabs, "บัญชีของฉัน", seven shortcuts and three bar items are each an `ExampleButton`.
-  A press shows "ปุ่มตัวอย่าง ใช้ไม่ได้ในเดโม" in one strip above the bar (with the info
-  icon, `role="status"`) and changes nothing else. The strip stays until the screen is
-  left.
+  tabs, the card's "ออมทรัพย์ ⌄", "บัญชีของฉัน", seven shortcuts and three bar items are
+  each an `ExampleButton`. A press shows "ปุ่มตัวอย่าง ใช้ไม่ได้ในเดโม" in one strip above
+  the bar (with the info icon, `role="status"`) and changes nothing else. The strip
+  stays until the screen is left; each press renders it anew, so a screen reader
+  announces every press.
 - **Account card, a passbook of our own** (UI-68): `host-card` with a `host-line` edge,
   a darker `host-spine` strip on the left and faint horizontal ruled lines (`host-rule`,
   1px every 28px, `.host-rules` in `index.css`). Our passbook icon top right. Text:

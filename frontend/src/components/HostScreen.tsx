@@ -33,11 +33,15 @@ export function ExampleButton({ label, className, children }: { label?: string; 
   );
 }
 
-/** `note` starts with the note shown (the tests render with it; the screen starts without). */
+/**
+ * `note` starts with the note shown (the tests render with it; the screen starts without).
+ * Each press counts, and the note is keyed on the count, so the status region gets new
+ * content and a screen reader announces every press, not only the first.
+ */
 export function HostScreen({ children, note = false }: { children: ReactNode; note?: boolean }) {
-  const [shown, setShown] = useState(note);
+  const [presses, setPresses] = useState(note ? 1 : 0);
   return (
-    <ShowNote.Provider value={() => setShown(true)}>
+    <ShowNote.Provider value={() => setPresses((n) => n + 1)}>
       <div className={`flex h-full flex-col ${HOST.page}`}>
         <HostHeader />
         <main
@@ -51,8 +55,8 @@ export function HostScreen({ children, note = false }: { children: ReactNode; no
           <Footer ink={HOST.muted} />
         </main>
         <div role="status" className="isolate shrink-0">
-          {shown && (
-            <p className={`flex items-center gap-2 px-4 py-2 text-body ${HOST.strip}`}>
+          {presses > 0 && (
+            <p key={presses} className={`flex items-center gap-2 px-4 py-2 text-body ${HOST.strip}`}>
               <Icon name="info" size={20} />
               {ACCOUNT.shortcutNote}
             </p>

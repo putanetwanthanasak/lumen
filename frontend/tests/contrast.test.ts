@@ -112,8 +112,10 @@ const GRAPHICS: [string, string][] = [
   ["card", "host-from"],
   ["card", "host-to"],
   ["white", "host-bar"],
-  // Session 22: the tabs' and the round profile button's edges, and the empty page
-  // dots, against the page; the filled dot and the selected tab (white) against it.
+  // Session 22: the passbook card's edge against its own fill, spine and rules. The
+  // tabs', the profile button's and the empty dots' edges against the page are the
+  // host-line on host-from and host-to rows above; the selected tab and the filled dot
+  // (white) are the card on host-from and host-to rows.
   ["host-line", "host-card"],
   ["host-line", "host-spine"],
   ["host-line", "host-rule"],
