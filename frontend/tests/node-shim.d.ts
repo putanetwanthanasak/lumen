@@ -35,4 +35,8 @@ declare module "node:path" {
   export function relative(from: string, to: string): string;
 }
 
-declare const process: { cwd(): string };
+declare module "node:child_process" {
+  export function execFileSync(file: string, args: string[], options: { env: Record<string, string | undefined>; encoding: "utf8" }): string;
+}
+
+declare const process: { cwd(): string; execPath: string; env: Record<string, string | undefined> };

@@ -11,6 +11,7 @@
  *   horizontal rules only, no image, no diagonal, no red.
  */
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
@@ -165,6 +166,19 @@ test("UI_67_the_time_is_bangkok_time_in_24_hours", () => {
   assert.equal(thaiTime(new Date("2026-11-04T16:59:00Z")), "23:59");
   assert.equal(thaiTime(new Date("2026-11-04T17:00:00Z")), "00:00");
   assert.equal(thaiTime(new Date("2026-11-04T00:00:00+07:00")), "00:00");
+});
+
+test("UI_67_the_time_is_bangkok_time_whatever_the_machines_time_zone", () => {
+  // B-UI-257 found that the test above passes without the Bangkok zone on a machine
+  // already at +07. Run the formatter in a process at another zone: still Bangkok.
+  const module = new URL("../src/thaiMonth.js", import.meta.url).href;
+  const script = `import { thaiTime } from ${JSON.stringify(module)}; console.log(thaiTime(new Date("2026-11-04T07:05:00Z")), new Date("2026-11-04T07:05:00Z").getHours());`;
+  for (const zone of ["UTC", "America/New_York"]) {
+    const out = execFileSync(process.execPath, ["--input-type=module", "-e", script], { env: { ...process.env, TZ: zone }, encoding: "utf8" });
+    const [time, localHour] = out.trim().split(" ");
+    assert.ok(localHour !== "14", `the child really runs at ${zone}`);
+    assert.equal(time, "14:05", zone);
+  }
 });
 
 test("UI_67_the_line_shows_when_the_data_loaded_never_a_fixed_time", async () => {
