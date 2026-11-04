@@ -318,6 +318,28 @@ Errors:
 - A bad month (`"2026-13"`, `"2026-1"`, `"2026-11-01"`, a number): `422 {"detail": [{"type": "value_error", "loc": ["for_month"]}]}`.
 - The same id with another amount or another `for_month` (also one added or dropped): `409 {"detail": "client_request_id reused with another amount or month"}`. A double tap with the same body is the 200 duplicate, so the money moves once.
 
+## บัญชีหลัก (Session 21)
+### `GET /bank/main-account` (new)
+Model: `bank/schemas.py` (`MainAccountOut`, `MovementOut`). Read only: it writes nothing and moves nothing. Example hand-written from the models, with values like those in the MA tests (ids differ per run; the balance is the provider's and is not the opening balance minus these rows):
+```json
+{"balance": "9700.00",
+ "movements": [
+  {"id": "5b0f8a52-6f0e-4c5d-9a57-1f3f0c2b9d11", "at": "2026-11-01T09:20:00+07:00", "kind": "withdrawal", "direction": "in", "amount": "1500.00", "for_month": "2026-11"},
+  {"id": "0c7a1e3b-2d8f-4f61-8b2e-7a9c4d5e6f70", "at": "2026-11-01T09:10:00+07:00", "kind": "leftover_save", "direction": "out", "amount": "300.00", "for_month": "2026-10"},
+  {"id": "9e4d2c1b-7a6f-4e3d-8c2b-1a0f9e8d7c6b", "at": "2026-11-01T09:00:00+07:00", "kind": "auto_save", "direction": "out", "amount": "40.00", "for_month": null}],
+ "movements_truncated": false}
+```
+- `balance` is the main account as the bank provider holds it. The mock bank keeps it in memory: a user it has not seen opens at `"10000.00"`, and it resets when the server restarts. There is no account number in the API; the screen shows its own masked placeholder.
+- `movements` are the caller's own, newest first (`at`, then `id`), at most 20. `movements_truncated` is true when older ones exist.
+- `kind` is the stored `savings_transactions.type`:
+  - `auto_save` (out): the saving when an installment was recorded;
+  - `leftover_save` (out): the payday leftover (L67); `for_month` is its payday month;
+  - `withdrawal` (in): `POST /buffer/move-to-main` (L66); `for_month` is the month it was for, or `null` for a free move.
+- `direction` is the sign to show; the screen never derives it. `amount` is always positive.
+- `at` is when the row was recorded, in Bangkok time (`+07:00`), so its date part is the Bangkok date.
+- Only movements the system recorded: no salary rows (nothing credits salary, `/demo/payday` included). A skipped saving writes no row, so it is not listed.
+- A `withdrawal` row is committed before the bank credit (`POST /buffer/move-to-main`); a retry under the same `client_request_id` completes the credit. With the mock bank the credit cannot fail.
+
 ## Home: "ควรรวมหนี้ไหม" and the monthly plan (L69, L70)
 ### `GET /assistant/plan`
 Model: `assistant/schemas.py` (`PlanOut`). It writes nothing; the UI never calls `POST /consolidation/requests` (FEATURE FREEZE).

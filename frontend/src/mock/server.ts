@@ -12,11 +12,13 @@ import type {
   DebtSummary,
   ErrorBody,
   InstallmentLine,
+  MainAccountOut,
   ManualEntryIn,
   MonthDetail,
   MonthRow,
   MonthsOut,
   MovedOut,
+  Movement,
   NotificationOut,
   NotificationsOut,
   PaydayOut,
@@ -67,6 +69,7 @@ type Store = {
   moves: Map<string, Moved>;
   paydays: Map<string, PaydayOut>;
   notifications: NotificationOut[];
+  movements: Movement[]; // newest first, as GET /bank/main-account lists them
   summary: "ok" | "slow" | "failing"; // the Demo panel's assistant states
   today: Date;
 };
@@ -81,6 +84,7 @@ function freshStore(today: Date): Store {
     moves: new Map(),
     paydays: new Map(),
     notifications: [],
+    movements: [],
     summary: "ok",
     today,
   };
@@ -88,6 +92,39 @@ function freshStore(today: Date): Store {
 
 function notify(alert: { kind: NotificationOut["kind"]; title: string; body: string }, installmentId: string | null): void {
   store.notifications.unshift({ ...alert, id: crypto.randomUUID(), installment_id: installmentId, created_at: new Date().toISOString() });
+}
+
+const MOVEMENTS_LIMIT = 20;
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * Record a movement the way the backend's savings_transactions row would read. `at`
+ * is the store's day in Bangkok time, a minute later per movement, so the order is
+ * the order things happened (the backend orders by created_at). `id` is the row's id:
+ * a move to main passes its transaction_id, as the backend lists the same row.
+ */
+function recordMovement(kind: Movement["kind"], amount: Money, forMonth: string | null, id: string = crypto.randomUUID()): void {
+  const seq = store.movements.length;
+  const minute = seq % 60;
+  const hour = 9 + (seq - minute) / 60;
+  const d = store.today;
+  const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  store.movements.unshift({
+    id,
+    at: `${day}T${pad(hour)}:${pad(minute)}:00+07:00`,
+    kind,
+    direction: kind === "withdrawal" ? "in" : "out",
+    amount,
+    for_month: forMonth,
+  });
+}
+
+function mainAccount(): MainAccountOut {
+  return {
+    balance: store.mainBalance,
+    movements: store.movements.slice(0, MOVEMENTS_LIMIT),
+    movements_truncated: store.movements.length > MOVEMENTS_LIMIT,
+  };
 }
 
 function notificationsOut(): NotificationsOut {
@@ -323,6 +360,7 @@ function previewOrRecord(body: unknown, record: boolean): MockResponse {
     });
     store.mainBalance = fromSatang(toSatang(store.mainBalance) - toSatang(saved));
     store.bufferBalance = fromSatang(toSatang(store.bufferBalance) + toSatang(saved));
+    if (toSatang(saved) > 0n) recordMovement("auto_save", saved, null);
     recorded = { fingerprint, installmentId: id, savedAmount: saved };
     store.recorded.set(key, recorded);
     notify(manualEntryAlert(entry.kind, entry.item_name, entry.item_price, entry.months, entry.monthly_amount, monthlyTotal()), id);
@@ -455,8 +493,11 @@ function moveToMain(body: unknown): MockResponse {
   }
   store.bufferBalance = fromSatang(toSatang(store.bufferBalance) - toSatang(b.amount));
   store.mainBalance = fromSatang(toSatang(store.mainBalance) + toSatang(b.amount));
+  const transactionId = crypto.randomUUID();
+  // Stored as Numeric(12,2) on the backend: "1500" reads back as "1500.00".
+  recordMovement("withdrawal", fromSatang(toSatang(b.amount)), forMonth, transactionId);
   const out: MovedOut = {
-    transaction_id: crypto.randomUUID(),
+    transaction_id: transactionId,
     status: "created",
     amount: b.amount,
     for_month: forMonth,
@@ -554,6 +595,7 @@ function payday(body: unknown): MockResponse {
       amount = leftover;
       store.mainBalance = fromSatang(toSatang(store.mainBalance) - leftover);
       store.bufferBalance = fromSatang(toSatang(store.bufferBalance) + leftover);
+      recordMovement("leftover_save", fromSatang(leftover), month);
     }
   }
   const out: PaydayOut = {
@@ -679,6 +721,8 @@ export function handle(
       return payday(body);
     case "GET /notifications":
       return ok(notificationsOut());
+    case "GET /bank/main-account":
+      return ok(mainAccount());
     case "GET /buffer/shortfalls":
       return shortfalls("/debts/months");
     case "GET /assistant/plan":
