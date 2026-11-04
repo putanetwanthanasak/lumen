@@ -74,6 +74,14 @@ const TEXT: [string, string][] = [
   ["host-muted", "host-to"],
   ["host-muted", "host-card"],
   ["host-muted", "host-bar"],
+  // Session 22: the passbook card's text sits on the card and on its ruled lines (the
+  // spine carries no text, but is measured too); the selected tab is host-bar ink on
+  // white; the "ใหม่" badge and the note strip are white on host-bar.
+  ["white", "host-rule"],
+  ["white", "host-spine"],
+  ["host-muted", "host-rule"],
+  ["host-muted", "host-spine"],
+  ["host-bar", "card"],
 ];
 
 const GRAPHICS: [string, string][] = [
@@ -104,6 +112,18 @@ const GRAPHICS: [string, string][] = [
   ["card", "host-from"],
   ["card", "host-to"],
   ["white", "host-bar"],
+  // Session 22: the tabs' and the round profile button's edges, and the empty page
+  // dots, against the page; the filled dot and the selected tab (white) against it.
+  ["host-line", "host-card"],
+  ["host-line", "host-spine"],
+  ["host-line", "host-rule"],
+];
+
+// Decoration, not meaning: the passbook's rules and spine are meant to be faint against
+// the card (they must never compete with the text), so they stay under 1.5:1 (UI-68).
+const FAINT: [string, string][] = [
+  ["host-rule", "host-card"],
+  ["host-spine", "host-card"],
 ];
 
 test("UI_35_every_accent_text_pair_is_at_least_4_5_to_1", () => {
@@ -114,6 +134,11 @@ test("UI_35_every_accent_text_pair_is_at_least_4_5_to_1", () => {
 test("UI_35_bars_meters_and_icons_are_at_least_3_to_1", () => {
   const low = GRAPHICS.filter(([fg, bg]) => ratio(fg, bg) < 3).map(([fg, bg]) => `${fg} on ${bg}: ${ratio(fg, bg).toFixed(2)}`);
   assert.deepEqual(low, []);
+});
+
+test("UI_35_the_passbook_decoration_stays_faint_behind_the_text", () => {
+  const loud = FAINT.filter(([fg, bg]) => ratio(fg, bg) >= 1.5).map(([fg, bg]) => `${fg} on ${bg}: ${ratio(fg, bg).toFixed(2)}`);
+  assert.deepEqual(loud, []);
 });
 
 // The colour token of a border class list: "border-2 border-bank-700" -> "bank-700".

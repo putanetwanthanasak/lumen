@@ -1,22 +1,22 @@
 /**
- * บัญชีหลัก (#/account, Session 21): the host bank app's home, with KidNee as its focus
- * card. The main account (GET /bank/main-account), this month's installments (the
- * first row of GET /debts/months?count=1) and the buffer (GET /buffer). Every amount
- * is an API string; the sign of a movement is the API's `direction` (UI-51, UI-57).
- * The four shortcuts do nothing but say so.
+ * บัญชีหลัก (#/account, Sessions 21 and 22): the host bank app's home, with KidNee as
+ * its focus card. The main account (GET /bank/main-account), this month's installments
+ * (the first row of GET /debts/months?count=1) and the buffer (GET /buffer). Every
+ * amount is an API string; the sign of a movement is the API's `direction` (UI-51,
+ * UI-57). The example shortcuts and the other example controls only show their note
+ * (UI-64); KidNee opens from its shortcut, its card and the bar (UI-65).
  */
-import { useState } from "react";
 import { getBuffer, getMainAccount, getMonths, getSettings } from "../api.ts";
 import type { BufferOut, MainAccountOut, MonthRow, Movement } from "../api-types.ts";
 import { HOST } from "../accent.ts";
 import { ACCOUNT, APP_NAME, APP_NAME_TH } from "../copy.ts";
-import { HostScreen } from "../components/HostScreen.tsx";
+import { ExampleButton, HostScreen } from "../components/HostScreen.tsx";
 import { Icon, type IconName } from "../components/Icon.tsx";
 import { LogoBean } from "../components/Logo.tsx";
 import { ErrorState, Loading, MarkedText, StatusChip } from "../components/ui.tsx";
 import { formatAmount, formatBaht } from "../money.ts";
 import { monthStatus, STATUS_CHIP } from "../monthStatus.ts";
-import { thaiDate, thaiMonth } from "../thaiMonth.ts";
+import { thaiDate, thaiMonth, thaiTime } from "../thaiMonth.ts";
 import { useLoad, type Load } from "../useLoad.ts";
 
 export type AccountData = {
@@ -24,16 +24,18 @@ export type AccountData = {
   buffer: BufferOut;
   /** This month's row; null before KidNee is set up (no income and budget yet). */
   month: MonthRow | null;
+  /** When the answers arrived: "ข้อมูล ณ เวลา HH:MM น." (UI-67). */
+  loadedAt: Date;
 };
 
-async function loadAccount(): Promise<AccountData> {
+export async function loadAccount(): Promise<AccountData> {
   const settings = await getSettings();
   const [account, buffer, months] = await Promise.all([
     getMainAccount(),
     getBuffer(),
     settings === null ? Promise.resolve(null) : getMonths(1),
   ]);
-  return { account, buffer, month: months?.months[0] ?? null };
+  return { account, buffer, month: months?.months[0] ?? null, loadedAt: new Date() };
 }
 
 export function AccountScreen() {
@@ -41,9 +43,9 @@ export function AccountScreen() {
   return <AccountContent load={load} onRetry={reload} />;
 }
 
-export function AccountContent({ load, onRetry }: { load: Load<AccountData>; onRetry: () => void }) {
+export function AccountContent({ load, onRetry, note = false }: { load: Load<AccountData>; onRetry: () => void; note?: boolean }) {
   return (
-    <HostScreen>
+    <HostScreen note={note}>
       {load.state === "loading" && <Loading lines={3} />}
       {load.state === "error" && <ErrorState onRetry={onRetry} />}
       {load.state === "ready" && <AccountBody {...load.data} />}
@@ -51,27 +53,79 @@ export function AccountContent({ load, onRetry }: { load: Load<AccountData>; onR
   );
 }
 
-export function AccountBody({ account, buffer, month, note = false }: AccountData & { note?: boolean }) {
+export function AccountBody({ account, buffer, month, loadedAt }: AccountData) {
   return (
     <>
-      <section className={`flex flex-col gap-1 rounded-card p-5 ${HOST.card}`}>
-        <h2 className="text-body font-semibold">{ACCOUNT.savings}</h2>
-        <p className={`text-caption ${HOST.muted}`}>{ACCOUNT.maskedNumber}</p>
-        <p className={`mt-3 text-caption ${HOST.muted}`}>{ACCOUNT.available}</p>
-        <p className="flex items-baseline gap-2">
-          <span className="text-display font-bold">{formatAmount(account.balance)}</span>
-          <span className="text-lead">{ACCOUNT.baht}</span>
-        </p>
-        <p className={`text-caption ${HOST.muted}`}>{ACCOUNT.mockData}</p>
+      <div className="flex flex-col gap-2">
+        <Passbook balance={account.balance} />
+        <div className="flex items-center justify-between gap-2">
+          <ExampleButton className="-ml-1 inline-flex min-h-11 items-center gap-1 rounded-field px-1 text-body font-semibold">
+            {ACCOUNT.myAccounts}
+            <Icon name="next" size={18} />
+          </ExampleButton>
+          <p className={`text-caption ${HOST.muted}`}>{ACCOUNT.loadedAt(thaiTime(loadedAt))}</p>
+        </div>
+        <span aria-hidden="true" className="flex justify-center gap-2">
+          <span className={`h-2 w-2 rounded-pill ${HOST.dotOn}`} />
+          <span className={`h-2 w-2 rounded-pill ${HOST.dotOff}`} />
+          <span className={`h-2 w-2 rounded-pill ${HOST.dotOff}`} />
+        </span>
+      </div>
+
+      <Shortcuts />
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-lead font-bold">{ACCOUNT.services}</h2>
+        <KidNeeCard buffer={buffer} month={month} />
       </section>
-
-      <Shortcuts note={note} />
-
-      <KidNeeCard buffer={buffer} month={month} />
 
       <Movements movements={account.movements} />
     </>
   );
+}
+
+/** The account card, an open savings passbook of our own: a darker spine, faint horizontal rules (UI-68). */
+export function Passbook({ balance }: { balance: string }) {
+  return (
+    <section aria-label={ACCOUNT.savings} className={`flex overflow-hidden rounded-card ${HOST.card}`}>
+      <span aria-hidden="true" className={`w-4 shrink-0 ${HOST.spine}`} />
+      <div className={`flex min-w-0 flex-1 flex-col gap-1 p-5 ${HOST.rules}`}>
+        <span className="flex items-start justify-between gap-2">
+          <h2 className="flex items-center gap-1 text-body font-semibold">
+            {ACCOUNT.savings}
+            <Icon name="down" size={18} />
+          </h2>
+          <Icon name="passbook" size={26} />
+        </span>
+        <p className={`text-caption ${HOST.muted}`}>{ACCOUNT.maskedNumber}</p>
+        <p className={`mt-3 text-caption ${HOST.muted}`}>{ACCOUNT.available}</p>
+        <p className="flex items-baseline gap-2">
+          <span className="text-display font-bold">{formatAmount(balance)}</span>
+          <span className="text-lead">{ACCOUNT.baht}</span>
+        </p>
+        <p className={`text-caption ${HOST.muted}`}>{ACCOUNT.mockData}</p>
+        <button
+          type="button"
+          onClick={showRecent}
+          className={`mt-2 inline-flex min-h-11 cursor-pointer items-center gap-1 self-start text-body font-semibold underline underline-offset-4 ${HOST.focus}`}
+        >
+          {ACCOUNT.seeRecent}
+          <Icon name="next" size={18} />
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** The id of รายการล่าสุด, which "ดูรายการล่าสุด ›" scrolls to and focuses (UI-66). */
+export const RECENT_ID = "recent";
+
+export function showRecent() {
+  const recent = document.getElementById(RECENT_ID);
+  if (recent === null) return;
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  recent.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+  recent.focus({ preventScroll: true });
 }
 
 const SHORTCUTS: { key: keyof typeof ACCOUNT.shortcuts; icon: IconName }[] = [
@@ -79,34 +133,41 @@ const SHORTCUTS: { key: keyof typeof ACCOUNT.shortcuts; icon: IconName }[] = [
   { key: "bill", icon: "bill" },
   { key: "topup", icon: "topup" },
   { key: "scan", icon: "scan" },
+  { key: "cashout", icon: "cashout" },
+  { key: "statement", icon: "statement" },
+  { key: "goal", icon: "goal" },
 ];
 
-/** Examples only: pressing one shows the note and nothing else (UI-59). */
-export function Shortcuts({ note = false }: { note?: boolean }) {
-  const [shown, setShown] = useState(note);
+const SHORTCUT = "group flex w-full flex-col items-center gap-1 rounded-field py-1 text-center text-caption leading-tight";
+const SHORTCUT_ICON = "relative inline-flex h-12 w-12 items-center justify-center rounded-pill";
+
+/** Eight in two rows: seven examples (UI-64), and KidNee, new, which opens its Home (UI-65). */
+export function Shortcuts() {
   return (
-    <section aria-label={ACCOUNT.shortcutsLabel} className="flex flex-col gap-2">
-      <ul className="grid grid-cols-4 gap-2">
+    <section aria-label={ACCOUNT.shortcutsLabel}>
+      <ul className="grid grid-cols-4 gap-x-1 gap-y-3">
         {SHORTCUTS.map((s) => (
           <li key={s.key}>
-            <button
-              type="button"
-              onClick={() => setShown(true)}
-              className={`group flex w-full cursor-pointer flex-col items-center gap-1 rounded-field py-1 text-caption ${HOST.focus}`}
-            >
-              <span className={`inline-flex h-12 w-12 items-center justify-center rounded-pill ${HOST.shortcut}`}>
+            <ExampleButton className={SHORTCUT}>
+              <span className={`${SHORTCUT_ICON} ${HOST.shortcut}`}>
                 <Icon name={s.icon} size={22} />
               </span>
-              <span className="whitespace-nowrap">{ACCOUNT.shortcuts[s.key]}</span>
-            </button>
+              <span>{ACCOUNT.shortcuts[s.key]}</span>
+            </ExampleButton>
           </li>
         ))}
+        <li>
+          <a href="#/home" className={`${SHORTCUT} ${HOST.focus}`}>
+            <span className={`${SHORTCUT_ICON} bg-card`}>
+              <span aria-hidden="true" className="inline-flex">
+                <LogoBean size={32} />
+              </span>
+              <span className={`absolute -top-1 -right-3 rounded-pill px-1.5 text-caption leading-tight ${HOST.badge}`}>{ACCOUNT.newBadge}</span>
+            </span>
+            <span>{APP_NAME}</span>
+          </a>
+        </li>
       </ul>
-      {shown && (
-        <p role="status" className={`text-center text-body ${HOST.muted}`}>
-          {ACCOUNT.shortcutNote}
-        </p>
-      )}
     </section>
   );
 }
@@ -146,7 +207,7 @@ export const RECENT_COUNT = 5;
 export function Movements({ movements }: { movements: Movement[] }) {
   const shown = movements.slice(0, RECENT_COUNT);
   return (
-    <section className="flex flex-col gap-2">
+    <section id={RECENT_ID} tabIndex={-1} className={`flex scroll-mt-2 flex-col gap-2 rounded-field ${HOST.focus}`}>
       <h2 className="text-lead font-bold">{ACCOUNT.recent}</h2>
       <div className="rounded-card bg-card px-4 text-ink shadow-card">
         {shown.length === 0 ? (

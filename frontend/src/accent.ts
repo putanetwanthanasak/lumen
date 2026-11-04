@@ -79,14 +79,26 @@ export const BUFFER_BAR = "bg-teal-700";
 export const BUFFER_CHIP = `${ACCENT.buffer.tint} ${ACCENT.buffer.ink}`;
 
 /**
- * The host shell of #/account (Session 21): a generic bank app's home around KidNee.
- * Flat colours only, no artwork. White text on every host colour (UI-35).
+ * The host shell of #/account (Sessions 21 and 22): a generic bank app's home around
+ * KidNee. One deep green-teal; the account card is a passbook of our own: a darker
+ * spine and faint horizontal rules, never diagonal stripes or a real card's artwork
+ * (UI-68). White text on every host colour (UI-35).
  */
 export const HOST = {
   page: "bg-linear-to-b from-host-from to-host-to text-white",
   card: "border border-host-line bg-host-card text-white",
+  spine: "bg-host-spine",
+  rules: "host-rules",
   muted: "text-host-muted",
   shortcut: "border-2 border-host-line text-white group-hover:bg-host-card",
+  round: "border border-host-line text-white hover:bg-host-card",
+  icon: "text-white hover:bg-host-card",
+  tabOn: "bg-card font-bold text-host-bar",
+  tabOff: "border border-host-line font-semibold text-white hover:bg-host-card",
+  badge: "border border-host-line bg-host-bar font-bold text-white",
+  dotOn: "bg-card",
+  dotOff: "border border-host-line",
+  strip: "border-t border-host-line bg-host-bar text-white",
   bar: "border-t border-host-line bg-host-bar",
   navOn: "border-b-2 border-white font-bold text-white",
   navOff: "border-b-2 border-transparent font-semibold text-host-muted",

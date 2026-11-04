@@ -24,7 +24,14 @@ export type IconName =
   | "transfer"
   | "bill"
   | "topup"
-  | "scan";
+  | "scan"
+  | "person"
+  | "power"
+  | "passbook"
+  | "cashout"
+  | "statement"
+  | "goal"
+  | "history";
 
 const PATHS: Record<IconName, string> = {
   check: "M20 6 9 17l-5-5",
@@ -52,6 +59,16 @@ const PATHS: Record<IconName, string> = {
   bill: "M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6m-6 4h3",
   topup: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 5v8m-4-4h8",
   scan: "M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5m0-3h16",
+  // Session 22: the host shell's header, account card, shortcuts and bar.
+  person: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 9a7 7 0 0 1 14 0",
+  power: "M12 3v8M7.1 6.2a7.5 7.5 0 1 0 9.8 0",
+  // A closed passbook: its cover, its spine and two lines on the cover.
+  passbook: "M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6V3Zm3 0v18m3-13h4m-4 3h4",
+  // A phone with a banknote under it.
+  cashout: "M8 3h8v12H8V3Zm3 9h2M4 18h16v3H4v-3Z",
+  statement: "M6 3h12v18H6V3Zm3 5h6m-6 4h6m-6 4h6",
+  goal: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-4a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-4a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z",
+  history: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-13v4l3 2",
 };
 
 type Props = { name: IconName; size?: number; className?: string; label?: string };
