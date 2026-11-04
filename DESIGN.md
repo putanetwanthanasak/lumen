@@ -100,10 +100,12 @@ warning sign (UI-44).
    official bank service. The only vendor name is **ShopDemo**. A green family
    common in Thai personal-finance apps is used; no logo or mark is copied.
    The host app's home (`#/account`, 7.7) is generic on purpose: the plain text
-   "บัญชีหลัก", flat colours, no logo, no bank, product or company name, a masked
+   "บัญชีหลัก", one deep green-teal, no logo, no bank, product or company name, a masked
    placeholder number ("xxx-x-x1234-x") and "ข้อมูลจำลองสำหรับเดโม". It was designed
    without looking at any real banking app (organisers' written answer, 3 Nov:
-   bank-app-like colours are allowed, names and logos are not).
+   bank-app-like colours are allowed, names and logos are not). The account card's
+   passbook (Session 22) is our own: a spine and horizontal rules, never diagonal
+   stripes, chevrons, arrows or a green-and-red shape (UI-68).
 2. **Footer on every screen:** "Concept prototype สำหรับการแข่งขัน".
 3. **Thai text has no em dash**, anywhere (rule 10). Use a space, a colon or a
    new sentence.
@@ -157,7 +159,7 @@ Components use tokens only, never raw hex.
 | `bank-50` / `200` / `700` / `800` | `#eef3fd` / `#b3c9f2` / `#2a4fa0` / `#1f3d7d` | the bank's consolidation offer |
 | `ai-from` / `ai-to` / `ai-line` / `ai-ink` / `ai-edge` | `#f3effe` / `#e8f4fd` / `#d6ccf6` / `#4b3699` / `#8a76d6` | the assistant only (soft gradient; `ai-edge` is the panel's edge) |
 | `quiet-bg` / `quiet-line` / `quiet-ink` / `quiet-edge` | `#eef2f6` / `#d3dce6` / `#3f5166` / `#7a8a9d` | a note with nothing to act on (`quiet-edge` is the banner's edge) |
-| `host-from` / `host-to` / `host-card` / `host-line` / `host-bar` / `host-muted` | `#0b5a43` / `#0b4f5e` / `#1a6b5a` / `#7cc2b2` / `#083f37` / `#d4ece5` | the host app's home only (`#/account`, 7.7): the deep green to deep teal gradient, the account card, its edges, the bottom bar, secondary text. Used only through `HOST` in `accent.ts` |
+| `host-from` / `host-to` / `host-card` / `host-rule` / `host-spine` / `host-line` / `host-bar` / `host-muted` | `#0c5d52` / `#094a43` / `#1a6b5f` / `#155f54` / `#115a4f` / `#7cc2b2` / `#073c36` / `#d4ece5` | the host app's home only (`#/account`, 7.7): one deep green-teal with a subtle vertical gradient, the passbook card, its ruled lines and its spine (both faint, under 1.5:1 against the card), edges, the bottom bar (also the selected tab's ink, the "ใหม่" badge and the note strip), secondary text. Used only through `HOST` in `accent.ts` |
 
 Contrast (WCAG 2.2, measured): white on `leaf-700` 6.31; `ink` on card 16.44;
 `ink-muted` on card 7.22 and on surface 6.73; `ok-ink`/`ok-bg` 7.81;
@@ -182,11 +184,15 @@ and the words (chip and line) tell them apart, never the colour alone. The offer
 white on `bank-700`, 7.71; its tag, `bank-800` on white, 10.39.
 Card edges against the page (surface / card), at least 3:1 (1.4.11): `bank-700`
 7.19 / 7.71, `ai-edge` 3.47 / 3.72, `quiet-edge` 3.29 / 3.53, `teal-edge` 3.73 /
-3.99. The host shell (`#/account`): white on `host-from` 8.21, `host-to` 9.15,
-`host-card` 6.37, `host-bar` 11.82; `host-muted` on them 6.62 / 7.38 / 5.14 / 9.53;
-`host-line` (the account card's and the shortcuts' edges, the bar's top line) 3.99 on
-`host-from`, 4.45 on `host-to`, 5.75 on `host-bar`; the white cards against the
-gradient 8.21 / 9.15. The light lines they replace blend in: `bank-200`
+3.99. The host shell (`#/account`): white on `host-from` 7.77, `host-to` 10.13,
+`host-card` 6.34, `host-rule` 7.51, `host-spine` 8.08, `host-bar` 12.29; `host-muted`
+on them 6.26 / 8.17 / 5.11 / 6.05 / 6.51 / 9.91 (the passbook's text is measured
+against every colour behind it); `host-bar` on white (the selected tab) 12.29;
+`host-line` (edges: the card, the shortcuts, the tabs, the profile, the empty page dots,
+the bar's top line) 3.78 on `host-from`, 4.93 on `host-to`, 3.08 on `host-card`, 3.65
+on `host-rule`, 3.93 on `host-spine`, 5.98 on `host-bar`; the white cards against the
+page 7.77 / 10.13. Kept faint on purpose: `host-rule` 1.18 and `host-spine` 1.27
+against `host-card`. The light lines they replace blend in: `bank-200`
 1.56, `ai-line` 1.42, `quiet-line` 1.29, `warn-line` 1.52, `teal-100` 1.19 on surface. Test UI-35 recomputes these pairs
 from `index.css`, the edges from `EDGE` in `accent.ts`.
 
@@ -696,20 +702,40 @@ Screens 6 (`#/payoff`) and 7 (`#/consolidate`) and their code were deleted in pa
 else imported them, so deleting was safe. Their parts now live in 7.2 (cards 4 and
 6), 7.2b (the plan card), 7.3 (the hint) and 7.4 (the buffer plan).
 
-### 7.7 บัญชีหลัก, the host app's home (`#/account`, `screens/Account.tsx`, Session 21)
+### 7.7 บัญชีหลัก, the host app's home (`#/account`, `screens/Account.tsx`, Sessions 21 and 22)
 KidNee is pitched as a feature inside a bank app. This screen shows where it lives,
-and where the buffer's money lands after "ใช้กันชน".
-- **Its own shell** (`components/HostScreen.tsx`), not KidNee's: the `host-from` to
-  `host-to` gradient with white text; a top bar with the plain text "บัญชีหลัก"
-  centred and the Demo button on the right; a two-item bottom bar, "หน้าแรก" (this
-  screen, selected: bold, white, underlined, `aria-current`) and "KidNee" (`#/home`),
-  with no raised button; the footer. The same layer rules as 5.8: only `<main>`
-  scrolls, the body and the bar are each `isolate`, no z-index (UI-27).
-- **Account card:** flat `host-card` with a `host-line` edge, no artwork:
-  "บัญชีออมทรัพย์", "xxx-x-x1234-x", "ยอดเงินที่ใช้ได้", the balance from
-  `GET /bank/main-account` in display type, and "ข้อมูลจำลองสำหรับเดโม".
-- **Four shortcuts** (โอนเงิน, จ่ายบิล, เติมเงิน, สแกน), outline circles with our own
-  icons. Examples only: a press shows "ปุ่มตัวอย่าง ใช้ไม่ได้ในเดโม" and nothing else (UI-59).
+and where the buffer's money lands after "ใช้กันชน". Session 22 made it read as a bank
+app's home at first glance, with generic patterns only.
+- **Its own shell** (`components/HostScreen.tsx`), not KidNee's: one deep green-teal
+  (`host-from` to `host-to`, a subtle vertical gradient) with white text.
+  - Header: a round profile button on the left; "บัญชีหลัก" centred between the
+    profile and the right-hand icons (true screen centre does not fit beside the bell,
+    power and Demo buttons at 370px); a bell and a power icon, then the Demo button.
+  - Pill tabs at the top of the body: "บัญชี" (this screen, white, `aria-current`),
+    "บัตร", "สินเชื่อ", "ลงทุน".
+  - A flat five-item bottom bar, no raised button: "หน้าแรก" (selected: bold, white,
+    underlined, `aria-current`), "ธุรกรรม", "สแกน", "KidNee" (`#/home`), "โปรไฟล์".
+  - The same layer rules as 5.8: only `<main>` scrolls; the body, the note strip and
+    the bar are each `isolate`, the bar drawn last, no z-index (UI-27).
+- **Example controls** (UI-64): the profile, bell and power buttons, the three other
+  tabs, "บัญชีของฉัน", seven shortcuts and three bar items are each an `ExampleButton`.
+  A press shows "ปุ่มตัวอย่าง ใช้ไม่ได้ในเดโม" in one strip above the bar (with the info
+  icon, `role="status"`) and changes nothing else. The strip stays until the screen is
+  left.
+- **Account card, a passbook of our own** (UI-68): `host-card` with a `host-line` edge,
+  a darker `host-spine` strip on the left and faint horizontal ruled lines (`host-rule`,
+  1px every 28px, `.host-rules` in `index.css`). Our passbook icon top right. Text:
+  "ออมทรัพย์" with a drawn chevron, "xxx-x-x1234-x", "ยอดเงินที่ใช้ได้", the balance from
+  `GET /bank/main-account` in display type, "ข้อมูลจำลองสำหรับเดโม", and
+  "ดูรายการล่าสุด ›", which scrolls to รายการล่าสุด and focuses it (smooth unless
+  reduced motion; UI-66).
+- **Under the card:** "บัญชีของฉัน ›" (an example), "ข้อมูล ณ เวลา HH:MM น." with the
+  Bangkok time the data loaded (UI-67), and three decorative page dots, the first
+  filled.
+- **Eight shortcuts** in two rows of four, outline circles with our own icons:
+  โอนเงิน, จ่ายบิล, เติมเงิน, สแกนจ่าย, ถอนไม่ใช้บัตร, รายการเดินบัญชี, ตั้งเป้าออม (examples,
+  UI-59, UI-64), and KidNee with a "ใหม่" badge, which opens `#/home` (UI-65).
+- **บริการแนะนำ:** a section title above the KidNee card.
 - **KidNee card, the focus:** white, the logo, "KidNee คิดหนี้", "ภาระผ่อนเดือนนี้
   {total}" with this month's status chip (`monthStatus`: in budget, over budget, over
   one third; icon and text), and "กันชน {balance}". It opens `#/home` (UI-58). Before
@@ -923,7 +949,7 @@ Node 22.12 or later (Vite 8). From `frontend/`:
 npm ci              # exact versions from package-lock.json
 npm run dev         # http://127.0.0.1:5173 (loopback only, never 0.0.0.0), calls the API on 127.0.0.1:8000
 npm run dev -- --mode mock   # the same screens on the in-browser mock, with the scenes
-npm test            # UI-01 to UI-63 (compiled with tsc, run with node --test)
+npm test            # UI-01 to UI-68 (compiled with tsc, run with node --test)
 npm run typecheck   # tsc --noEmit, strict
 npm run build       # typecheck + production build to dist/
 npm audit
