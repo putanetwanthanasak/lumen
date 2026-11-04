@@ -235,6 +235,16 @@ export function Alert({ tone, title, children }: { tone: Tone; title?: string; c
   );
 }
 
+/** A month's status chip (Months, and the host app's KidNee card): icon and text, never colour only. */
+export function StatusChip({ chip }: { chip: { icon: IconName; label: string; className: string } }) {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-pill px-2.5 py-0.5 text-caption font-semibold ${chip.className}`}>
+      <Icon name={chip.icon} size={16} />
+      {chip.label}
+    </span>
+  );
+}
+
 /** A coloured line: its icon and its text in the accent's ink, never colour only. */
 export function MarkedText({ item, className = "" }: { item: Marked; className?: string }) {
   return (

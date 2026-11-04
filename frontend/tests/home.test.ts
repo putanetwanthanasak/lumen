@@ -229,7 +229,8 @@ test("UI_34_every_accent_has_its_own_icon_and_thai_text", () => {
 
 // The accent families added for this design: anywhere else they could colour
 // something without the icon and text that accent.ts pairs them with.
-const ACCENT_CLASS = /\b(?:bg|text|border|from|via|to|ring|outline|fill|stroke|divide)-(?:teal|bank|ai|quiet)-/;
+// host-: the host shell of #/account (Session 21), whose classes live in accent.ts HOST.
+const ACCENT_CLASS = /\b(?:bg|text|border|from|via|to|ring|outline|fill|stroke|divide)-(?:teal|bank|ai|quiet|host)-/;
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

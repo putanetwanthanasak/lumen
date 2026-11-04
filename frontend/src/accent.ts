@@ -1,7 +1,7 @@
 /**
  * One accent colour per feature (DESIGN.md section 4), never colour only: each
  * accent comes with its icon and its text, and the screens take the classes from
- * here only (UI-34 scans for teal-, bank-, ai- and quiet- classes anywhere else).
+ * here only (UI-34 scans for teal-, bank-, ai-, quiet- and host- classes anywhere else).
  * Contrast of every pair is checked against index.css by UI-35.
  */
 import type { IconName } from "./components/Icon.tsx";
@@ -77,3 +77,18 @@ export const BUFFER_BAR = "bg-teal-700";
 
 /** The months screen's chip for a month the buffer covered: its own tint, ink and shield. */
 export const BUFFER_CHIP = `${ACCENT.buffer.tint} ${ACCENT.buffer.ink}`;
+
+/**
+ * The host shell of #/account (Session 21): a generic bank app's home around KidNee.
+ * Flat colours only, no artwork. White text on every host colour (UI-35).
+ */
+export const HOST = {
+  page: "bg-linear-to-b from-host-from to-host-to text-white",
+  card: "border border-host-line bg-host-card text-white",
+  muted: "text-host-muted",
+  shortcut: "border-2 border-host-line text-white group-hover:bg-host-card",
+  bar: "border-t border-host-line bg-host-bar",
+  navOn: "border-b-2 border-white font-bold text-white",
+  navOff: "border-b-2 border-transparent font-semibold text-host-muted",
+  focus: "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
+} as const;

@@ -58,6 +58,19 @@ class MockBankAccountProvider:
             raise ValueError("idempotency key reused for a different transfer")
         return amount
 
+    def mark_credited(self, user_id: str, amount: Decimal, *, idempotency_key: str) -> None:
+        """Record a move to main as already credited, moving nothing: for a bank opened
+        from rows the ledger already holds (the KidNee demo's serve, Session 21), so a
+        retry under the same key is not credited twice. A key already used for another
+        transfer raises, as a transfer would."""
+        amount = _require_amount(amount, positive=True)
+        applied = ("from_savings", user_id, amount)
+        with self._lock:
+            earlier = self._applied.get(idempotency_key)
+            if earlier is not None and earlier != applied:
+                raise ValueError("idempotency key reused for a different transfer")
+            self._applied[idempotency_key] = applied
+
     def _apply(self, direction: str, user_id: str, amount: Decimal, key: str) -> None:
         """Change the main-account balance once per key (S1). Savings itself lives in
         Lumen's ledger, so only the main account is tracked here."""

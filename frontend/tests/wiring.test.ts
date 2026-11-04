@@ -327,7 +327,10 @@ function screenFiles(dir: string): string[] {
 }
 
 test("UI_51_screen_code_compares_amounts_and_never_adds_them_up", () => {
-  const hits = screenFiles("src").flatMap((file) =>
+  const files = screenFiles("src");
+  // The host app's home (Session 21) is screen code too.
+  for (const file of [join("src", "screens", "Account.tsx"), join("src", "components", "HostScreen.tsx")]) assert.ok(files.includes(file), file);
+  const hits = files.flatMap((file) =>
     readFileSync(file, "utf8")
       .split("\n")
       .flatMap((line, i) => (ARITHMETIC.test(line) || /mock\/satang/.test(line) ? [`${file}:${i + 1}: ${line.trim()}`] : [])),

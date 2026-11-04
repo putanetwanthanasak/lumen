@@ -77,6 +77,16 @@
   --color-quiet-ink: #3f5166;
   --color-quiet-edge: #7a8a9d; /* the banner's edge against the page, at least 3:1 */
 
+  /* Host shell (#/account only, Session 21): a generic bank app's home around KidNee,
+     no real bank's colours. Used only through src/accent.ts (HOST, UI-34). White text is
+     at least 4.5:1 on from, to, card and bar; host-line at least 3:1 against them (UI-35). */
+  --color-host-from: #0b5a43; /* deep green, the gradient's top */
+  --color-host-to: #0b4f5e; /* deep teal, the gradient's bottom */
+  --color-host-card: #1a6b5a; /* the account card and a pressed shortcut, a little lighter */
+  --color-host-line: #7cc2b2; /* the account card's and the shortcuts' edges */
+  --color-host-bar: #083f37; /* the bottom bar */
+  --color-host-muted: #d4ece5; /* secondary text on every host colour */
+
   /* Type scale. Body is 16px and every sentence uses it. Caption (14px) is only for
      short labels: the footer, nav labels, chart legend, "Demo" tags, list meta. Axis
      (11px) is the month labels under the result's bars only, so 12 fit a 360px phone;

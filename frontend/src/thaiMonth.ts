@@ -55,3 +55,16 @@ export function addMonths(value: string, count: number): string {
 export function monthOf(date: Date): string {
   return format({ year: date.getFullYear(), month: date.getMonth() + 1 });
 }
+
+const DAY = /^([0-9]{4})-(0[1-9]|1[0-2])-([0-3][0-9])T/;
+
+/**
+ * "2026-11-03T09:00:00+07:00" -> "3 พ.ย. 2569". The API sends Bangkok time, so the
+ * date part is the Bangkok date: read as text, with no time zone arithmetic.
+ */
+export function thaiDate(at: string): string {
+  const match = DAY.exec(at);
+  if (match === null) throw new Error(`not a datetime string: ${JSON.stringify(at)}`);
+  const day = Number(match[3]); // ui-06-allow: a date, not money
+  return `${day} ${thaiMonth(`${match[1]}-${match[2]}`)}`;
+}

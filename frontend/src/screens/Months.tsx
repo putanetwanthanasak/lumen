@@ -18,8 +18,8 @@ import { ASSIST, BUFFER_STATE, HOME, MONTHS_VIEW } from "../copy.ts";
 import { BarParts } from "../components/BarParts.tsx";
 import { Icon, type IconName } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
-import { Button, Card, ErrorState, Loading, MarkedText, SettingsMissing } from "../components/ui.tsx";
-import { monthStatus, type MonthStatus } from "../monthStatus.ts";
+import { Button, Card, ErrorState, Loading, MarkedText, SettingsMissing, StatusChip } from "../components/ui.tsx";
+import { monthStatus, STATUS_CHIP } from "../monthStatus.ts";
 import { barPermille, formatBaht, largest, type Money } from "../money.ts";
 import { navigate } from "../router.ts";
 import { thaiMonth } from "../thaiMonth.ts";
@@ -81,12 +81,6 @@ function PlanCard({ plan }: { plan: AssistantPlanOut }) {
   );
 }
 
-const TONE: Record<MonthStatus["tone"], { chip: string }> = {
-  ok: { chip: "bg-ok-bg text-ok-ink" },
-  over: { chip: "bg-warn-bg text-warn-ink" },
-  risk: { chip: "bg-risk-bg text-risk-ink" },
-};
-
 export function MonthList({ months, budget, buffer }: { months: MonthDetail[]; budget: Money; buffer: ReadonlyMap<string, ShortfallView> }) {
   const [open, setOpen] = useState<string | null>(null);
   if (months.length === 0) {
@@ -142,7 +136,7 @@ export function monthChip(month: MonthDetail, buffer: ShortfallView | null): Chi
   if (!month.over_one_third && buffer?.state === "prepared") {
     return { icon: ACCENT.buffer.icon, label: MONTHS_VIEW.bufferReady, className: BUFFER_CHIP };
   }
-  return { icon: status.icon, label: status.label, className: TONE[status.tone].chip };
+  return { icon: status.icon, label: status.label, className: STATUS_CHIP[status.tone] };
 }
 
 function MonthCard({ month, budget, scale, budgetMark, buffer, expanded, onToggle }: MonthCardProps) {
@@ -167,10 +161,7 @@ function MonthCard({ month, budget, scale, budgetMark, buffer, expanded, onToggl
       >
         <span className="flex items-center justify-between gap-2">
           <span className="text-lead font-bold text-ink">{thaiMonth(month.month)}</span>
-          <span className={`inline-flex items-center gap-1 rounded-pill px-2.5 py-0.5 text-caption font-semibold ${chip.className}`}>
-            <Icon name={chip.icon} size={16} />
-            {chip.label}
-          </span>
+          <StatusChip chip={chip} />
         </span>
         <span className="text-body text-ink">{MONTHS_VIEW.ofBudget(formatBaht(month.total), formatBaht(budget))}</span>
         {/* Over one third of income: a red ring, whatever the buffer covered (the chip says why). */}

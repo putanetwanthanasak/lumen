@@ -57,6 +57,14 @@ export function HomeScreen() {
   const [load, reload] = useLoad(loadHome);
   return (
     <Screen route="home">
+      {/* Back to the host app's home; KidNee's logo stays in the header. */}
+      <a
+        href="#/account"
+        className="-mt-1 -ml-1 inline-flex min-h-11 items-center gap-1 self-start rounded-field px-1 text-body font-semibold text-leaf-800 hover:underline"
+      >
+        <Icon name="back" size={20} />
+        {HOME.toAccount}
+      </a>
       {load.state === "loading" && <Loading lines={4} />}
       {load.state === "error" && <ErrorState onRetry={reload} />}
       {load.state === "ready" &&

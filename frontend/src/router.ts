@@ -1,7 +1,8 @@
 /** Hash routing without a package: "#/home", "#/think", ... (DESIGN.md section 6). */
 import { useSyncExternalStore } from "react";
 
-export const ROUTES = ["settings", "home", "think", "result", "months", "buffer", "alerts"] as const;
+// "account" is the host bank app's home (Session 21); the demo opens it directly.
+export const ROUTES = ["settings", "home", "think", "result", "months", "buffer", "alerts", "account"] as const;
 export type Route = (typeof ROUTES)[number];
 
 function current(): Route | null {

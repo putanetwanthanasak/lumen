@@ -15,6 +15,7 @@ import { join, relative } from "node:path";
 import { test } from "node:test";
 import { HOME, NAV, THINK } from "../src/copy.ts";
 import { DEMO_USER, PERSONA_NAME } from "../src/mock/persona.ts";
+import { BANNED, BANNED_EXACT, BANNED_EXACT_PATTERN, BANNED_PATTERN } from "./banned.ts";
 
 // npm runs the tests from frontend/ (the tests are compiled to .test-build first).
 const ROOT = process.cwd();
@@ -84,21 +85,21 @@ test("UI_10_no_em_dash_in_src_or_design_md", () => {
   assert.deepEqual(scan([...files, DESIGN], /—/), []);
 });
 
-// Built from parts so this file does not contain the names it forbids.
-const BANNED = [
-  ["K", "Bank"],
-  ["KB", "TG"],
-  ["Kasi", "korn"],
-  ["K ", "PLUS"],
-  ["K", "PLUS"],
-  ["Sho", "pee"],
-  ["กสิ", "กร"],
-  ["ช้อป", "ปี้"],
-].map(([a, b]) => `${a}${b}`);
+// The names are built from parts in banned.ts, so no file spells out what it forbids.
+// The tests are scanned too (review F1, Session 21): a guard's own list once named them.
+const testFiles = sourceFiles(join(ROOT, "tests"));
 
-test("UI_10_no_banned_brand_names_in_src_or_design_md", () => {
-  const pattern = new RegExp(BANNED.map((n) => n.replace(/ /g, "\\s*")).join("|"), "i");
-  assert.deepEqual(scan([...files, DESIGN], pattern), []);
+test("UI_10_no_banned_brand_names_in_src_design_md_or_tests", () => {
+  assert.deepEqual(scan([...files, DESIGN, ...testFiles], BANNED_PATTERN), []);
+  assert.deepEqual(scan([...files, DESIGN, ...testFiles], BANNED_EXACT_PATTERN), []);
+});
+
+test("UI_10_the_brand_scan_catches_each_name_and_spares_ordinary_code", () => {
+  for (const name of BANNED) assert.ok(BANNED_PATTERN.test(name.toLowerCase()), name);
+  for (const name of BANNED_EXACT) assert.ok(BANNED_EXACT_PATTERN.test(`app ${name} home`), name);
+  for (const line of ["make(lock)", "the loan would make a month RED", "typecheck + production", "i + 1"]) {
+    assert.ok(!BANNED_EXACT_PATTERN.test(line), line);
+  }
 });
 
 test("UI_32_check_before_installment_is_spelt_เช็ก_everywhere", () => {
@@ -164,11 +165,24 @@ test("UI_27_layers_come_from_order_never_from_z_index_numbers", () => {
   // that covers the whole frame, the nav included.
   const zIndex = scan(files, /\bz-(\d|\[|auto\b)|zIndex/).map((h) => `${h.file}: ${/\bz-[^\s"'`]+/.exec(h.text)?.[0] ?? h.text}`);
   assert.deepEqual(zIndex, ["src/components/DemoPanel.tsx: z-30"]);
-  // Every screen draws its body and its nav through Screen.tsx, so each has those layers.
-  assert.deepEqual(scan(files, /<(main|nav)\b/).map((h) => h.file), ["src/components/Screen.tsx", "src/components/Screen.tsx"]);
+  // Every screen draws its body and its nav through a shell, so each has those layers:
+  // Screen.tsx for KidNee's screens, HostScreen.tsx for the host app's home (#/account,
+  // Session 21), which has its own header and bar and the same layer rules.
+  assert.deepEqual(scan(files, /<(main|nav)\b/).map((h) => h.file), [
+    "src/components/HostScreen.tsx",
+    "src/components/HostScreen.tsx",
+    "src/components/Screen.tsx",
+    "src/components/Screen.tsx",
+  ]);
+  const host = readFileSync(join(SRC, "components", "HostScreen.tsx"), "utf8");
+  assert.match(host, /<main\s+tabIndex=\{0\}\s+className=\{`phone-scroll isolate min-h-0 flex-1 overflow-y-auto/);
+  assert.match(host, /<nav aria-label=\{ACCOUNT.nav.menu\} className=\{`isolate shrink-0 /);
   const screens = readdirSync(join(SRC, "screens"));
-  assert.equal(screens.length, 7);
-  for (const name of screens) assert.match(readFileSync(join(SRC, "screens", name), "utf8"), /<Screen\b/, name);
+  assert.equal(screens.length, 8);
+  for (const name of screens) {
+    const shell = name === "Account.tsx" ? /<HostScreen\b/ : /<Screen\b/;
+    assert.match(readFileSync(join(SRC, "screens", name), "utf8"), shell, name);
+  }
 });
 
 // ---- UI-44: no yellow badge on the logo ------------------------------------------------

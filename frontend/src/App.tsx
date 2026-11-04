@@ -7,6 +7,7 @@ import { getSettings } from "./api.ts";
 import { DemoPanel } from "./components/DemoPanel.tsx";
 import { Loading } from "./components/ui.tsx";
 import { navigate, useRoute, type Route } from "./router.ts";
+import { AccountScreen } from "./screens/Account.tsx";
 import { BufferScreen } from "./screens/Buffer.tsx";
 import { HomeScreen } from "./screens/Home.tsx";
 import { NotificationsScreen } from "./screens/Notifications.tsx";
@@ -23,6 +24,7 @@ const SCREENS: Record<Route, () => React.JSX.Element> = {
   alerts: NotificationsScreen,
   result: ResultScreen,
   months: MonthsScreen,
+  account: AccountScreen,
 };
 
 /** Bumped by the Demo panel after a scene change, so the screen on show reloads. */

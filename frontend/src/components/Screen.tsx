@@ -103,8 +103,9 @@ function Bell() {
   );
 }
 
-export function Footer() {
-  return <p className="mt-8 text-center text-caption text-ink-muted">{FOOTER}</p>;
+/** `ink`: the footer's text colour, muted ink on KidNee's screens (the host shell passes its own). */
+export function Footer({ ink = "text-ink-muted" }: { ink?: string }) {
+  return <p className={`mt-8 text-center text-caption ${ink}`}>{FOOTER}</p>;
 }
 
 // The tabs and which is selected live in navStyle.ts (UI-30); here only their look.

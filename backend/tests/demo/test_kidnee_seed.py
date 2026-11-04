@@ -21,15 +21,19 @@ from app.config import get_settings
 from app.db import Base, make_engine
 from app.ledger import reconcile
 from app.models import Installment, Notification, SavingsTransaction
+from app.providers import get_bank_provider
 from app.providers.mock_bank import MockBankAccountProvider
 from app.providers.mock_push import MockPushProvider
+from app.savings.service import move_key
 from demo.kidnee import (
     KIDNEE_DB_NAME,
     PERSONAS,
     KidneeConfig,
     ai_check,
     build,
+    main_balances,
     model_config_lines,
+    open_bank,
     seconds,
     seed,
 )
@@ -169,18 +173,124 @@ def test_KD_04_a_seed_in_another_month_never_overwrites(kidnee: Engine, first_se
     }
 
 
+@pytest.fixture
+def fresh_bank() -> Iterator[None]:
+    """build() opens the process's one bank; each test gets a new one, and leaves none."""
+    get_bank_provider.cache_clear()
+    yield
+    get_bank_provider.cache_clear()
+
+
 def test_KD_04_the_served_api_reads_the_kidnee_database(
-    kidnee: Engine, first_seed: Any, config: KidneeConfig
+    kidnee: Engine, first_seed: Any, config: KidneeConfig, fresh_bank: None
 ) -> None:
     served = build(config, kidnee, dist=None)
     api = served.routes[0].app  # type: ignore[attr-defined]
     # Checked before any request, so a broken override never reaches another database.
+    # Only the session: the bank is the process's one instance, which every path uses,
+    # the webhook processor included (round 2 F2, Session 21).
     [override] = [api.dependency_overrides[k] for k in api.dependency_overrides]
     with contextlib.closing(override()) as sessions:
         assert next(sessions).get_bind().url.database == DB_NAME
     with TestClient(served) as client:
         response = client.get("/api/debts/summary", headers={"X-Demo-User": "demo-mon"})
     assert (response.status_code, response.json()["monthly_total"]) == (200, "3500.00")
+
+
+def test_KD_04_the_served_main_account_opens_at_what_the_seed_left(
+    fresh_bank: None, kidnee: Engine, first_seed: Any, config: KidneeConfig
+) -> None:
+    # The seed ran in another process, whose in-memory bank is gone. Served, each
+    # persona's main account opens at 10,000.00 minus the savings its rows list, so
+    # the balance on บัญชีหลัก agrees with the movements under it (review F2, Session 21).
+    served = build(config, kidnee, dist=None)
+    with TestClient(served) as client:
+        bodies = {
+            user: client.get("/api/bank/main-account", headers={"X-Demo-User": user}).json()
+            for user in PERSONAS
+        }
+    assert {user: body["balance"] for user, body in bodies.items()} == {
+        "demo-mon": "7300.00",  # 10,000.00 - 1,200.00 - 1,500.00
+        "demo-over": "4300.00",  # - 5,700.00
+        "demo-consolidate": "8500.00",  # - 1,500.00
+    }
+    for body in bodies.values():
+        listed = sum(Decimal(m["amount"]) for m in body["movements"])
+        assert Decimal(body["balance"]) == Decimal("10000.00") - listed
+    # The one bank every path uses (a webhook's auto-save too) holds the opened balance.
+    assert get_bank_provider().get_balance("demo-over") == Decimal("4300.00")
+
+
+def test_KD_04_a_move_in_the_rows_is_not_credited_again_on_its_retry(kidnee: Engine) -> None:
+    # A move commits its row before the bank credit. If serve restarts in between, the
+    # opened balance already counts it, so the retry (same client_request_id, DUPLICATE)
+    # must not credit it again (round 2 F1).
+    bank = MockBankAccountProvider()
+    with Session(kidnee) as session:
+        session.add(
+            SavingsTransaction(
+                user_id="demo-mon",
+                type="withdrawal",
+                amount=Decimal("700.00"),
+                client_request_id="kd-retry",
+            )
+        )
+        session.flush()
+        open_bank(session, bank)
+        session.rollback()
+    assert bank.get_balance("demo-mon") == Decimal("8000.00")  # 10,000 - 2,700 + 700
+    bank.transfer_from_savings(
+        "demo-mon", Decimal("700.00"), idempotency_key=move_key("demo-mon", "kd-retry")
+    )
+    assert bank.get_balance("demo-mon") == Decimal("8000.00")
+
+
+def test_KD_04_savings_above_the_opening_balance_keep_the_default_and_never_stop_serve(
+    kidnee: Engine, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Rows from serves before Session 21 (each opened at 10,000.00) can add up to more.
+    bank = MockBankAccountProvider()
+    with Session(kidnee) as session:
+        session.add_all(
+            SavingsTransaction(
+                user_id="kd-old", type="leftover_save", amount=Decimal("6000.00"), payday_month=m
+            )
+            for m in (date(2026, 9, 1), date(2026, 10, 1))
+        )
+        session.flush()
+        open_bank(session, bank)
+        session.rollback()
+    assert bank.get_balance("kd-old") == Decimal("10000.00")
+    assert bank.get_balance("demo-mon") == Decimal("7300.00")
+    assert (
+        "kd-old: savings exceed the opening balance; run reset to refresh"
+        in capsys.readouterr().out
+    )
+
+
+def test_KD_04_a_move_to_main_adds_back_and_a_leftover_takes_out(kidnee: Engine) -> None:
+    with Session(kidnee) as session:
+        session.add_all(
+            [
+                SavingsTransaction(
+                    user_id="demo-mon",
+                    type="withdrawal",
+                    amount=Decimal("700.00"),
+                    client_request_id="kd-move",
+                ),
+                SavingsTransaction(
+                    user_id="demo-mon",
+                    type="leftover_save",
+                    amount=Decimal("100.00"),
+                    payday_month=date(2026, 10, 1),
+                ),
+            ]
+        )
+        session.flush()
+        opened = main_balances(session)
+        session.rollback()  # the module's data stays as seeded
+    # 10,000.00 - 2,700.00 saved + 700.00 moved back - 100.00 leftover
+    assert opened["demo-mon"] == Decimal("7900.00")
 
 
 # --- KD-05: one story per persona (Session 17) ---------------------------------------------
