@@ -738,8 +738,11 @@ app's home at first glance, with generic patterns only.
   UI-59, UI-64), and KidNee with a "ใหม่" badge, which opens `#/home` (UI-65).
 - **บริการแนะนำ:** a section title above the KidNee card.
 - **KidNee card, the focus:** white, the logo, "KidNee คิดหนี้", "ภาระผ่อนเดือนนี้
-  {total}" with this month's status chip (`monthStatus`: in budget, over budget, over
-  one third; icon and text), and "กันชน {balance}". It opens `#/home` (UI-58). Before
+  {total}" with this month's chip, the same as ภาระผ่อนรายเดือน's (`monthChip`: over one
+  third first, even when prepared; then "กันชนเตรียมเงินแล้ว" in the buffer's chip when
+  this month's row in GET /buffer/shortfalls is `prepared`; else in budget or over
+  budget; icon and text; UI-58, UI-69), and "กันชน {balance}". Without the buffer
+  states the chip is the month's status, as on ภาระผ่อนรายเดือน. It opens `#/home`. Before
   KidNee is set up it says "ยังไม่ได้ตั้งค่า KidNee แตะเพื่อเริ่มใช้".
 - **รายการล่าสุด:** the 5 newest movements in the API's order. Labels: `auto_save`
   "กันเงินเข้ากันชน KidNee", `leftover_save` "เก็บงบที่ใช้ไม่หมดเข้ากันชน", `withdrawal`
@@ -950,7 +953,7 @@ Node 22.12 or later (Vite 8). From `frontend/`:
 npm ci              # exact versions from package-lock.json
 npm run dev         # http://127.0.0.1:5173 (loopback only, never 0.0.0.0), calls the API on 127.0.0.1:8000
 npm run dev -- --mode mock   # the same screens on the in-browser mock, with the scenes
-npm test            # UI-01 to UI-68 (compiled with tsc, run with node --test)
+npm test            # UI-01 to UI-69 (compiled with tsc, run with node --test)
 npm run typecheck   # tsc --noEmit, strict
 npm run build       # typecheck + production build to dist/
 npm audit

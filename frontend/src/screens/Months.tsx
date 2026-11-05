@@ -10,16 +10,16 @@
 import { useState } from "react";
 import { getAssistantPlan, getMonths, getSettings, getShortfalls } from "../api.ts";
 import type { AssistantPlanOut, MonthDetail, MonthsOut, SettingsOut, ShortfallsOut } from "../api-types.ts";
-import { ACCENT, BUFFER_CHIP } from "../accent.ts";
+import { ACCENT } from "../accent.ts";
 import { planLines } from "../assistantText.ts";
 import { barSegments } from "../barSegments.ts";
 import { openBufferAt, shortfallsByMonth, type ShortfallView } from "../bufferState.ts";
 import { ASSIST, BUFFER_STATE, HOME, MONTHS_VIEW } from "../copy.ts";
 import { BarParts } from "../components/BarParts.tsx";
-import { Icon, type IconName } from "../components/Icon.tsx";
+import { Icon } from "../components/Icon.tsx";
 import { Screen } from "../components/Screen.tsx";
 import { Button, Card, ErrorState, Loading, MarkedText, SettingsMissing, StatusChip } from "../components/ui.tsx";
-import { monthStatus, STATUS_CHIP } from "../monthStatus.ts";
+import { monthChip } from "../monthStatus.ts";
 import { barPermille, formatBaht, largest, type Money } from "../money.ts";
 import { navigate } from "../router.ts";
 import { thaiMonth } from "../thaiMonth.ts";
@@ -124,23 +124,8 @@ type MonthCardProps = {
   onToggle: () => void;
 };
 
-type Chip = { icon: IconName; label: string; className: string };
-
-/**
- * The month's chip (UI-54): over one third of income always says so, even when the buffer
- * covered the month (the payment is covered, the burden on income is not); else a month
- * the buffer fully prepared says "กันชนเตรียมเงินแล้ว"; else the month's status.
- */
-export function monthChip(month: MonthDetail, buffer: ShortfallView | null): Chip {
-  const status = monthStatus(month);
-  if (!month.over_one_third && buffer?.state === "prepared") {
-    return { icon: ACCENT.buffer.icon, label: MONTHS_VIEW.bufferReady, className: BUFFER_CHIP };
-  }
-  return { icon: status.icon, label: status.label, className: STATUS_CHIP[status.tone] };
-}
-
 function MonthCard({ month, budget, scale, budgetMark, buffer, expanded, onToggle }: MonthCardProps) {
-  const chip = monthChip(month, buffer);
+  const chip = monthChip(month, buffer?.state ?? null);
   const segments = barSegments({
     total: month.total,
     budget,

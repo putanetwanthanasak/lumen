@@ -1,13 +1,14 @@
 /**
  * บัญชีหลัก (#/account, Sessions 21 and 22): the host bank app's home, with KidNee as
  * its focus card. The main account (GET /bank/main-account), this month's installments
- * (the first row of GET /debts/months?count=1) and the buffer (GET /buffer). Every
+ * (the first row of GET /debts/months?count=1), the buffer (GET /buffer) and this
+ * month's buffer state (GET /buffer/shortfalls, for the card's chip, UI-69). Every
  * amount is an API string; the sign of a movement is the API's `direction` (UI-51,
  * UI-57). The example shortcuts and the other example controls only show their note
  * (UI-64); KidNee opens from its shortcut, its card and the bar (UI-65).
  */
-import { getBuffer, getMainAccount, getMonths, getSettings } from "../api.ts";
-import type { BufferOut, MainAccountOut, MonthRow, Movement } from "../api-types.ts";
+import { getBuffer, getMainAccount, getMonths, getSettings, getShortfalls } from "../api.ts";
+import type { BufferOut, MainAccountOut, MonthRow, Movement, ShortfallsOut } from "../api-types.ts";
 import { HOST } from "../accent.ts";
 import { ACCOUNT, APP_NAME, APP_NAME_TH } from "../copy.ts";
 import { ExampleButton, HostScreen } from "../components/HostScreen.tsx";
@@ -15,7 +16,7 @@ import { Icon, type IconName } from "../components/Icon.tsx";
 import { LogoBean } from "../components/Logo.tsx";
 import { ErrorState, Loading, MarkedText, StatusChip } from "../components/ui.tsx";
 import { formatAmount, formatBaht } from "../money.ts";
-import { monthStatus, STATUS_CHIP } from "../monthStatus.ts";
+import { monthChip } from "../monthStatus.ts";
 import { thaiDate, thaiMonth, thaiTime } from "../thaiMonth.ts";
 import { useLoad, type Load } from "../useLoad.ts";
 
@@ -24,18 +25,22 @@ export type AccountData = {
   buffer: BufferOut;
   /** This month's row; null before KidNee is set up (no income and budget yet). */
   month: MonthRow | null;
+  /** Every month over budget and its buffer state; null before setup, or when the call failed. */
+  shortfalls: ShortfallsOut | null;
   /** When the answers arrived: "ข้อมูล ณ เวลา HH:MM น." (UI-67). */
   loadedAt: Date;
 };
 
 export async function loadAccount(): Promise<AccountData> {
   const settings = await getSettings();
-  const [account, buffer, months] = await Promise.all([
+  // The buffer states are an extra, as on ภาระผ่อนรายเดือน: without them the chip is the month's status.
+  const [account, buffer, months, shortfalls] = await Promise.all([
     getMainAccount(),
     getBuffer(),
     settings === null ? Promise.resolve(null) : getMonths(1),
+    settings === null ? Promise.resolve(null) : getShortfalls().catch(() => null),
   ]);
-  return { account, buffer, month: months?.months[0] ?? null, loadedAt: new Date() };
+  return { account, buffer, month: months?.months[0] ?? null, shortfalls, loadedAt: new Date() };
 }
 
 export function AccountScreen() {
@@ -53,7 +58,7 @@ export function AccountContent({ load, onRetry, note = false }: { load: Load<Acc
   );
 }
 
-export function AccountBody({ account, buffer, month, loadedAt }: AccountData) {
+export function AccountBody({ account, buffer, month, shortfalls, loadedAt }: AccountData) {
   return (
     <>
       <div className="flex flex-col gap-2">
@@ -76,7 +81,7 @@ export function AccountBody({ account, buffer, month, loadedAt }: AccountData) {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-lead font-bold">{ACCOUNT.services}</h2>
-        <KidNeeCard buffer={buffer} month={month} />
+        <KidNeeCard buffer={buffer} month={month} shortfalls={shortfalls} />
       </section>
 
       <Movements movements={account.movements} />
@@ -175,9 +180,13 @@ export function Shortcuts() {
   );
 }
 
-/** The focus of the screen: a white card that opens KidNee's Home. */
-export function KidNeeCard({ buffer, month }: { buffer: BufferOut; month: MonthRow | null }) {
-  const status = month === null ? null : monthStatus(month);
+/**
+ * The focus of the screen: a white card that opens KidNee's Home. Its chip is the months
+ * screen's (UI-69): this month's row in GET /buffer/shortfalls decides "กันชนเตรียมเงินแล้ว".
+ */
+export function KidNeeCard({ buffer, month, shortfalls }: { buffer: BufferOut; month: MonthRow | null; shortfalls: ShortfallsOut | null }) {
+  const state = month === null ? null : (shortfalls?.months.find((row) => row.month === month.month)?.state ?? null);
+  const chip = month === null ? null : monthChip(month, state);
   return (
     <a
       href="#/home"
@@ -191,12 +200,12 @@ export function KidNeeCard({ buffer, month }: { buffer: BufferOut; month: MonthR
         </span>
         <Icon name="next" className="text-leaf-800" />
       </span>
-      {month === null || status === null ? (
+      {month === null || chip === null ? (
         <span className="text-body text-ink">{ACCOUNT.setUp}</span>
       ) : (
         <span className="flex flex-wrap items-center gap-2">
           <span className="text-body font-semibold text-ink">{ACCOUNT.thisMonth(formatBaht(month.total))}</span>
-          <StatusChip chip={{ icon: status.icon, label: status.label, className: STATUS_CHIP[status.tone] }} />
+          <StatusChip chip={chip} />
         </span>
       )}
       <MarkedText item={{ accent: "buffer", icon: "shield", text: ACCOUNT.buffer(formatBaht(buffer.balance)) }} />

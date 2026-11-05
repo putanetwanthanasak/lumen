@@ -274,16 +274,29 @@ def build(config: KidneeConfig, engine: Engine, dist: Path | None = FRONTEND_DIS
     return create_serving_app(api, dist)
 
 
+# serve reads the main account balances only when it starts (open_bank).
+RESTART_SERVE = (
+    "If serve is running, stop it and start it again: it reads the balances only when it starts."
+)
+
+
 def serve(config: KidneeConfig, *, port: int = PORT) -> None:
-    """The screens and the API on 127.0.0.1 only, against lumen_kidnee."""
+    """The screens and the API on 127.0.0.1 only, against lumen_kidnee.
+
+    It refuses to start before every persona is seeded: the served bank opens from the
+    rows once, at startup (open_bank), so a seed after that would leave each main
+    account balance out of step with its movements (Session 23 review F1)."""
     _allowed(config)
     engine = make_engine(config.url(config.app_url))
-    served = build(config, engine)
-    missing = [u for u in PERSONAS if u not in personas_present(engine)]
-    if missing:
-        print(f"Not seeded yet: {', '.join(missing)}. Run: python -m demo.kidnee seed")
-    print(f"KidNee on http://{HOST}:{port} (API at /api). Ctrl+C stops it.")
     try:
+        missing = [u for u in PERSONAS if u not in personas_present(engine)]
+        if missing:
+            raise SystemExit(
+                f"Not seeded yet: {', '.join(missing)}. "
+                "Run python -m demo.kidnee seed first, then serve."
+            )
+        served = build(config, engine)
+        print(f"KidNee on http://{HOST}:{port} (API at /api). Ctrl+C stops it.")
         uvicorn.run(served, host="127.0.0.1", port=port, log_level="warning")
     finally:
         engine.dispose()
@@ -387,6 +400,7 @@ def main(argv: list[str] | None = None) -> None:
         create_if_missing(config)
         migrate(config)
     _print(seed_database(config, day=today()))
+    print(RESTART_SERVE)
 
 
 if __name__ == "__main__":

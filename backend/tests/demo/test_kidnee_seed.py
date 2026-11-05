@@ -25,6 +25,7 @@ from app.providers import get_bank_provider
 from app.providers.mock_bank import MockBankAccountProvider
 from app.providers.mock_push import MockPushProvider
 from app.savings.service import move_key
+from demo import kidnee as kidnee_cli
 from demo.kidnee import (
     KIDNEE_DB_NAME,
     PERSONAS,
@@ -423,3 +424,59 @@ def test_AI_25_ai_check_without_a_key_says_so_and_never_prints_a_key(
     lines = model_config_lines(with_key)
     assert lines[0] == "LLM_API_KEY: set"
     assert all(key not in line for line in lines)
+
+
+# ---- Session 23 review F1: serve opens the bank once, so it needs the seed first ----
+
+
+def _no_server(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Record build and uvicorn.run instead of starting anything."""
+    calls: list[str] = []
+    monkeypatch.setattr(kidnee_cli, "build", lambda *_a, **_k: calls.append("build"))
+    monkeypatch.setattr(
+        kidnee_cli.uvicorn, "run", lambda *_a, **k: calls.append(f"run {k['host']}")
+    )
+    return calls
+
+
+def test_KD_04_serve_refuses_to_start_before_the_personas_are_seeded(
+    config: KidneeConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The bank opens from the rows only in build: a seed after it would leave
+    # demo-over at 10,000.00 with 5,700.00 of savings in its movements.
+    calls = _no_server(monkeypatch)
+    monkeypatch.setattr(kidnee_cli, "personas_present", lambda _engine: ["demo-mon"])
+    with pytest.raises(
+        SystemExit, match=r"Not seeded yet: demo-over, demo-consolidate\. Run .* seed first"
+    ):
+        kidnee_cli.serve(config)
+    assert calls == []
+
+
+def test_KD_04_serve_starts_once_every_persona_is_seeded(
+    config: KidneeConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _no_server(monkeypatch)
+    monkeypatch.setattr(kidnee_cli, "personas_present", lambda _engine: sorted(PERSONAS))
+    kidnee_cli.serve(config)
+    assert calls == ["build", "run 127.0.0.1"]
+
+
+@pytest.mark.parametrize("argv", [["seed"], ["reset", "--yes"]])
+def test_KD_04_seed_and_reset_say_to_restart_a_running_serve(
+    argv: list[str],
+    config: KidneeConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    done: list[str] = []
+    monkeypatch.setattr(KidneeConfig, "from_env", classmethod(lambda _cls: config))
+    monkeypatch.setattr(kidnee_cli, "create_if_missing", lambda _c: done.append("create"))
+    monkeypatch.setattr(kidnee_cli, "migrate", lambda _c: done.append("migrate"))
+    monkeypatch.setattr(kidnee_cli, "reset_database", lambda _c, _n: done.append("reset"))
+    monkeypatch.setattr(kidnee_cli, "seed_database", lambda _c, day: {"demo-mon": ["seeded"]})
+    kidnee_cli.main(argv)
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1] == kidnee_cli.RESTART_SERVE
+    assert "stop it and start it again" in out
+    assert done == (["reset"] if argv[0] == "reset" else ["create", "migrate"])

@@ -3,7 +3,9 @@
  * Thai text, never colour only. The API decides the flags (L65); this only picks
  * the words: over the ธปท. guidance first, then over budget, else in budget.
  */
-import type { MonthRow } from "./api-types.ts";
+import type { MonthRow, PreparedState } from "./api-types.ts";
+import { ACCENT, BUFFER_CHIP } from "./accent.ts";
+import type { IconName } from "./components/Icon.tsx";
 import { MONTHS_VIEW } from "./copy.ts";
 
 export type MonthStatus = { tone: "ok" | "over" | "risk"; icon: "check" | "alert" | "stop"; label: string };
@@ -19,6 +21,23 @@ export function monthStatus(row: Pick<MonthRow, "over_budget" | "over_one_third"
   if (row.over_one_third) return { tone: "risk", icon: "stop", label: MONTHS_VIEW.risk };
   if (row.over_budget) return { tone: "over", icon: "alert", label: MONTHS_VIEW.over };
   return { tone: "ok", icon: "check", label: MONTHS_VIEW.ok };
+}
+
+export type Chip = { icon: IconName; label: string; className: string };
+
+/**
+ * A month's chip on ภาระผ่อนรายเดือน (UI-54) and on บัญชีหลัก's KidNee card (UI-69):
+ * over one third of income always says so, even when the buffer covered the month (the
+ * payment is covered, the burden on income is not); else a month over budget the buffer fully
+ * prepared says "กันชนเตรียมเงินแล้ว"; else the month's status. `state` is the month's
+ * row in GET /buffer/shortfalls, null when it has none: the API decides.
+ */
+export function monthChip(month: Pick<MonthRow, "over_budget" | "over_one_third">, state: PreparedState | null): Chip {
+  const status = monthStatus(month);
+  if (month.over_budget && !month.over_one_third && state === "prepared") {
+    return { icon: ACCENT.buffer.icon, label: MONTHS_VIEW.bufferReady, className: BUFFER_CHIP };
+  }
+  return { icon: status.icon, label: status.label, className: STATUS_CHIP[status.tone] };
 }
 
 /**
