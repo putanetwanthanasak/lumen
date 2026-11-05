@@ -428,6 +428,12 @@ export const ACCOUNT = {
     withdrawal: "ย้ายเงินจากกันชน KidNee",
   } satisfies Record<MovementKind, string>,
   forMonth: (month: string) => `สำหรับ ${month}`,
+  // The passbook's printed line (Session 23, UI-70): short, as a passbook prints them.
+  printed: {
+    auto_save: "กันเงินเข้ากันชน",
+    leftover_save: "เก็บงบเข้ากันชน",
+    withdrawal: "ย้ายจากกันชน",
+  } satisfies Record<MovementKind, string>,
   empty: "ยังไม่มีรายการ",
   nav: { menu: "เมนูบัญชี", home: "หน้าแรก", history: "ธุรกรรม", scan: "สแกน", kidnee: "KidNee", profile: "โปรไฟล์" },
 };
