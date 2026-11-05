@@ -128,8 +128,23 @@ test("UI_69_load_account_asks_for_the_buffer_states_and_survives_their_failure",
 
 test("UI_69_before_setup_there_is_no_call_for_the_buffer_states", async () => {
   resetMock(new Date(2026, 9, 27)); // first launch: no settings
-  answerFromMock(true);
-  const loaded = await loadAccount();
-  assert.equal(loaded.month, null);
-  assert.equal(loaded.shortfalls, null);
+  // Count the requests: a 409 swallowed by the catch would also leave shortfalls null
+  // (review round 1 F1).
+  const asked: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string) => {
+    const path = url.replace(/^\/api/, "");
+    asked.push(path);
+    const answer = handle("GET", path, undefined, "demo-mon");
+    return { status: answer.status, json: async () => answer.body } as Response;
+  }) as typeof fetch;
+  try {
+    const loaded = await loadAccount();
+    assert.equal(loaded.month, null);
+    assert.equal(loaded.shortfalls, null);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.ok(asked.includes("/settings") && asked.includes("/bank/main-account"), asked.join(" "));
+  assert.ok(!asked.includes("/buffer/shortfalls"), asked.join(" "));
 });
