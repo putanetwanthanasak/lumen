@@ -283,9 +283,12 @@ RESTART_SERVE = (
 def serve(config: KidneeConfig, *, port: int = PORT) -> None:
     """The screens and the API on 127.0.0.1 only, against lumen_kidnee.
 
-    It refuses to start before every persona is seeded: the served bank opens from the
-    rows once, at startup (open_bank), so a seed after that would leave each main
-    account balance out of step with its movements (Session 23 review F1)."""
+    It refuses to start until every persona has its settings row (seed writes it first):
+    the served bank opens from the rows once, at startup (open_bank), so a seed after
+    that would leave each main account balance out of step with its movements (Session
+    23 review F1). It checks the settings only: a seed stopped halfway leaves them with
+    some installments missing, and running seed again, which is idempotent, finishes it
+    (PR 2 review F1)."""
     _allowed(config)
     engine = make_engine(config.url(config.app_url))
     try:
