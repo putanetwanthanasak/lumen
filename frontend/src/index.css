@@ -77,14 +77,18 @@
   --color-quiet-ink: #3f5166;
   --color-quiet-edge: #7a8a9d; /* the banner's edge against the page, at least 3:1 */
 
-  /* Host shell (#/account only, Session 21): a generic bank app's home around KidNee,
-     no real bank's colours. Used only through src/accent.ts (HOST, UI-34). White text is
-     at least 4.5:1 on from, to, card and bar; host-line at least 3:1 against them (UI-35). */
-  --color-host-from: #0b5a43; /* deep green, the gradient's top */
-  --color-host-to: #0b4f5e; /* deep teal, the gradient's bottom */
-  --color-host-card: #1a6b5a; /* the account card and a pressed shortcut, a little lighter */
-  --color-host-line: #7cc2b2; /* the account card's and the shortcuts' edges */
-  --color-host-bar: #083f37; /* the bottom bar */
+  /* Host shell (#/account only, Sessions 21 and 22): a generic bank app's home around
+     KidNee, no real bank's colours. One deep green-teal, a subtle vertical gradient.
+     Used only through src/accent.ts (HOST, UI-34). White and host-muted text are at
+     least 4.5:1 on every host colour, the passbook's rules and spine included; host-line
+     at least 3:1 against them (UI-35). */
+  --color-host-from: #0c5d52; /* the page, top */
+  --color-host-to: #094a43; /* the page, bottom: the same tone, a little deeper */
+  --color-host-card: #1a6b5f; /* the passbook card, the lightest point behind its text */
+  --color-host-rule: #155f54; /* the passbook's ruled lines, faint against the card */
+  --color-host-spine: #115a4f; /* the passbook's spine on its left edge */
+  --color-host-line: #7cc2b2; /* edges: the card, the shortcuts, the tabs */
+  --color-host-bar: #073c36; /* the bottom bar, the selected tab's ink and the note strip */
   --color-host-muted: #d4ece5; /* secondary text on every host colour */
 
   /* Type scale. Body is 16px and every sentence uses it. Caption (14px) is only for
@@ -147,4 +151,12 @@
 }
 .phone-scroll::-webkit-scrollbar {
   display: none;
+}
+
+/*
+ * The passbook's ruled lines (#/account, Session 22): horizontal only, 1px every 28px,
+ * in host-rule. Used only through HOST.rules in src/accent.ts (UI-34, UI-68).
+ */
+.host-rules {
+  background-image: repeating-linear-gradient(to bottom, transparent 0 27px, var(--color-host-rule) 27px 28px);
 }

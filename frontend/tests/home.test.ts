@@ -230,7 +230,8 @@ test("UI_34_every_accent_has_its_own_icon_and_thai_text", () => {
 // The accent families added for this design: anywhere else they could colour
 // something without the icon and text that accent.ts pairs them with.
 // host-: the host shell of #/account (Session 21), whose classes live in accent.ts HOST.
-const ACCENT_CLASS = /\b(?:bg|text|border|from|via|to|ring|outline|fill|stroke|divide)-(?:teal|bank|ai|quiet|host)-/;
+// host-rules is index.css's passbook lines (Session 22), a class of its own.
+const ACCENT_CLASS = /\b(?:bg|text|border|from|via|to|ring|outline|fill|stroke|divide)-(?:teal|bank|ai|quiet|host)-|\bhost-rules\b/;
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -245,7 +246,7 @@ test("UI_34_accent_classes_are_only_in_accent_ts", () => {
     .flatMap((file) => readFileSync(file, "utf8").split("\n").filter((line) => ACCENT_CLASS.test(line)).map((line) => `${file}: ${line.trim()}`));
   assert.deepEqual(hits, []);
   // Guard the guard.
-  for (const line of ['"hover:bg-teal-50"', "from-ai-from", "text-bank-800", "border-quiet-line"]) assert.ok(ACCENT_CLASS.test(line), line);
+  for (const line of ['"hover:bg-teal-50"', "from-ai-from", "text-bank-800", "border-quiet-line", '"p-5 host-rules"']) assert.ok(ACCENT_CLASS.test(line), line);
   for (const line of ["--color-teal-50: #e8f7f7;", "bg-leaf-700", "text-warn-ink"]) assert.ok(!ACCENT_CLASS.test(line), line);
 });
 

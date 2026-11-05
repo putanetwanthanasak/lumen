@@ -68,3 +68,10 @@ export function thaiDate(at: string): string {
   const day = Number(match[3]); // ui-06-allow: a date, not money
   return `${day} ${thaiMonth(`${match[1]}-${match[2]}`)}`;
 }
+
+const CLOCK = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Bangkok" });
+
+/** The Bangkok clock time of an instant, 24-hour "HH:MM": when บัญชีหลัก's data loaded (UI-67). */
+export function thaiTime(at: Date): string {
+  return CLOCK.format(at);
+}

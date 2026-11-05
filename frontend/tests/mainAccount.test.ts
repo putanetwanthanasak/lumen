@@ -5,7 +5,8 @@
  *   the empty state, and the Thai date.
  * UI-58: the KidNee card: this month's total and its status (icon and text), the
  *   buffer, and the link to KidNee's Home.
- * UI-59: the four shortcuts do nothing but show their note.
+ * UI-59: the shortcuts: seven examples and KidNee (Session 22; UI-64 and UI-65 in
+ *   mainAccountHome.test.ts cover every example control and every way into KidNee).
  * UI-60: the route and the ways between the host app and KidNee.
  * UI-61: nothing names a bank, product or company, or shows a real-looking number.
  * UI-63: the screen's loading and error states inside the host shell.
@@ -54,6 +55,7 @@ function data() {
     account: call("GET", "/bank/main-account").body as MainAccountOut,
     buffer: call("GET", "/buffer").body as BufferOut,
     month: (call("GET", "/debts/months?count=1").body as MonthsOut).months[0] ?? null,
+    loadedAt: new Date("2026-11-04T07:05:00Z"), // 14:05 in Bangkok
   };
 }
 
@@ -173,25 +175,17 @@ test("UI_58_the_balance_is_the_apis_string_formatted", () => {
 
 // ---- UI-59: the shortcuts are examples only -------------------------------------------
 
-test("UI_59_four_labelled_buttons_that_only_show_their_note", () => {
-  const closed = renderToStaticMarkup(createElement(Shortcuts, {}));
-  const buttons = [...closed.matchAll(/<button([^>]*)>/g)].map((m) => m[1] ?? "");
-  assert.equal(buttons.length, 4);
+test("UI_59_seven_example_buttons_and_kidnee_last_in_two_rows_of_four", () => {
+  const html = renderToStaticMarkup(createElement(Shortcuts));
+  const buttons = [...html.matchAll(/<button([^>]*)>/g)].map((m) => m[1] ?? "");
+  assert.equal(buttons.length, 7);
   for (const b of buttons) {
     assert.match(b, /type="button"/);
     assert.ok(!b.includes("href"));
   }
-  assert.deepEqual(listItems(closed), ["โอนเงิน", "จ่ายบิล", "เติมเงิน", "สแกน"]);
-  assert.ok(!plain(closed).includes(ACCOUNT.shortcutNote));
-  const open = plain(renderToStaticMarkup(createElement(Shortcuts, { note: true })));
-  assert.ok(open.includes("ปุ่มตัวอย่าง ใช้ไม่ได้ในเดโม"));
-});
-
-test("UI_59_the_shortcut_handler_sets_the_note_and_nothing_else", () => {
-  const source = read("screens", "Account.tsx");
-  const shortcuts = source.slice(source.indexOf("export function Shortcuts"), source.indexOf("export function KidNeeCard"));
-  assert.deepEqual([...shortcuts.matchAll(/onClick=\{([^}]*)\}/g)].map((m) => m[1]), ["() => setShown(true)"]);
-  assert.ok(!/navigate|href|fetch|get[A-Z]|move/.test(shortcuts.replace(/aria-label=\{ACCOUNT\.shortcutsLabel\}/, "")));
+  assert.match(html, /grid-cols-4/);
+  assert.deepEqual(listItems(html), ["โอนเงิน", "จ่ายบิล", "เติมเงิน", "สแกนจ่าย", "ถอนไม่ใช้บัตร", "รายการเดินบัญชี", "ตั้งเป้าออม", "ใหม่KidNee"]);
+  assert.ok(!plain(html).includes(ACCOUNT.shortcutNote));
 });
 
 // ---- UI-60: the route and the ways back and forth --------------------------------------
@@ -203,7 +197,7 @@ test("UI_60_account_is_a_route_and_the_default_landing_is_unchanged", () => {
   assert.match(read("App.tsx"), /account: AccountScreen/);
 });
 
-test("UI_60_the_host_bar_has_two_items_with_this_screen_selected", () => {
+test("UI_60_the_host_bar_has_five_flat_items_with_this_screen_selected", () => {
   const html = renderToStaticMarkup(createElement(AccountContent, { load: { state: "ready", data: data() }, onRetry: () => undefined }));
   const nav = /<nav[^>]*>(.*?)<\/nav>/.exec(html)?.[1] ?? "";
   const links = [...nav.matchAll(/<a href="([^"]+)"([^>]*)>/g)].map((m) => [m[1], (m[2] ?? "").includes('aria-current="page"')]);
@@ -211,7 +205,10 @@ test("UI_60_the_host_bar_has_two_items_with_this_screen_selected", () => {
     ["#/account", true],
     ["#/home", false],
   ]);
-  assert.deepEqual(listItems(nav), ["หน้าแรก", "KidNee"]);
+  assert.deepEqual(listItems(nav), ["หน้าแรก", "ธุรกรรม", "สแกน", "KidNee", "โปรไฟล์"]);
+  // The three examples are buttons (UI-64); flat: no raised centre item.
+  assert.equal([...nav.matchAll(/<button type="button"/g)].length, 3);
+  assert.ok(!/-mt-|-translate-y/.test(nav), "no raised button");
   // Selected is never colour only: bold and underlined too.
   assert.match(nav, /aria-current="page"[^>]*>.*?border-b-2 border-white font-bold/);
 });
