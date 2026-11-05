@@ -559,6 +559,42 @@ def test_S1_manual_retry_after_a_settings_change_records_the_first_amount(
     assert savings_amounts(api) == [Decimal("120.00")]
 
 
+def test_S1_manual_retry_as_a_cash_kind_saves_nothing_and_is_recorded(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR 3 review F1: the guard must not record a saving on a kind that never saves
+    # (INV-5), or reconcile would roll back every resend. A resend of the same request
+    # as a cash withdrawal is recorded with its alert and saves nothing, as on main;
+    # the 120.00 the lost purchase moved stays where it went (carry-over).
+    opt_in(api.session)
+    api.session.commit()
+    _lose_the_first_commit(api, monkeypatch)
+
+    retry = post(api, entry(kind="cash_withdrawal"))
+
+    assert retry.status_code == 201, retry.text
+    assert retry.json()["saved_amount"] == "0.00"
+    assert savings_amounts(api) == []
+    assert count(api, Notification) == 1
+
+
+def test_PV_05_after_a_lost_commit_the_preview_says_what_the_retry_records(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR 3 review F2: deciding again, the preview would say 0.00 (600.00 - 300.00 is
+    # under the net) while the retry records the 300.00 that already moved.
+    opt_in(api.session, fixed="300.00")
+    api.session.commit()
+    api.bank.set_balance(USER, Decimal("900.00"))
+    _lose_the_first_commit(api, monkeypatch)
+
+    preview = api.call("POST", "/installments/preview", entry(), user=USER)
+    retry = post(api, entry())
+
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["saving_if_recorded"] == retry.json()["saved_amount"] == "300.00"
+
+
 # --- MI-13: platform_name, the app the user pays it in (Session 17) -----------------------
 
 

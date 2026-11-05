@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import select, update
 from sqlalchemy.exc import OperationalError
 
-from app.models import SavingsTransaction, UserSettings
+from app.models import Notification, SavingsTransaction, UserSettings
 from app.providers.mock_bank import DEFAULT_OPENING_BALANCE, MockBankAccountProvider
 from app.savings import service as savings
 from app.webhooks import processor
@@ -126,3 +126,26 @@ def test_S1_retry_after_the_rule_changed_records_the_first_amount_instead_of_fai
     assert bank.get_balance(USER) == DEFAULT_OPENING_BALANCE - Decimal("120.00")
     saved = session.execute(select(SavingsTransaction.amount)).scalars().all()
     assert saved == [Decimal("120.00")]
+
+
+def test_S1_retry_as_a_cash_withdrawal_saves_nothing_and_stores_its_alert(
+    webhook: Webhook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR 3 review F1, the webhook path: the platform resends the same event_id as a
+    # cash withdrawal after the lost commit. INV-5 is decided before the guard, so the
+    # event is recorded and its strong alert stored (L50, L58), with no saving.
+    bank = MockBankAccountProvider()
+    monkeypatch.setattr(processor, "get_bank_provider", lambda: bank)
+    opt_in(webhook.session)
+    webhook.session.commit()
+    first = payload(contract={**payload()["contract"], "principal": "1200.00"})
+    _lose_the_first_delivery(webhook, monkeypatch, first)
+    cash = payload("cash_withdrawal_created")
+    assert cash["event_id"] == first["event_id"]
+
+    retry = webhook.post(cash)
+
+    assert retry.status_code == 200, retry.text
+    session = webhook.session
+    assert session.execute(select(SavingsTransaction.amount)).scalars().all() == []
+    assert len(session.execute(select(Notification.id)).scalars().all()) == 1

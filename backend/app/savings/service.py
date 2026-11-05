@@ -89,12 +89,37 @@ def _saving(kind: str, item_price: Decimal, bank_balance: Decimal, rule: SavingR
     )
 
 
+def _already_moved(
+    user_id: str, kind: str, transfer_key: str, bank: BankAccountProvider
+) -> Decimal | None:
+    """What the bank already moved under this saving's key, None if nothing.
+
+    A retry after a lost commit: the transfer runs before COMMIT, so the money moved
+    while the rows rolled back (Session 23 review F2). A kind that never saves never
+    has one: INV-5 is decided first, even if a retry comes back with another kind.
+    No lock is needed: two requests with one key are serialized earlier, by the
+    idempotency insert (webhook_events or installments)."""
+    if kind in NEVER_SAVE_KINDS:
+        return None
+    return bank.applied_to_savings(user_id, transfer_key)
+
+
 def would_save(
-    session: Session, *, user_id: str, kind: str, item_price: Decimal, bank: BankAccountProvider
+    session: Session,
+    *,
+    user_id: str,
+    kind: str,
+    item_price: Decimal,
+    transfer_key: str,
+    bank: BankAccountProvider,
 ) -> Decimal:
     """What auto_save would save for this installment now (the preview's
-    saving_if_recorded). Read-only: no lock and no write, so a purchase that commits
-    in between can change the answer; recording decides again under the lock."""
+    saving_if_recorded): what already moved under its key, as auto_save records it,
+    else the rule's amount. Read-only: no lock and no write, so a purchase that
+    commits in between can change the answer; recording decides again under the lock."""
+    moved = _already_moved(user_id, kind, transfer_key, bank)
+    if moved is not None:
+        return moved
     rule = active_rule(session, user_id, kind)
     if rule is None:
         return ZERO
@@ -128,11 +153,11 @@ def auto_save(
     account without a row. It is recorded even if auto-save was turned off in between:
     the money has already moved (Session 23 review F2).
     """
-    # R3: hold this user's balance row until commit, before reading the bank. A second
-    # purchase for the same user waits there and then reads the bank after the first
-    # one's transfer, so two savings cannot jointly pass the safety net. The version
-    # check in adjust_balance stays as a second layer.
-    moved = bank.applied_to_savings(user_id, transfer_key)
+    moved = _already_moved(user_id, kind, transfer_key, bank)
+    # R3, in both branches: hold this user's balance row until commit, before reading
+    # the bank balance. A second purchase for the same user waits there and then reads
+    # the bank after the first one's transfer, so two savings cannot jointly pass the
+    # safety net. The version check in adjust_balance stays as a second layer.
     if moved is None:
         rule = active_rule(session, user_id, kind)
         if rule is None:

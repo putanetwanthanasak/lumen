@@ -23,7 +23,7 @@ from app.installments.schemas import ManualEntryIn
 from app.installments.service import reported_saving
 from app.providers import get_bank_provider
 from app.providers.base import BankAccountProvider
-from app.savings.service import would_save
+from app.savings.service import manual_transfer_key, would_save
 from app.users import demo_user
 
 router = APIRouter()
@@ -57,6 +57,11 @@ def preview_installment(
     saving = reported_saving(session, user_id=user_id, entry=entry)
     if saving is None:
         saving = would_save(
-            session, user_id=user_id, kind=entry.kind, item_price=entry.item_price, bank=bank
+            session,
+            user_id=user_id,
+            kind=entry.kind,
+            item_price=entry.item_price,
+            transfer_key=manual_transfer_key(user_id, entry.client_request_id),
+            bank=bank,
         )
     return PreviewOut(**verdict.model_dump(), saving_if_recorded=saving)
