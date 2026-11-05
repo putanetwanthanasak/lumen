@@ -17,7 +17,7 @@ import { LogoBean } from "../components/Logo.tsx";
 import { ErrorState, Loading, MarkedText, StatusChip } from "../components/ui.tsx";
 import { formatAmount, formatBaht } from "../money.ts";
 import { monthChip } from "../monthStatus.ts";
-import { thaiDate, thaiMonth, thaiTime } from "../thaiMonth.ts";
+import { printDate, thaiDate, thaiMonth, thaiTime } from "../thaiMonth.ts";
 import { useLoad, type Load } from "../useLoad.ts";
 
 export type AccountData = {
@@ -62,7 +62,7 @@ export function AccountBody({ account, buffer, month, shortfalls, loadedAt }: Ac
   return (
     <>
       <div className="flex flex-col gap-2">
-        <Passbook balance={account.balance} />
+        <Passbook balance={account.balance} latest={account.movements[0] ?? null} />
         <div className="flex items-center justify-between gap-2">
           <ExampleButton className="-ml-1 inline-flex min-h-11 items-center gap-1 rounded-field px-1 text-body font-semibold">
             {ACCOUNT.myAccounts}
@@ -89,39 +89,69 @@ export function AccountBody({ account, buffer, month, shortfalls, loadedAt }: Ac
   );
 }
 
-/** The account card, an open savings passbook of our own: a darker spine, faint horizontal rules (UI-68). */
-export function Passbook({ balance }: { balance: string }) {
+/**
+ * The account card, a printed passbook page of our own (UI-68): pale paper with a faint
+ * wavy pattern, a binding with its stitch on the left, the balance, and the newest
+ * movement printed on a band across the page (UI-70).
+ */
+export function Passbook({ balance, latest }: { balance: string; latest: Movement | null }) {
   return (
-    <section aria-label={ACCOUNT.savings} className={`flex overflow-hidden rounded-card ${HOST.card}`}>
-      <span aria-hidden="true" className={`w-4 shrink-0 ${HOST.spine}`} />
-      <div className={`flex min-w-0 flex-1 flex-col gap-1 p-5 ${HOST.rules}`}>
-        <span className="flex items-start justify-between gap-2">
-          <h2 className="text-body font-semibold">
-            {/* The chevron looks like an account switcher, so it is an example too (UI-64). */}
-            <ExampleButton className="-my-2 -ml-1 inline-flex min-h-11 items-center gap-1 rounded-field px-1">
-              {ACCOUNT.savings}
-              <Icon name="down" size={18} />
-            </ExampleButton>
-          </h2>
-          <Icon name="passbook" size={26} />
-        </span>
-        <p className={`text-caption ${HOST.muted}`}>{ACCOUNT.maskedNumber}</p>
-        <p className={`mt-3 text-caption ${HOST.muted}`}>{ACCOUNT.available}</p>
-        <p className="flex items-baseline gap-2">
-          <span className="text-display font-bold">{formatAmount(balance)}</span>
-          <span className="text-lead">{ACCOUNT.baht}</span>
-        </p>
-        <p className={`text-caption ${HOST.muted}`}>{ACCOUNT.mockData}</p>
+    <section aria-label={ACCOUNT.savings} className={`relative overflow-hidden rounded-field pt-4 pr-[18px] pb-3 pl-9 ${HOST.paper}`}>
+      <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-[18px] ${HOST.binding}`}>
+        <span className={`absolute top-2.5 bottom-2.5 left-2 ${HOST.stitch}`} />
+      </span>
+      <span className="flex items-start justify-between gap-2">
+        <h2 className="text-body font-semibold">
+          {/* The chevron looks like an account switcher, so it is an example too (UI-64). */}
+          <ExampleButton focus={HOST.paperFocus} className="-my-2 -ml-1 inline-flex min-h-11 items-center gap-1 rounded-field px-1">
+            {ACCOUNT.savings}
+            <Icon name="down" size={18} />
+          </ExampleButton>
+        </h2>
+        <Icon name="passbook" size={26} className="text-leaf-800" />
+      </span>
+      <p className="text-caption">{ACCOUNT.maskedNumber}</p>
+      <p className="mt-3 text-caption text-ink-muted">{ACCOUNT.available}</p>
+      <p className="flex items-baseline gap-2">
+        <span className="text-balance font-extrabold tabular-nums">{formatAmount(balance)}</span>
+        <span className="text-lead text-ink-muted">{ACCOUNT.baht}</span>
+      </p>
+      <PrintedLine latest={latest} />
+      <span className="flex items-center justify-between gap-2">
+        <span className="text-caption text-ink-muted">{ACCOUNT.mockData}</span>
         <button
           type="button"
           onClick={showRecent}
-          className={`mt-2 inline-flex min-h-11 cursor-pointer items-center gap-1 self-start text-body font-semibold underline underline-offset-4 ${HOST.focus}`}
+          className={`-mr-1 inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-field px-1 text-body font-semibold text-leaf-800 underline underline-offset-4 ${HOST.paperFocus}`}
         >
           {ACCOUNT.seeRecent}
           <Icon name="next" size={18} />
         </button>
-      </div>
+      </span>
     </section>
+  );
+}
+
+/**
+ * The newest movement, printed on the page (UI-70): the API's first (GET
+ * /bank/main-account lists them newest first, MA-02), its Bangkok date, a short label
+ * and the amount with + or − from `direction`. No running balance: that would be
+ * money arithmetic here (UI-51). No movement: "ยังไม่มีรายการ" on the same band.
+ */
+export function PrintedLine({ latest }: { latest: Movement | null }) {
+  return (
+    <p className={`-mx-[18px] mt-3 mb-1 flex items-baseline justify-between gap-3 px-[18px] py-2 text-caption ${HOST.band}`}>
+      {latest === null ? (
+        <span>{ACCOUNT.empty}</span>
+      ) : (
+        <>
+          <span>
+            {printDate(latest.at)} {ACCOUNT.printed[latest.kind]}
+          </span>
+          <span className="whitespace-nowrap">{signed(latest)}</span>
+        </>
+      )}
+    </p>
   );
 }
 

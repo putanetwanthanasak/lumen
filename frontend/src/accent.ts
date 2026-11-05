@@ -86,9 +86,14 @@ export const BUFFER_CHIP = `${ACCENT.buffer.tint} ${ACCENT.buffer.ink}`;
  */
 export const HOST = {
   page: "bg-linear-to-b from-host-from to-host-to text-white",
-  card: "border border-host-line bg-host-card text-white",
-  spine: "bg-host-spine",
-  rules: "host-rules",
+  // The account card, a printed passbook page (Session 23, UI-68): the paper and its
+  // pattern, the binding and its stitch, the printed line's band, and a focus ring that
+  // shows on the paper (white would not).
+  paper: "host-paper text-ink shadow-passbook",
+  binding: "border-r border-host-binding-edge bg-host-binding",
+  stitch: "border-l-2 border-dashed border-host-stitch",
+  band: "border-y border-host-band-rule bg-white/75 font-print text-host-print",
+  paperFocus: "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
   muted: "text-host-muted",
   shortcut: "border-2 border-host-line text-white group-hover:bg-host-card",
   round: "border border-host-line text-white hover:bg-host-card",

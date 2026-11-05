@@ -8,8 +8,11 @@
  *   those three lead to #/home.
  * UI-66 (break test): "ดูรายการล่าสุด ›" scrolls to รายการล่าสุด and focuses it.
  * UI-67 (break test): "ข้อมูล ณ เวลา HH:MM น." is the Bangkok time the data loaded.
- * UI-68: the account card is a passbook of our own: its words in order, a spine and
- *   horizontal rules only, no image, no diagonal, no red.
+ * UI-68: the account card is a printed passbook page of our own (Session 23): its
+ *   words in order, a binding with its stitch, a pattern of horizontal waves only (a
+ *   data URI in the pattern's token, no image file), no diagonal, no red, and focus
+ *   rings that show on the paper.
+ * UI-70 and UI-71, the printed line and its date, are in passbookPrint.test.ts.
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -166,7 +169,7 @@ test("UI_66_see_recent_scrolls_to_the_movements_and_focuses_them", () => {
   }
   assert.deepEqual(calls, ["scroll smooth start", "focus true", "scroll auto start", "focus true"]);
   // The link sits on the card and says what it does.
-  const card = plain(renderToStaticMarkup(createElement(Passbook, { balance: "1.00" })));
+  const card = plain(renderToStaticMarkup(createElement(Passbook, { balance: "1.00", latest: null })));
   assert.ok(card.endsWith(ACCOUNT.seeRecent), card);
 });
 
@@ -211,22 +214,47 @@ test("UI_67_the_line_shows_when_the_data_loaded_never_a_fixed_time", async () =>
 
 // ---- UI-68: the passbook card ------------------------------------------------------------
 
-test("UI_68_the_passbook_shows_its_words_in_order_with_the_apis_balance", () => {
-  const html = renderToStaticMarkup(createElement(Passbook, { balance: "4300.00" }));
-  assert.equal(plain(html), "ออมทรัพย์xxx-x-x1234-xยอดเงินที่ใช้ได้4,300.00บาทข้อมูลจำลองสำหรับเดโมดูรายการล่าสุด");
-  // A darker spine first, then the ruled page; the passbook icon in the top right.
-  assert.match(html, new RegExp(`^<section aria-label="ออมทรัพย์"[^>]*><span aria-hidden="true" class="[^"]*${HOST.spine}"></span><div class="[^"]*${HOST.rules}"`));
+test("UI_68_the_passbook_page_shows_its_words_in_order_with_the_apis_balance", () => {
+  const html = renderToStaticMarkup(createElement(Passbook, { balance: "4300.00", latest: null }));
+  assert.equal(plain(html), "ออมทรัพย์xxx-x-x1234-xยอดเงินที่ใช้ได้4,300.00บาทยังไม่มีรายการข้อมูลจำลองสำหรับเดโมดูรายการล่าสุด");
+  // The paper, then the binding with its stitch, hidden from screen readers.
+  assert.match(
+    html,
+    new RegExp(`^<section aria-label="ออมทรัพย์" class="[^"]*${HOST.paper}"><span aria-hidden="true" class="[^"]*${HOST.binding}"><span class="[^"]*${HOST.stitch}"></span></span>`),
+  );
+  // The balance: large, heavy, tabular numerals.
+  assert.match(html, /<span class="text-balance font-extrabold tabular-nums">4,300.00<\/span>/);
+  // The passbook icon in the top right, in leaf green.
   const passbook = /passbook: "([^"]+)"/.exec(read("components", "Icon.tsx"))?.[1] ?? "";
-  assert.ok(passbook !== "" && html.includes(`d="${passbook}"`));
+  assert.ok(passbook !== "" && new RegExp(`<svg[^>]*class="[^"]*text-leaf-800[^"]*"[^>]*><path d="${passbook}"`).test(html), "the icon");
   // The title's chevron is a drawn icon, not a character the Thai fonts may lack.
   assert.ok(!plain(html).includes("⌄"));
+  // Both controls on the paper ring in ink: a white ring would not show on it.
+  const buttons = [...html.matchAll(/<button[^>]*class="([^"]*)"/g)].map((m) => m[1] ?? "");
+  assert.equal(buttons.length, 2);
+  for (const cls of buttons) {
+    assert.ok(cls.includes(HOST.paperFocus) && !cls.includes(HOST.focus), cls);
+  }
 });
 
-test("UI_68_the_decoration_is_horizontal_lines_only_no_image_no_diagonal_no_red", () => {
+test("UI_68_the_pattern_is_horizontal_waves_in_its_token_no_image_file_no_diagonal_no_red", () => {
   const css = read("index.css");
-  const rules = /\.host-rules \{([^}]*)\}/.exec(css)?.[1] ?? "";
-  assert.match(rules, /repeating-linear-gradient\(to bottom, /);
-  assert.ok(!/deg|turn|to (left|right)|to (top|bottom) (left|right)|radial|conic|url\(/.test(rules), rules);
+  const paper = /\.host-paper \{([^}]*)\}/.exec(css)?.[1] ?? "";
+  // One image, an inline SVG: no file, nothing fetched.
+  const urls = [...css.matchAll(/url\("([^"]*)"\)/g)].map((m) => m[1] ?? "");
+  assert.equal(urls.length, 1);
+  const uri = urls[0] ?? "";
+  assert.ok(paper.includes(uri) && uri.startsWith("data:image/svg+xml,"), paper);
+  const svg = decodeURIComponent(uri.slice("data:image/svg+xml,".length));
+  // Its stroke is the pattern's token (a data URI cannot read the CSS variable).
+  const token = /--color-host-pattern:\s*(#[0-9a-f]{6});/.exec(css)?.[1];
+  assert.equal(/stroke='(#[0-9a-f]{6})'/.exec(svg)?.[1], token);
+  assert.match(svg, /stroke-width='\.7'/);
+  // Three waves per 24px row, each starting and ending at the same height: horizontal.
+  const waves = [...svg.matchAll(/M0 ([0-9.]+)Q[0-9. ]+T24 ([0-9.]+)/g)];
+  assert.equal(waves.length, 3);
+  for (const [, from, to] of waves) assert.equal(from, to);
+  assert.ok(!/deg|turn|rotate|skew|polygon|radial|conic|linear-gradient/.test(paper), paper);
   for (const file of [read("screens", "Account.tsx"), read("components", "HostScreen.tsx")]) {
     assert.ok(!/<img\b|clip-path|polygon|rotate|skew|url\(/.test(file));
   }

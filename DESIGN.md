@@ -104,8 +104,9 @@ warning sign (UI-44).
    placeholder number ("xxx-x-x1234-x") and "ข้อมูลจำลองสำหรับเดโม". It was designed
    without looking at any real banking app (organisers' written answer, 3 Nov:
    bank-app-like colours are allowed, names and logos are not). The account card's
-   passbook (Session 22) is our own: a spine and horizontal rules, never diagonal
-   stripes, chevrons, arrows or a green-and-red shape (UI-68).
+   passbook page (Session 23) is our own: pale paper, a binding, faint horizontal waves,
+   never a bright green face, diagonal stripes, chevrons, arrows or a green-and-red
+   shape (UI-68).
 2. **Footer on every screen:** "Concept prototype สำหรับการแข่งขัน".
 3. **Thai text has no em dash**, anywhere (rule 10). Use a space, a colon or a
    new sentence.
@@ -159,7 +160,8 @@ Components use tokens only, never raw hex.
 | `bank-50` / `200` / `700` / `800` | `#eef3fd` / `#b3c9f2` / `#2a4fa0` / `#1f3d7d` | the bank's consolidation offer |
 | `ai-from` / `ai-to` / `ai-line` / `ai-ink` / `ai-edge` | `#f3effe` / `#e8f4fd` / `#d6ccf6` / `#4b3699` / `#8a76d6` | the assistant only (soft gradient; `ai-edge` is the panel's edge) |
 | `quiet-bg` / `quiet-line` / `quiet-ink` / `quiet-edge` | `#eef2f6` / `#d3dce6` / `#3f5166` / `#7a8a9d` | a note with nothing to act on (`quiet-edge` is the banner's edge) |
-| `host-from` / `host-to` / `host-card` / `host-rule` / `host-spine` / `host-line` / `host-bar` / `host-muted` | `#0c5d52` / `#094a43` / `#1a6b5f` / `#155f54` / `#115a4f` / `#7cc2b2` / `#073c36` / `#d4ece5` | the host app's home only (`#/account`, 7.7): one deep green-teal with a subtle vertical gradient, the passbook card, its ruled lines and its spine (both faint, under 1.5:1 against the card), edges, the bottom bar (also the selected tab's ink, the "ใหม่" badge and the note strip), secondary text. Used only through `HOST` in `accent.ts` |
+| `host-from` / `host-to` / `host-card` / `host-line` / `host-bar` / `host-muted` | `#0c5d52` / `#094a43` / `#1a6b5f` / `#7cc2b2` / `#073c36` / `#d4ece5` | the host app's home only (`#/account`, 7.7): one deep green-teal with a subtle vertical gradient, the hover fill of the shortcuts, tabs and header icons, edges, the bottom bar (also the selected tab's ink, the "ใหม่" badge and the note strip), secondary text. Used only through `HOST` in `accent.ts` |
+| `host-paper` / `host-pattern` / `host-binding` / `host-binding-edge` / `host-stitch` / `host-band-rule` / `host-print` | `#edf5ef` / `#d9e9de` / `#0a3f35` / `#2f7a66` / `#8cc9b4` / `#c5d9cc` / `#263e73` | the account card, a printed passbook page (Session 23): the paper, its wavy pattern (`.host-paper`, an inline SVG data URI, three waves per 24px row, 0.7px), the binding, its 1px edge and dashed stitch, the rules above and below the printed line, print ink. With `--shadow-passbook`, `--text-balance` (2.25rem) and `--font-print` (monospace; Thai falls back to the app's font). Used only through `HOST` |
 
 Contrast (WCAG 2.2, measured): white on `leaf-700` 6.31; `ink` on card 16.44;
 `ink-muted` on card 7.22 and on surface 6.73; `ok-ink`/`ok-bg` 7.81;
@@ -185,14 +187,16 @@ white on `bank-700`, 7.71; its tag, `bank-800` on white, 10.39.
 Card edges against the page (surface / card), at least 3:1 (1.4.11): `bank-700`
 7.19 / 7.71, `ai-edge` 3.47 / 3.72, `quiet-edge` 3.29 / 3.53, `teal-edge` 3.73 /
 3.99. The host shell (`#/account`): white on `host-from` 7.77, `host-to` 10.13,
-`host-card` 6.34, `host-rule` 7.51, `host-spine` 8.08, `host-bar` 12.29; `host-muted`
-on them 6.26 / 8.17 / 5.11 / 6.05 / 6.51 / 9.91 (the passbook's text is measured
-against every colour behind it); `host-bar` on white (the selected tab) 12.29;
-`host-line` (edges: the card, the shortcuts, the tabs, the profile, the empty page dots,
-the bar's top line) 3.78 on `host-from`, 4.93 on `host-to`, 3.08 on `host-card`, 3.65
-on `host-rule`, 3.93 on `host-spine`, 5.98 on `host-bar`; the white cards against the
-page 7.77 / 10.13. Kept faint on purpose: `host-rule` 1.18 and `host-spine` 1.27
-against `host-card`. The light lines they replace blend in: `bank-200`
+`host-card` 6.34, `host-bar` 12.29; `host-muted` on them 6.26 / 8.17 / 5.11 / 9.91;
+`host-bar` on white (the selected tab) 12.29; `host-line` (edges: the shortcuts, the
+tabs, the profile, the empty page dots, the bar's top line) 3.78 on `host-from`, 4.93
+on `host-to`, 3.08 on `host-card`, 5.98 on `host-bar`; the white cards against the
+page 7.77 / 10.13. The passbook page (Session 23), on the paper / on its pattern's
+darkest point: `ink` 14.80 / 13.04, `ink-muted` 6.50 / 5.73, `leaf-800` 7.78 / 6.86;
+`host-print` on the band (white at 75%) over the paper 10.18, over the pattern 9.87;
+the page's edge against `host-from` / `host-to` 6.99 / 9.12; the ink focus ring on
+the paper 14.80. Kept faint on purpose: `host-pattern` 1.13 and `host-band-rule` 1.33
+against `host-paper`. The light lines they replace blend in: `bank-200`
 1.56, `ai-line` 1.42, `quiet-line` 1.29, `warn-line` 1.52, `teal-100` 1.19 on surface. Test UI-35 recomputes these pairs
 from `index.css`, the edges from `EDGE` in `accent.ts`.
 
@@ -723,13 +727,24 @@ app's home at first glance, with generic patterns only.
   the bar (with the info icon, `role="status"`) and changes nothing else. The strip
   stays until the screen is left; each press renders it anew, so a screen reader
   announces every press.
-- **Account card, a passbook of our own** (UI-68): `host-card` with a `host-line` edge,
-  a darker `host-spine` strip on the left and faint horizontal ruled lines (`host-rule`,
-  1px every 28px, `.host-rules` in `index.css`). Our passbook icon top right. Text:
-  "ออมทรัพย์" with a drawn chevron, "xxx-x-x1234-x", "ยอดเงินที่ใช้ได้", the balance from
-  `GET /bank/main-account` in display type, "ข้อมูลจำลองสำหรับเดโม", and
-  "ดูรายการล่าสุด ›", which scrolls to รายการล่าสุด and focuses it (smooth unless
-  reduced motion; UI-66).
+- **Account card, a printed passbook page of our own** (Session 23, UI-68): pale
+  `host-paper` with its faint wavy pattern, radius 12px, `--shadow-passbook`; an 18px
+  `host-binding` strip on the left with a 1px `host-binding-edge` and a 2px dashed
+  `host-stitch` 8px in, 10px from top and bottom (`aria-hidden`). Padding 16px 18px
+  12px 36px. Text: "ออมทรัพย์" with a drawn chevron (an example, UI-64) and
+  "xxx-x-x1234-x" in ink; "ยอดเงินที่ใช้ได้" and "บาท" in ink-muted; the balance from
+  `GET /bank/main-account` in ink, 2.25rem, weight 800, tabular numerals; our passbook
+  icon top right in leaf-800. Both controls ring in ink (`HOST.paperFocus`): white would
+  not show on the paper.
+- **The printed line** (UI-70, UI-71): a band from the binding to the card's right edge,
+  white at 75% over the paper, `host-band-rule` above and below, `host-print` ink in
+  `--font-print`. Left: the date as "DD ม.ค. YY" (Bangkok, Buddhist year, `printDate`),
+  then a short label (`auto_save` "กันเงินเข้ากันชน", `leftover_save` "เก็บงบเข้ากันชน",
+  `withdrawal` "ย้ายจากกันชน"); right: the amount with + or − from `direction`. It is the
+  API's first movement (newest first, MA-02), with no running balance (UI-51). No
+  movement: "ยังไม่มีรายการ" in the same band. Under it, "ข้อมูลจำลองสำหรับเดโม" (small,
+  ink-muted) and "ดูรายการล่าสุด ›" (leaf-800), which scrolls to รายการล่าสุด and focuses
+  it (smooth unless reduced motion; UI-66).
 - **Under the card:** "บัญชีของฉัน ›" (an example), "ข้อมูล ณ เวลา HH:MM น." with the
   Bangkok time the data loaded (UI-67), and three decorative page dots, the first
   filled.
@@ -953,7 +968,7 @@ Node 22.12 or later (Vite 8). From `frontend/`:
 npm ci              # exact versions from package-lock.json
 npm run dev         # http://127.0.0.1:5173 (loopback only, never 0.0.0.0), calls the API on 127.0.0.1:8000
 npm run dev -- --mode mock   # the same screens on the in-browser mock, with the scenes
-npm test            # UI-01 to UI-69 (compiled with tsc, run with node --test)
+npm test            # UI-01 to UI-71 (compiled with tsc, run with node --test)
 npm run typecheck   # tsc --noEmit, strict
 npm run build       # typecheck + production build to dist/
 npm audit
