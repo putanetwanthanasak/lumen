@@ -11,7 +11,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import OperationalError
 
 from app.ledger.reconcile import InvariantViolationError
@@ -22,6 +22,7 @@ from app.models import (
     Notification,
     SavingsTransaction,
     UserBalance,
+    UserSettings,
 )
 from app.savings import service as savings
 from app.webhooks.signature import get_vendor_secrets
@@ -491,6 +492,71 @@ def test_S1_manual_commit_fails_after_transfer_retry_debits_the_bank_once(
     assert retry.status_code == 201, retry.text
     assert api.bank.get_balance(USER) == OPENING - Decimal("120.00")  # debited once
     assert savings_amounts(api) == [Decimal("120.00")]  # the retry did record the saving
+
+
+def _lose_the_first_commit(api: Api, monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Post the entry once with its commit lost, as a dropped connection would."""
+    session = api.session
+    real_commit = session.commit
+
+    def commit_fails_once() -> None:
+        monkeypatch.setattr(session, "commit", real_commit)
+        raise OperationalError("COMMIT", {}, Exception("connection lost"))
+
+    monkeypatch.setattr(session, "commit", commit_fails_once)
+    lost = post(api, entry())
+    session.rollback()  # what get_session's close does after the failed request
+    assert lost.status_code == 500
+    assert installments(api) == []
+    return session
+
+
+def test_S1_manual_retry_near_the_safety_net_records_what_the_bank_moved(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Review F2 (Session 23): 300.00 out of 900.00 leaves 600.00, so the first attempt
+    # saves. Deciding again on the retry would read 600.00, where 300.00 more would
+    # leave 300.00, under the 500.00 net: it would save 0.00 while the first 300.00 had
+    # already left the main account, with no row for it.
+    opt_in(api.session, fixed="300.00")
+    api.session.commit()
+    api.bank.set_balance(USER, Decimal("900.00"))
+    _lose_the_first_commit(api, monkeypatch)
+    assert api.bank.get_balance(USER) == Decimal("600.00")
+
+    retry = post(api, entry())
+
+    assert retry.status_code == 201, retry.text
+    assert retry.json()["saved_amount"] == "300.00"
+    assert api.bank.get_balance(USER) == Decimal("600.00")  # debited once
+    assert savings_amounts(api) == [Decimal("300.00")]
+    assert api.call("GET", "/buffer").json()["balance"] == "300.00"  # bank and buffer agree
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"saving_percent": 20}, {"auto_save_enabled": False}],
+    ids=["rule_changed", "auto_save_off"],
+)
+def test_S1_manual_retry_after_a_settings_change_records_the_first_amount(
+    api: Api, monkeypatch: pytest.MonkeyPatch, change: dict[str, Any]
+) -> None:
+    # The first attempt moved 10% of 1,200.00. Between the tries the user changes the
+    # rule (20% would ask the bank for 240.00 under the same key: refused, a 500 on
+    # every retry) or turns auto-save off (nothing would be recorded). Either way the
+    # 120.00 that moved is what the retry records: the money never goes missing.
+    opt_in(api.session)
+    api.session.commit()
+    session = _lose_the_first_commit(api, monkeypatch)
+    session.execute(update(UserSettings).where(UserSettings.user_id == USER).values(**change))
+    session.commit()
+
+    retry = post(api, entry())
+
+    assert retry.status_code == 201, retry.text
+    assert retry.json()["saved_amount"] == "120.00"
+    assert api.bank.get_balance(USER) == OPENING - Decimal("120.00")
+    assert savings_amounts(api) == [Decimal("120.00")]
 
 
 # --- MI-13: platform_name, the app the user pays it in (Session 17) -----------------------

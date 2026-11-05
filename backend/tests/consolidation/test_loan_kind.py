@@ -82,6 +82,7 @@ def test_CO_01_auto_save_on_a_loan_records_nothing_and_moves_nothing(db_session:
         item_price=loan.principal,
         installment_id=loan.id,
         source=None,
+        transfer_key=savings.manual_transfer_key(USER, "loan-1"),
         bank=bank,
     )
 

@@ -109,25 +109,39 @@ def auto_save(
     item_price: Decimal,
     installment_id: uuid.UUID,
     source: tuple[str, str] | None,
+    transfer_key: str,
     bank: BankAccountProvider,
 ) -> Decimal:
     """Record the auto-save for a new installment and return its amount (0.00 if none).
 
     `source` is the (vendor, event_id) of the webhook event that created it, or None
-    for a manual entry. The caller moves the money with bank.transfer_to_savings only
-    after the transaction passes reconcile. The saving belongs to the installment's
-    user (L51), and its amount follows that user's own rule (L63) on either path.
-    """
-    rule = active_rule(session, user_id, kind)
-    if rule is None:
-        return ZERO
+    for a manual entry. `transfer_key` is the bank key the caller moves the money
+    under, with bank.transfer_to_savings, only after the transaction passes reconcile.
+    The saving belongs to the installment's user (L51), and its amount follows that
+    user's own rule (L63) on either path.
 
+    A retry after a lost commit: the bank already moved this saving under the same key
+    (the transfer runs before COMMIT, and the rows rolled back). Record what moved, as
+    payday does with its leftover. Deciding again would read a balance that already
+    reflects it, so the safety net could skip it, and a changed rule could ask the bank
+    for another amount under the same key; either way the money would leave the main
+    account without a row. It is recorded even if auto-save was turned off in between:
+    the money has already moved (Session 23 review F2).
+    """
     # R3: hold this user's balance row until commit, before reading the bank. A second
-    # purchase for the same user waits here and then reads the bank after the first
+    # purchase for the same user waits there and then reads the bank after the first
     # one's transfer, so two savings cannot jointly pass the safety net. The version
     # check in adjust_balance stays as a second layer.
-    lock_balance(session, user_id)
-    amount = _saving(kind, item_price, bank.get_balance(user_id), rule)
+    moved = bank.applied_to_savings(user_id, transfer_key)
+    if moved is None:
+        rule = active_rule(session, user_id, kind)
+        if rule is None:
+            return ZERO
+        lock_balance(session, user_id)
+        amount = _saving(kind, item_price, bank.get_balance(user_id), rule)
+    else:
+        lock_balance(session, user_id)
+        amount = moved
     if amount == ZERO:
         return ZERO
 
