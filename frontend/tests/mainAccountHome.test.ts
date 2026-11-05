@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { BufferOut, MainAccountOut, MonthsOut } from "../src/api-types.ts";
+import type { BufferOut, MainAccountOut, MonthsOut, ShortfallsOut } from "../src/api-types.ts";
 import { answerFromMock } from "../src/api.ts";
 import { HOST } from "../src/accent.ts";
 import { ACCOUNT } from "../src/copy.ts";
@@ -41,6 +41,7 @@ function data(loadedAt = LOADED): AccountData {
     account: call("GET", "/bank/main-account").body as MainAccountOut,
     buffer: call("GET", "/buffer").body as BufferOut,
     month: (call("GET", "/debts/months?count=1").body as MonthsOut).months[0] ?? null,
+    shortfalls: call("GET", "/buffer/shortfalls").body as ShortfallsOut,
     loadedAt,
   };
 }

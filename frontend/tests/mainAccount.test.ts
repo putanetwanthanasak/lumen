@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { beforeEach, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { BufferOut, MainAccountOut, MonthRow, MonthsOut, Movement } from "../src/api-types.ts";
+import type { BufferOut, MainAccountOut, MonthRow, MonthsOut, Movement, ShortfallsOut } from "../src/api-types.ts";
 import { ACCOUNT, BUFFER, BUFFER_STATE, HOME, MONTHS_VIEW } from "../src/copy.ts";
 import { PERSONA_SETTINGS } from "../src/mock/persona.ts";
 import { handle, resetMock } from "../src/mock/server.ts";
@@ -55,6 +55,7 @@ function data() {
     account: call("GET", "/bank/main-account").body as MainAccountOut,
     buffer: call("GET", "/buffer").body as BufferOut,
     month: (call("GET", "/debts/months?count=1").body as MonthsOut).months[0] ?? null,
+    shortfalls: call("GET", "/buffer/shortfalls").body as ShortfallsOut,
     loadedAt: new Date("2026-11-04T07:05:00Z"), // 14:05 in Bangkok
   };
 }
@@ -138,7 +139,7 @@ test("UI_58_the_card_shows_this_months_total_its_status_and_the_buffer_and_opens
     [{ over_budget: true, over_one_third: false }, "alert", MONTHS_VIEW.over, "over"],
     [{ over_budget: true, over_one_third: true }, "stop", MONTHS_VIEW.risk, "risk"],
   ] as const) {
-    const html = renderToStaticMarkup(createElement(KidNeeCard, { buffer: BUFFER_OUT, month: row(flags) }));
+    const html = renderToStaticMarkup(createElement(KidNeeCard, { buffer: BUFFER_OUT, month: row(flags), shortfalls: null }));
     const text = plain(html);
     assert.match(html, /^<a href="#\/home"/);
     assert.ok(text.includes("ภาระผ่อนเดือนนี้ 5,000.00 บาท"), text);
@@ -162,7 +163,7 @@ test("UI_58_the_mock_persona_in_budget_and_this_month_over_one_third", () => {
 });
 
 test("UI_58_before_kidnee_is_set_up_the_card_invites_to_start", () => {
-  const text = plain(renderToStaticMarkup(createElement(KidNeeCard, { buffer: BUFFER_OUT, month: null })));
+  const text = plain(renderToStaticMarkup(createElement(KidNeeCard, { buffer: BUFFER_OUT, month: null, shortfalls: null })));
   assert.ok(text.includes(ACCOUNT.setUp));
   assert.ok(!text.includes("ภาระผ่อนเดือนนี้"));
 });
