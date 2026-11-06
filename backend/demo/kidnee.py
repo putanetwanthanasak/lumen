@@ -179,7 +179,11 @@ def seed(
 ) -> dict[str, list[str]]:
     """Each persona's settings and installments, one commit per write, then the alert
     delivered, as POST /installments does it. Returns what happened per persona, for
-    the console and the tests."""
+    the console and the tests.
+
+    A mock bank opens each persona where serve would (main_balances): its opening,
+    less what its rows already saved. So the 500.00 safety net (L63) decides each
+    saving from the balance บัญชีหลัก will show (Session 24 review F1)."""
     now = Month.of(day)
     report: dict[str, list[str]] = {}
     for user, persona in PERSONAS.items():
@@ -189,6 +193,8 @@ def seed(
         created = user_settings.create(session, user, settings) is not None
         session.commit()
         lines.append("settings created" if created else "settings kept")
+        if isinstance(bank, MockBankAccountProvider):
+            bank.set_balance(user, main_balances(session)[user])
         for item in persona.items:
             result = record(session, user_id=user, entry=entry(user, item, now), bank=bank)
             session.commit()
@@ -231,7 +237,9 @@ def main_balances(session: Session) -> dict[str, Decimal]:
 
     The seed runs in its own process, and the mock bank lives in memory, so without
     this the served bank opens every persona at 10,000.00 while บัญชีหลัก lists their
-    savings under it (review F2). Decimal only; the SUM is over Numeric(12,2)."""
+    savings under it (review F2). Every persona is in the answer, at its opening when
+    it has no rows yet (a seed stopped before its first saving; Session 24 review F1).
+    Decimal only; the SUM is over Numeric(12,2)."""
     signed = case(
         (SavingsTransaction.type == SavingsType.WITHDRAWAL, SavingsTransaction.amount),
         else_=-SavingsTransaction.amount,
@@ -239,7 +247,9 @@ def main_balances(session: Session) -> dict[str, Decimal]:
     rows = session.execute(
         select(SavingsTransaction.user_id, func.sum(signed)).group_by(SavingsTransaction.user_id)
     ).all()
-    return {user: opening_balance(user) + net for user, net in rows}
+    net: dict[str, Decimal] = dict(rows)  # user_id -> the SUM above
+    users = {*PERSONAS, *net}
+    return {user: opening_balance(user) + net.get(user, Decimal("0.00")) for user in users}
 
 
 def open_bank(session: Session, bank: MockBankAccountProvider) -> None:

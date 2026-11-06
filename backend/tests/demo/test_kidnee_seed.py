@@ -33,6 +33,7 @@ from demo.kidnee import (
     KIDNEE_DB_NAME,
     PERSONAS,
     KidneeConfig,
+    Persona,
     ai_check,
     build,
     main_balances,
@@ -69,9 +70,15 @@ def kidnee(migration_engine: Any, test_db_url: str, test_migration_db_url: str) 
 
 
 @pytest.fixture(scope="module")
-def first_seed(kidnee: Engine) -> dict[str, list[str]]:
+def seed_bank() -> MockBankAccountProvider:
+    """The first seed's bank, as the seed process holds it when it ends."""
+    return MockBankAccountProvider()
+
+
+@pytest.fixture(scope="module")
+def first_seed(kidnee: Engine, seed_bank: MockBankAccountProvider) -> dict[str, list[str]]:
     with Session(kidnee) as session:
-        return seed(session, day=DAY, bank=MockBankAccountProvider(), push=MockPushProvider())
+        return seed(session, day=DAY, bank=seed_bank, push=MockPushProvider())
 
 
 def plan(kidnee: Engine, user: str) -> Any:
@@ -225,6 +232,33 @@ def test_KD_04_the_served_main_account_opens_at_what_the_seed_left(
         assert Decimal(body["balance"]) == Decimal(openings[user]) - listed
     # The one bank every path uses (a webhook's auto-save too) holds the opened balance.
     assert get_bank_provider().get_balance("demo-over") == Decimal("5000.00")
+
+
+def test_KD_04_the_seed_saves_from_the_balance_serve_opens_at(
+    kidnee: Engine, first_seed: Any, seed_bank: MockBankAccountProvider
+) -> None:
+    # The seed's bank opened each persona at its opening, so the 500.00 safety net (L63)
+    # decided every saving from the balance บัญชีหลัก shows, and the seed ends where
+    # serve opens (Session 24 review F1). Without it, demo-over ended at 4,300.00.
+    with Session(kidnee) as session:
+        served = main_balances(session)
+    ended = {user: seed_bank.get_balance(user) for user in PERSONAS}
+    assert ended == {user: served[user] for user in PERSONAS}
+    assert ended == {
+        "demo-mon": Decimal("7300.00"),
+        "demo-over": Decimal("5000.00"),
+        "demo-consolidate": Decimal("8500.00"),
+    }
+
+
+def test_KD_04_a_persona_without_rows_yet_opens_at_its_opening(
+    kidnee: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A seed stopped after the settings and before the first saving: serve still opens
+    # that persona at its own opening, never the mock bank's default (review F1).
+    monkeypatch.setitem(PERSONAS, "kd-new", Persona([], opening=Decimal("1234.00")))
+    with Session(kidnee) as session:
+        assert main_balances(session)["kd-new"] == Decimal("1234.00")
 
 
 def test_KD_04_a_move_in_the_rows_is_not_credited_again_on_its_retry(kidnee: Engine) -> None:
