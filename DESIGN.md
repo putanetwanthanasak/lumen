@@ -125,7 +125,10 @@ warning sign (UI-44).
    the client formats them ("1,500.00 บาท") by string operations and never adds,
    subtracts or rounds. Inputs are checked and sent as typed strings, never
    rounded (L49). Bar heights are computed exactly with BigInt satang and are
-   drawing sizes only. Guarded by tests UI-01 to UI-06.
+   drawing sizes only. One product is made on the client: the form's price from
+   the monthly amount, monthly x months, exact in BigInt satang and never rounded
+   (`money.ts` `timesMonths`, 7.3, UI-72); the other way divides and rounds, so it
+   stays the API's suggestion. Guarded by tests UI-01 to UI-06 and UI-51.
 7. **Advice only:** no screen blocks recording or moving buffer money.
 8. **No CDN, no Google Fonts, no external images.** System Thai fonts only.
 
@@ -598,11 +601,29 @@ The card types are in 5.9; `homeView` in `homeLayout.ts` picks each card's state
    (the link goes, the keyboard moves to the checked kind): ผ่อนสินค้า on its own row,
    กดเงินสด and สินเชื่อเงินสด side by side. A cash kind shows
    "รายการเงินสดจะไม่กันเงินเข้ากันชน", and the kinds stay shown while one is chosen.
-2. **Monthly amount:** once price and months are valid, it is prefilled with the
-   0% suggestion from `src/api.ts` (price / months rounded UP to 0.01; the screen
-   computes nothing). Help: "คิดแบบผ่อน 0% ถ้าแอปแจ้งยอดต่อเดือนไม่ตรงนี้
-   แก้ให้ตรงกับแอปได้". Once the user types in it, a suggestion never replaces it
-   (UI-18).
+2. **Price and monthly amount, both ways (UI-72, Session 25):** each of the two is
+   typed (the user entered it) or calculated.
+   - Only the price typed: the monthly amount is the 0% suggestion from `src/api.ts`
+     (price / months rounded UP to 0.01, the backend's own rule; the screen never
+     divides). It is empty from the moment the price or months change until the
+     answer for them arrives, so an old answer never stands for a new price.
+   - Only the monthly amount typed: the price is monthly x months, exact
+     (`money.ts` `timesMonths`), or empty while it cannot be calculated.
+   - Either way, changing the months (typed or a chip) recalculates the calculated
+     field and keeps the typed one.
+   - Both typed: neither is ever recalculated, the months included. A plan with the
+     app's interest is sent as typed: 12,000 at 2,100 x 6 records price 12,000.00 and
+     fee 600.00, and the percent saving is on the 12,000.
+   - Clearing a field (empty) makes it calculated again, from the other one; with the
+     other not typed either, both are empty.
+   - One quiet line under a calculated field, in the help style. Under the monthly
+     amount: "คำนวณจากราคา ÷ จำนวนเดือน (ผ่อน 0%) ถ้าแอปผ่อนแจ้งยอดต่างจากนี้
+     แก้ให้ตรงกับแอปได้". Under the price: "คำนวณจากค่างวด × จำนวนเดือน". Both typed:
+     no line under either. Before the monthly amount is typed or calculated, it keeps
+     its help "คิดแบบผ่อน 0% ถ้าแอปแจ้งยอดต่อเดือนไม่ตรงนี้ แก้ให้ตรงกับแอปได้".
+   - The entry sends both as strings, as before; the saving and every month total
+     use what the form ends with. A calculated price that is too large shows its
+     error once the user leaves the monthly amount.
 3. **First due month:** no default. Two required choices of equal size, the word on
    one line and the month on a smaller second line: "เดือนนี้" / "ต.ค. 2569" and
    "เดือนหน้า" / "พ.ย. 2569". Help: "ดูได้ในหน้าสรุปก่อนกดผ่อนของแอปผ่อน".

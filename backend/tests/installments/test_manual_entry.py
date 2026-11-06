@@ -107,6 +107,24 @@ def test_MI_01_fee_total_is_zero_when_schedule_is_below_price(api: Api) -> None:
     assert row.fee_total == Decimal("0.00")
 
 
+def test_MI_01_a_plan_with_interest_records_the_price_and_the_fee_as_given(api: Api) -> None:
+    """The เช็กก่อนผ่อน form with both fields typed (UI-72, Session 25): 12,000 and the
+    app's 2,100 x 6, sent as typed. The Ledger keeps the price and the fee on top, and
+    the percent saving is on the price, not on the 12,600.00 paid in total."""
+    opt_in(api.session)  # 10% of the item price (L63)
+    response = post(api, entry(item_price="12000", months=6, monthly_amount="2100"))
+    assert response.status_code == 201
+    [row] = installments(api)
+    assert (row.principal, row.months, row.monthly_amount, row.fee_total) == (
+        Decimal("12000.00"),
+        6,
+        Decimal("2100.00"),
+        Decimal("600.00"),  # 6 x 2,100.00 - 12,000.00
+    )
+    assert response.json()["saved_amount"] == "1200.00"
+    assert savings_amounts(api) == [Decimal("1200.00")]
+
+
 def test_MI_01_item_name_is_optional(api: Api) -> None:
     configured(api)
     data = entry()

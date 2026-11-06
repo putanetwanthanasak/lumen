@@ -317,6 +317,12 @@ test("UI_50_AI_27_the_assistant_summary_is_the_apis_answer_as_it_comes", async (
 // ---- UI-51 (critical): no money arithmetic in screen code ---------------------------------
 
 const ARITHMETIC = /toSatang\([^)]*\)\s*[-+*/%]|[-+*/%]\s*toSatang\(|\b[0-9]+n\s*[-+*/%]|[-+*/%]\s*[0-9]+n\b/;
+// money.ts's two makers of an amount (Session 25, review F2): fromSatang turns any BigInt
+// back into money, so no screen code calls it; timesMonths only in the form's two-way
+// link (UI-72), never anywhere else.
+const MAKES_MONEY = /\bfromSatang\(|\btimesMonths\(/;
+const makesMoney = (file: string, line: string) =>
+  MAKES_MONEY.test(line) && !(file === join("src", "thinkFirstForm.ts") && !/\bfromSatang\(/.test(line));
 
 function screenFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -333,7 +339,9 @@ test("UI_51_screen_code_compares_amounts_and_never_adds_them_up", () => {
   const hits = files.flatMap((file) =>
     readFileSync(file, "utf8")
       .split("\n")
-      .flatMap((line, i) => (ARITHMETIC.test(line) || /mock\/satang/.test(line) ? [`${file}:${i + 1}: ${line.trim()}`] : [])),
+      .flatMap((line, i) =>
+        ARITHMETIC.test(line) || /mock\/satang/.test(line) || makesMoney(file, line) ? [`${file}:${i + 1}: ${line.trim()}`] : [],
+      ),
   );
   assert.deepEqual(hits, []);
 });
@@ -348,6 +356,15 @@ test("UI_51_the_scanner_catches_arithmetic_on_amounts", () => {
   for (const line of caught) assert.ok(ARITHMETIC.test(line), line);
   const allowed = ["toSatang(amount) > 0n", "toSatang(a) <= toSatang(b) ? a : b", "toSatang(x) === 0n", "i + 1"];
   for (const line of allowed) assert.ok(!ARITHMETIC.test(line), line);
+  // BigInt arithmetic turned back into money, or a product outside the form's link (review F2).
+  const screen = join("src", "screens", "Months.tsx");
+  for (const line of ["formatBaht(fromSatang(due - got))", "formatBaht(timesMonths(line.monthly_amount, line.months))"]) {
+    assert.ok(makesMoney(screen, line), line);
+  }
+  const link = join("src", "thinkFirstForm.ts");
+  assert.ok(!makesMoney(link, "return ok ? timesMonths(monthly.value, count) : null;"), "the link's own product");
+  assert.ok(makesMoney(link, "return fromSatang(total);"), "fromSatang even in the link");
+  assert.ok(!makesMoney(screen, "// the price is monthly x months (money.ts timesMonths)"), "a mention is not a call");
 });
 
 // ---- UI-47: one move at a time (Bugs found, Session 17 PR B) ------------------------------
