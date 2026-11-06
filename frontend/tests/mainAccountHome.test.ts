@@ -215,15 +215,15 @@ test("UI_67_the_line_shows_when_the_data_loaded_never_a_fixed_time", async () =>
 // ---- UI-68: the passbook card ------------------------------------------------------------
 
 test("UI_68_the_passbook_page_shows_its_words_in_order_with_the_apis_balance", () => {
-  const html = renderToStaticMarkup(createElement(Passbook, { balance: "4300.00", latest: null }));
-  assert.equal(plain(html), "ออมทรัพย์xxx-x-x1234-xยอดเงินที่ใช้ได้4,300.00บาทยังไม่มีรายการข้อมูลจำลองสำหรับเดโมดูรายการล่าสุด");
+  const html = renderToStaticMarkup(createElement(Passbook, { balance: "5000.00", latest: null }));
+  assert.equal(plain(html), "ออมทรัพย์xxx-x-x1234-xยอดเงินที่ใช้ได้5,000.00บาทยังไม่มีรายการข้อมูลจำลองสำหรับเดโมดูรายการล่าสุด");
   // The paper, then the binding with its stitch, hidden from screen readers.
   assert.match(
     html,
     new RegExp(`^<section aria-label="ออมทรัพย์" class="[^"]*${HOST.paper}"><span aria-hidden="true" class="[^"]*${HOST.binding}"><span class="[^"]*${HOST.stitch}"></span></span>`),
   );
   // The balance: large, heavy, tabular numerals.
-  assert.match(html, /<span class="text-balance font-extrabold tabular-nums">4,300.00<\/span>/);
+  assert.match(html, /<span class="text-balance font-extrabold tabular-nums">5,000.00<\/span>/);
   // The passbook icon in the top right, in leaf green.
   const passbook = /passbook: "([^"]+)"/.exec(read("components", "Icon.tsx"))?.[1] ?? "";
   assert.ok(passbook !== "" && new RegExp(`<svg[^>]*class="[^"]*text-leaf-800[^"]*"[^>]*><path d="${passbook}"`).test(html), "the icon");

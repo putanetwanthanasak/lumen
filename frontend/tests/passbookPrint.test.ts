@@ -50,7 +50,7 @@ beforeEach(() => resetMock(new Date(2026, 9, 27), PERSONA_SETTINGS));
 test("UI_70_the_line_is_the_apis_first_movement", () => {
   const newest = movement({ amount: "1500.00", at: "2026-11-04T09:00:00+07:00" });
   const older = [movement({ kind: "auto_save", direction: "out", amount: "300.00", at: "2026-11-03T09:00:00+07:00" }), movement({ kind: "auto_save", direction: "out", amount: "200.00", at: "2026-11-02T09:00:00+07:00" })];
-  const account: MainAccountOut = { balance: "5800.00", movements: [newest, ...older], movements_truncated: false };
+  const account: MainAccountOut = { balance: "6500.00", movements: [newest, ...older], movements_truncated: false };
   const html = renderToStaticMarkup(createElement(Passbook, { balance: account.balance, latest: account.movements[0] ?? null }));
   assert.ok(plain(html).includes("04 พ.ย. 69 ย้ายจากกันชน+1,500.00"), plain(html));
   // The screen hands the card the first movement of the answer, as the API ordered it.
@@ -66,7 +66,7 @@ test("UI_70_the_line_is_the_apis_first_movement", () => {
     ),
   );
   assert.ok(screen.includes("ยังไม่มีรายการ") === false, "the band is not empty");
-  assert.ok(screen.includes("4,300.00") === false);
+  assert.ok(screen.includes("6,500.00") && !screen.includes("5,000.00"), screen);
   const printed = /บาท(.*?)ข้อมูลจำลองสำหรับเดโม/.exec(screen)?.[1];
   assert.equal(printed, "04 พ.ย. 69 ย้ายจากกันชน+1,500.00");
 });

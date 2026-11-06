@@ -16,7 +16,9 @@ auto-save with consent, and leftover saving on. The buffer is what their real
 auto-saves gave:
 - demo-mon (ม่อน): in budget, 3,500.00 a month; saves 10%, a modest buffer (2,700.00);
 - demo-over: over budget this month and next (6,500.00), then back within it; saves
-  10%, so the buffer (5,700.00) clearly covers the 3,000.00 over budget;
+  10%, so the buffer (5,700.00) clearly covers the 3,000.00 over budget. Its main
+  account holds 5,000.00, and 6,500.00 (this month's total) once ใช้กันชน moves this
+  month's 1,500.00 back;
 - demo-consolidate: 9 months over budget from this month, consolidation is ELIGIBLE;
   saves 2%, so the small buffer (1,500.00) covers little of the 10,500.00 over budget.
 
@@ -102,13 +104,17 @@ MOTORBIKE = Item("motorbike", "มอเตอร์ไซค์", "48000.00", 1
 class Persona:
     items: list[Item]
     saving_percent: int = 10
+    # The main account before the seed's savings; serve opens it at this, less the rows.
+    opening: Decimal = DEFAULT_OPENING_BALANCE
 
 
 PERSONAS: dict[str, Persona] = {
     "demo-mon": Persona([earbuds(-3), FRIDGE]),
     # Earbuds end next month, so only this month and next are over budget: 2 months,
-    # not the 3 in a row that L70 (a) needs.
-    "demo-over": Persona([earbuds(-4), FRIDGE, LAPTOP]),
+    # not the 3 in a row that L70 (a) needs. 10,700.00 less 5,700.00 of savings leaves
+    # 5,000.00 on บัญชีหลัก; moving this month's 1,500.00 back makes it 6,500.00, exactly
+    # this month's total, so the demo ends able to pay the month.
+    "demo-over": Persona([earbuds(-4), FRIDGE, LAPTOP], opening=Decimal("10700.00")),
     # 2%: 240.00 + 300.00 + 960.00, a buffer far below the months over budget.
     "demo-consolidate": Persona([earbuds(-3), FRIDGE, MOTORBIKE], saving_percent=2),
 }
@@ -213,9 +219,15 @@ def personas_present(engine: Engine) -> list[str]:
         )
 
 
+def opening_balance(user: str) -> Decimal:
+    persona = PERSONAS.get(user)
+    return DEFAULT_OPENING_BALANCE if persona is None else persona.opening
+
+
 def main_balances(session: Session) -> dict[str, Decimal]:
-    """Each user's main account as its savings rows left it: the opening balance, less
-    every auto-save and leftover saving, plus every move back to main (Session 21).
+    """Each user's main account as its savings rows left it: the opening balance (the
+    persona's, else the mock bank's default), less every auto-save and leftover saving,
+    plus every move back to main (Session 21).
 
     The seed runs in its own process, and the mock bank lives in memory, so without
     this the served bank opens every persona at 10,000.00 while บัญชีหลัก lists their
@@ -227,7 +239,7 @@ def main_balances(session: Session) -> dict[str, Decimal]:
     rows = session.execute(
         select(SavingsTransaction.user_id, func.sum(signed)).group_by(SavingsTransaction.user_id)
     ).all()
-    return {user: DEFAULT_OPENING_BALANCE + net for user, net in rows}
+    return {user: opening_balance(user) + net for user, net in rows}
 
 
 def open_bank(session: Session, bank: MockBankAccountProvider) -> None:
