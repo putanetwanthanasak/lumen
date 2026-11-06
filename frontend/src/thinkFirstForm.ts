@@ -11,12 +11,13 @@
  * The first due month has no default: the user picks this month or next month, as
  * the app's summary page says (UI-18).
  *
- * The price and the monthly amount are linked both ways (UI-72): the one the user
- * typed in last is the input, kept as typed; the other is calculated from it and
- * the months. From the price, the monthly amount is the API's 0% suggestion (price /
- * months rounded up, the backend's own rule); from the monthly amount, the price is
- * monthly x months, exact (money.ts timesMonths). Changing the months recalculates
- * the calculated one. Either way the entry sends both as strings, as before.
+ * The price and the monthly amount are linked both ways (UI-72, Session 25). Each is
+ * typed (the user entered it) or calculated. Only the price typed: the monthly amount
+ * is the API's 0% suggestion (price / months rounded up, the backend's own rule).
+ * Only the monthly amount typed: the price is monthly x months, exact (money.ts
+ * timesMonths). Both typed: neither is ever recalculated, the months included, so a
+ * plan with the app's interest (12,000 at 2,100 x 6) is sent as typed. Clearing a
+ * field makes it calculated again. The entry sends both as strings, as before.
  *
  * The four fields the preview needs come first; the item name and the app are
  * optional (UI-37). The check stays disabled until all four are valid, and a field
@@ -34,11 +35,12 @@ export type Form = {
   price: string;
   months: string;
   monthly: string;
-  /** Which of the price and the monthly amount the user typed in last: the other is calculated (UI-72). */
-  source: Source;
+  /** The user entered the price (else it is calculated, or empty) (UI-72). */
+  priceTyped: boolean;
+  /** The user entered the monthly amount (else it is calculated, or empty) (UI-72). */
+  monthlyTyped: boolean;
   firstDue: string; // "" until the user picks a month
 };
-export type Source = "price" | "installment";
 /** The three fields the calculation links (UI-72). */
 export type LinkedKey = "price" | "months" | "monthly";
 export type FieldKey = "price" | "months" | "monthly" | "firstDue" | "platform";
@@ -50,7 +52,17 @@ const MONTHS = /^([1-9][0-9]{0,2})$/;
 export const PLATFORM_MAX = 60;
 
 export function emptyForm(): Form {
-  return { kind: "purchase", name: "", platform: "", price: "", months: "", monthly: "", source: "price", firstDue: "" };
+  return {
+    kind: "purchase",
+    name: "",
+    platform: "",
+    price: "",
+    months: "",
+    monthly: "",
+    priceTyped: false,
+    monthlyTyped: false,
+    firstDue: "",
+  };
 }
 
 /** The two first-due choices: this month and next month ("YYYY-MM"). */
@@ -83,7 +95,7 @@ export function shownErrors(form: Form, touched: ReadonlySet<FieldKey> | "all"):
   // A price calculated from the monthly amount is the user's once they leave that field:
   // its one possible error (too large) shows under it then (UI-72).
   const seen = new Set(touched);
-  if (form.source === "installment" && seen.has("monthly")) seen.add("price");
+  if (form.monthlyTyped && !form.priceTyped && seen.has("monthly")) seen.add("price");
   const shown: Errors = {};
   for (const key of seen) {
     const error = built.errors[key];
@@ -146,9 +158,9 @@ export function rejectedErrors(fields: readonly string[]): Partial<Record<Reject
 
 type Ask = { price: Money; months: number };
 
-/** What to ask the API for, or null when the monthly field is the user's own or the inputs are not ready. */
+/** What to ask the API for, or null when the user typed the monthly amount or the inputs are not ready. */
 export function suggestionRequest(form: Form): Ask | null {
-  if (form.source !== "price") return null;
+  if (form.monthlyTyped) return null;
   const price = parseMoneyInput(form.price);
   const count = monthCount(form);
   if (!price.ok || count < 1 || count > 600) return null;
@@ -157,7 +169,7 @@ export function suggestionRequest(form: Form): Ask | null {
 
 const sameAsk = (a: Ask | null, b: Ask | null) => a !== null && b !== null && a.price === b.price && a.months === b.months;
 
-/** Prefill the suggestion only if it still matches the form and the price is still the input. */
+/** Prefill the suggestion only if it still matches the form and the monthly amount is still not typed. */
 export function applySuggestion(form: Form, asked: Ask, monthly: Money): Form {
   return sameAsk(suggestionRequest(form), asked) ? { ...form, monthly } : form;
 }
@@ -171,30 +183,35 @@ function priceFromMonthly(form: Form): Money | null {
 
 /**
  * The user typed in the price, the months or the monthly amount (a month chip too).
- * The price and the monthly amount: that field becomes the input. Then the other one
- * is recalculated:
- * - the price is the input: the monthly amount is emptied whenever the suggestion it
- *   held no longer answers the price and months, and the API's answer fills it again
+ * Typing something in the price or the monthly amount marks it typed; clearing it
+ * (empty) marks it calculated again. Then:
+ * - both typed: neither is recalculated, whatever changed (the months included);
+ * - only the monthly amount typed: the price is monthly x months now, or empty while
+ *   it cannot be calculated;
+ * - only the price typed: the monthly amount is emptied whenever the suggestion it held
+ *   no longer answers the price and months, and the API's answer fills it again
  *   (applySuggestion); an old answer never stands for a new price;
- * - the monthly amount is the input: the price is monthly x months now, or empty
- *   while it cannot be calculated.
+ * - neither typed: nothing to calculate from, so both are empty.
  */
 export function typeLinked(form: Form, key: LinkedKey, value: string): Form {
-  const source: Source = key === "price" ? "price" : key === "monthly" ? "installment" : form.source;
-  const next: Form = { ...form, [key]: value, source };
-  if (source === "installment") return { ...next, price: priceFromMonthly(next) ?? "" };
-  const stillAnswers = form.source === "price" && sameAsk(suggestionRequest(form), suggestionRequest(next));
+  const typed = value.trim() !== "";
+  const next: Form = {
+    ...form,
+    [key]: value,
+    ...(key === "price" ? { priceTyped: typed } : key === "monthly" ? { monthlyTyped: typed } : {}),
+  };
+  if (next.priceTyped && next.monthlyTyped) return next;
+  if (next.monthlyTyped) return { ...next, price: priceFromMonthly(next) ?? "" };
+  if (!next.priceTyped) return { ...next, price: "", monthly: "" };
+  const stillAnswers = !form.monthlyTyped && sameAsk(suggestionRequest(form), suggestionRequest(next));
   return stillAnswers ? next : { ...next, monthly: "" };
 }
 
-/** The field the form calculates: the one the user did not type in last. */
-export function calculatedField(form: Form): "price" | "monthly" {
-  return form.source === "installment" ? "price" : "monthly";
-}
-
-/** The fields a keystroke in a linked field changes: that field and the one recalculated. */
+/** The fields a keystroke in a linked field changes: that field, and any it recalculated. */
 export function changedBy(form: Form, key: LinkedKey, value: string): LinkedKey[] {
-  return [key, calculatedField(typeLinked(form, key, value))];
+  const next = typeLinked(form, key, value);
+  const recalculated = (["price", "monthly"] as const).filter((field) => field !== key && next[field] !== form[field]);
+  return [key, ...recalculated];
 }
 
 /**
@@ -211,11 +228,13 @@ export function withoutRejected(
 
 /**
  * The one line under the calculated field, while it holds a calculated value (UI-72):
- * "คำนวณจากราคา ÷ จำนวนเดือน (ผ่อน 0%)" or "คำนวณจากค่างวด × จำนวนเดือน". Null before
- * there is one: the monthly amount then keeps its usual help.
+ * THINK.fromPrice under the monthly amount, THINK.fromMonthly under the price. Null
+ * when both are typed (nothing is calculated), and before there is a value: the
+ * monthly amount then keeps its usual help while it is not typed.
  */
 export function calculatedNote(form: Form): { field: "price" | "monthly"; text: string } | null {
-  if (form.source === "installment") return form.price === "" ? null : { field: "price", text: THINK.fromMonthly };
+  if (form.priceTyped && form.monthlyTyped) return null;
+  if (form.monthlyTyped) return form.price === "" ? null : { field: "price", text: THINK.fromMonthly };
   return form.monthly === "" || suggestionRequest(form) === null ? null : { field: "monthly", text: THINK.fromPrice };
 }
 

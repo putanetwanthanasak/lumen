@@ -144,16 +144,16 @@ test("UI_18_suggestion_is_asked_only_when_price_and_months_are_ready", () => {
   assert.equal(suggestionRequest({ ...emptyForm(), price: "12000" }), null);
   assert.deepEqual(suggestionRequest({ ...emptyForm(), price: "1,000", months: "3" }), { price: "1000", months: 3 });
   // The monthly amount is the user's input (UI-72): nothing to ask.
-  assert.equal(suggestionRequest({ ...emptyForm(), price: "1000", months: "3", source: "installment" }), null);
+  assert.equal(suggestionRequest({ ...emptyForm(), price: "1000", months: "3", monthlyTyped: true }), null);
 });
 
-// Review F4: a typed monthly amount is safe from a suggestion while it is the input;
-// typing the price makes the price the input again (UI-72).
+// Review F4: a typed monthly amount is never replaced by a suggestion; only clearing it
+// makes it calculated again (UI-72).
 test("UI_18_a_suggestion_never_replaces_a_typed_monthly_amount", () => {
   const typed = { ...emptyForm(), price: "1000", months: "3" };
   const asked = { price: "1000", months: 3 };
   assert.equal(applySuggestion(typed, asked, "333.34").monthly, "333.34");
-  const edited: Form = { ...typed, monthly: "350", source: "installment" };
+  const edited: Form = { ...typed, monthly: "350", monthlyTyped: true };
   assert.equal(applySuggestion(edited, asked, "333.34").monthly, "350");
   // An answer for inputs that changed since is dropped.
   assert.equal(applySuggestion({ ...typed, months: "4" }, asked, "333.34").monthly, "");

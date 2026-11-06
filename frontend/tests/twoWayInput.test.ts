@@ -1,13 +1,18 @@
 /**
  * UI-72 (Session 25): the เช็กก่อนผ่อน form's two-way price and monthly input.
- * Of the price and the monthly amount, the one typed in last is the input, kept as
- * typed; the other is calculated from it and the months:
- * - from the price: the API's 0% suggestion (price / months rounded UP to the
- *   satang, the backend's suggested_monthly, SM-01); the client never divides money;
- * - from the monthly amount: monthly x months, exact in BigInt satang
- *   (money.ts timesMonths), never rounded.
- * Critical (money): the price the form ends with is the one the saving and every
- * month total use. The screen's markup is its own, rendered with react-dom/server.
+ * Each of the price and the monthly amount is typed (the user entered it) or
+ * calculated:
+ * - only the price typed: the monthly amount is the API's 0% suggestion (price /
+ *   months rounded UP to the satang, the backend's suggested_monthly, SM-01); the
+ *   client never divides money;
+ * - only the monthly amount typed: the price is monthly x months, exact in BigInt
+ *   satang (money.ts timesMonths), never rounded;
+ * - both typed: neither is ever recalculated, the months included, so a plan with the
+ *   app's interest (12,000 at 2,100 x 6) is sent as typed (review F1's decision);
+ * - clearing a field makes it calculated again, from the other one.
+ * Critical (money): the price and monthly amount the form ends with are the ones the
+ * saving, the fee and every month total use. The screen's markup is its own, rendered
+ * with react-dom/server.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -55,7 +60,19 @@ function typing(...steps: [LinkedKey, string][]): Form {
   return steps.reduce((form, [key, value]) => answered(typeLinked(form, key, value)), emptyForm());
 }
 
-const linked = (form: Form) => [form.price, form.months, form.monthly, form.source];
+/** Which fields the user typed. */
+const typedOf = (form: Form) =>
+  form.priceTyped && form.monthlyTyped ? "both" : form.priceTyped ? "price" : form.monthlyTyped ? "monthly" : "none";
+const linked = (form: Form) => [form.price, form.months, form.monthly, typedOf(form)];
+
+/** The entry the check would send, with a first due month picked. */
+function entryOf(form: Form, id = "r") {
+  const built = toEntry({ ...form, firstDue: "2026-11" }, id);
+  assert.ok(built.ok);
+  return built.entry;
+}
+
+// ---- one field typed: the other is calculated ---------------------------------------------
 
 test("UI_72_price_12000_over_6_months_fills_the_monthly_amount_2000", () => {
   assert.deepEqual(linked(typing(["price", "12000"], ["months", "6"])), ["12000", "6", "2000.00", "price"]);
@@ -63,12 +80,12 @@ test("UI_72_price_12000_over_6_months_fills_the_monthly_amount_2000", () => {
   assert.deepEqual(linked(typing(["months", "6"], ["price", "12,000"])), ["12,000", "6", "2000.00", "price"]);
 });
 
-test("UI_72_monthly_2000_over_6_months_fills_the_price_12000", () => {
-  assert.deepEqual(linked(typing(["months", "6"], ["monthly", "2000"])), ["12000.00", "6", "2000", "installment"]);
-  assert.deepEqual(linked(typing(["monthly", "2,000"], ["months", "6"])), ["12000.00", "6", "2,000", "installment"]);
+test("UI_72_only_the_monthly_typed_makes_the_price_monthly_times_months", () => {
+  assert.deepEqual(linked(typing(["months", "6"], ["monthly", "2000"])), ["12000.00", "6", "2000", "monthly"]);
+  assert.deepEqual(linked(typing(["monthly", "2,000"], ["months", "6"])), ["12000.00", "6", "2,000", "monthly"]);
   // Exact, never rounded: satang and all.
   assert.equal(typing(["months", "12"], ["monthly", "1200.05"]).price, "14400.60");
-  // The monthly amount is the input: nothing is asked of the API.
+  // The monthly amount is typed: nothing is asked of the API.
   assert.equal(suggestionRequest(typing(["months", "6"], ["monthly", "2000"])), null);
 });
 
@@ -79,33 +96,20 @@ test("UI_72_an_uneven_split_uses_the_apis_rounding_and_the_way_back_is_exact", (
   assert.deepEqual(suggestionRequest(fromPrice), { price: "1000", months: 3 });
   assert.equal(fromPrice.monthly, "333.34");
   // The other way never rounds: 333.33 x 3 is 999.99, and 333.34 x 3 is 1000.02.
-  assert.equal(typeLinked(fromPrice, "monthly", "333.33").price, "999.99");
-  assert.equal(typeLinked(fromPrice, "monthly", "333.340").price, "", "three decimals: no price, never rounded");
+  assert.equal(typing(["months", "3"], ["monthly", "333.33"]).price, "999.99");
   assert.equal(typing(["months", "3"], ["monthly", "333.34"]).price, "1000.02");
-});
-
-test("UI_72_typing_the_price_then_the_monthly_makes_the_monthly_the_input", () => {
-  const fromPrice = typing(["price", "12000"], ["months", "6"]);
-  assert.equal(fromPrice.monthly, "2000.00");
-  // The user types what their app charges: the price follows it.
-  const fromMonthly = answered(typeLinked(fromPrice, "monthly", "2100"));
-  assert.deepEqual(linked(fromMonthly), ["12600.00", "6", "2100", "installment"]);
-  // And back: typing the price makes it the input again, and the API fills the monthly amount.
-  const priceAgain = typeLinked(fromMonthly, "price", "12000");
-  assert.deepEqual(linked(priceAgain), ["12000", "6", "", "price"]);
-  assert.deepEqual(linked(answered(priceAgain)), ["12000", "6", "2000.00", "price"]);
+  assert.equal(typing(["months", "3"], ["monthly", "333.340"]).price, "", "three decimals: no price, never rounded");
 });
 
 test("UI_72_changing_the_months_keeps_the_typed_monthly_and_recalculates_the_price", () => {
   const typed = typing(["months", "6"], ["monthly", "2000"]);
   // Typing or a chip: the screen sends both through typeLinked("months").
-  assert.deepEqual(linked(typeLinked(typed, "months", "10")), ["20000.00", "10", "2000", "installment"]);
-  assert.deepEqual(linked(typeLinked(typed, "months", "3")), ["6000.00", "3", "2000", "installment"]);
+  assert.deepEqual(linked(typeLinked(typed, "months", "10")), ["20000.00", "10", "2000", "monthly"]);
+  assert.deepEqual(linked(typeLinked(typed, "months", "3")), ["6000.00", "3", "2000", "monthly"]);
   // No price while it cannot be calculated; the monthly amount stays as typed.
   for (const months of ["", "0", "601", "1.5"]) {
-    assert.deepEqual(linked(typeLinked(typed, "months", months)), ["", months, "2000", "installment"], months);
+    assert.deepEqual(linked(typeLinked(typed, "months", months)), ["", months, "2000", "monthly"], months);
   }
-  assert.deepEqual(linked(typeLinked(typed, "monthly", "")), ["", "6", "", "installment"]);
 });
 
 test("UI_72_changing_the_months_keeps_the_typed_price_and_asks_again_for_the_monthly", () => {
@@ -122,61 +126,122 @@ test("UI_72_changing_the_months_keeps_the_typed_price_and_asks_again_for_the_mon
   assert.equal(typeLinked(typed, "price", "12000.").monthly, "");
 });
 
+// ---- both typed: neither is ever recalculated ----------------------------------------------
+
+test("UI_72_price_then_monthly_typed_keeps_both_and_sends_them_as_typed", () => {
+  // 12,000 at the app's 2,100 x 6: the monthly amount typed over the suggestion.
+  const form = typing(["price", "12000"], ["months", "6"], ["monthly", "2100"]);
+  assert.deepEqual(linked(form), ["12000", "6", "2100", "both"]);
+  const entry = entryOf(form);
+  // Sent as typed (L49); the API reads them as 12,000.00 and 2,100.00.
+  assert.deepEqual([entry.item_price, entry.monthly_amount, entry.months], ["12000", "2100", 6]);
+  assert.deepEqual([toSatang(entry.item_price), toSatang(entry.monthly_amount)], [1200000n, 210000n]);
+  // With the decimals typed, they go exactly so.
+  const decimals = entryOf(typing(["price", "12,000.00"], ["months", "6"], ["monthly", "2,100.00"]));
+  assert.deepEqual([decimals.item_price, decimals.monthly_amount], ["12000.00", "2100.00"]);
+});
+
+test("UI_72_monthly_then_price_typed_keeps_both", () => {
+  const form = typing(["months", "6"], ["monthly", "2100"], ["price", "12000"]);
+  assert.deepEqual(linked(form), ["12000", "6", "2100", "both"]);
+  assert.equal(suggestionRequest(form), null, "nothing to ask: the monthly amount is typed");
+  const entry = entryOf(form);
+  assert.deepEqual([entry.item_price, entry.monthly_amount], ["12000", "2100"]);
+});
+
+test("UI_72_both_typed_months_changed_changes_neither", () => {
+  const both = typing(["price", "12000"], ["months", "6"], ["monthly", "2100"]);
+  for (const months of ["10", "3", "12", "", "601"]) {
+    assert.deepEqual(linked(answered(typeLinked(both, "months", months))), ["12000", months, "2100", "both"], months);
+  }
+  // Editing one of them keeps the other too.
+  assert.deepEqual(linked(typeLinked(both, "price", "13000")), ["13000", "6", "2100", "both"]);
+  assert.deepEqual(linked(typeLinked(both, "monthly", "2200")), ["12000", "6", "2200", "both"]);
+});
+
+test("UI_72_both_typed_price_cleared_recalculates_it_from_the_monthly", () => {
+  const both = typing(["price", "12000"], ["months", "6"], ["monthly", "2100"]);
+  assert.deepEqual(linked(typing(["price", "12000"], ["months", "6"], ["monthly", "2100"], ["price", ""])), ["12600.00", "6", "2100", "monthly"]);
+  assert.deepEqual(linked(typeLinked(both, "price", "   ")), ["12600.00", "6", "2100", "monthly"], "spaces are empty");
+  // And it follows the months from then on.
+  assert.equal(typeLinked(typeLinked(both, "price", ""), "months", "10").price, "21000.00");
+});
+
+test("UI_72_both_typed_monthly_cleared_asks_the_api_again", () => {
+  const both = typing(["price", "12000"], ["months", "6"], ["monthly", "2100"]);
+  const cleared = typeLinked(both, "monthly", "");
+  assert.deepEqual(linked(cleared), ["12000", "6", "", "price"]);
+  assert.deepEqual(linked(answered(cleared)), ["12000", "6", "2000.00", "price"]);
+});
+
+test("UI_72_clearing_the_only_typed_field_leaves_nothing_to_calculate_from", () => {
+  assert.deepEqual(linked(typeLinked(typing(["price", "12000"], ["months", "6"]), "price", "")), ["", "6", "", "none"]);
+  assert.deepEqual(linked(typeLinked(typing(["months", "6"], ["monthly", "2000"]), "monthly", "")), ["", "6", "", "none"]);
+  // A calculated field cleared is calculated again at once, from the typed one.
+  assert.deepEqual(linked(typeLinked(typing(["months", "6"], ["monthly", "2000"]), "price", "")), ["12000.00", "6", "2000", "monthly"]);
+});
+
 test("UI_72_an_answer_for_the_price_is_dropped_once_the_monthly_is_typed", () => {
   const waiting = typeLinked(typeLinked(emptyForm(), "price", "12000"), "months", "6");
   const ask = suggestionRequest(waiting);
   assert.ok(ask !== null);
   const typed = typeLinked(waiting, "monthly", "2100");
-  assert.deepEqual(linked(applySuggestion(typed, ask, "2000.00")), ["12600.00", "6", "2100", "installment"]);
-  // Even when the price it makes is the very price asked about: the typed monthly stays as typed.
-  const asked = typeLinked(typeLinked(emptyForm(), "price", "12000.00"), "months", "6");
-  const same = typeLinked(asked, "monthly", "2000");
-  assert.equal(same.price, "12000.00");
-  assert.deepEqual(linked(applySuggestion(same, { price: "12000.00", months: 6 }, "2000.00")), ["12000.00", "6", "2000", "installment"]);
+  assert.deepEqual(linked(applySuggestion(typed, ask, "2000.00")), ["12000", "6", "2100", "both"]);
+  // Even an answer for the very price and months on the form.
+  const same = typeLinked(typeLinked(typeLinked(emptyForm(), "price", "12000.00"), "months", "6"), "monthly", "2000");
+  assert.deepEqual(linked(applySuggestion(same, { price: "12000.00", months: 6 }, "2000.00")), ["12000.00", "6", "2000", "both"]);
 });
 
+// ---- what is sent, and what the API does with it -------------------------------------------
+
 test("UI_72_a_keystroke_clears_the_apis_refusal_of_the_field_it_recalculates", () => {
-  // Review F3: the API refused the price (422); the user types the monthly amount, and
-  // the recalculated price is a new value, so its refusal goes too.
+  // Review F3: the API refused the price (422); a keystroke that recalculates the price
+  // gives it a new value, so its refusal goes too. A field left as it was keeps its own.
   const fromPrice = typing(["price", "12000"], ["months", "6"]);
   const fromMonthly = typing(["months", "6"], ["monthly", "2000"]);
-  assert.deepEqual(changedBy(fromPrice, "monthly", "2100"), ["monthly", "price"]);
+  const both = typing(["price", "12000"], ["months", "6"], ["monthly", "2100"]);
   assert.deepEqual(changedBy(fromPrice, "months", "10"), ["months", "monthly"]);
   assert.deepEqual(changedBy(fromPrice, "price", "13000"), ["price", "monthly"]);
+  assert.deepEqual(changedBy(fromPrice, "monthly", "2100"), ["monthly"], "both typed now: the price stays");
   assert.deepEqual(changedBy(fromMonthly, "months", "10"), ["months", "price"]);
-  assert.deepEqual(changedBy(fromMonthly, "price", "12000"), ["price", "monthly"]);
+  assert.deepEqual(changedBy(fromMonthly, "monthly", "2100"), ["monthly", "price"]);
+  assert.deepEqual(changedBy(both, "months", "10"), ["months"]);
+  assert.deepEqual(changedBy(both, "monthly", ""), ["monthly"]);
   const refused = { price: REJECTED, months: REJECTED };
-  assert.deepEqual(withoutRejected(refused, changedBy(fromPrice, "monthly", "2100")), { months: REJECTED });
+  assert.deepEqual(withoutRejected(refused, changedBy(fromMonthly, "monthly", "2100")), { months: REJECTED });
   assert.deepEqual(withoutRejected(refused, changedBy(fromMonthly, "months", "10")), {});
+  assert.deepEqual(withoutRejected(refused, changedBy(both, "monthly", "2200")), refused);
   // Other fields keep theirs; nothing to drop gives the same object back.
   assert.deepEqual(withoutRejected({ name: REJECTED }, ["price", "monthly"]), { name: REJECTED });
   const same = { firstDue: REJECTED };
   assert.equal(withoutRejected(same, ["price"]), same);
 });
 
-test("UI_72_the_saving_and_the_months_use_the_price_the_form_ends_with", () => {
-  // ม่อน saves 10% of the price (percent mode, L63). From the monthly amount, the
-  // price is monthly x months, and the saving follows it.
+test("UI_72_the_saving_and_the_months_use_the_price_and_monthly_the_form_ends_with", () => {
+  // ม่อน saves 10% of the price (percent mode, L63).
   const preview = (form: Form, id: string) => {
-    const built = toEntry({ ...form, firstDue: "2026-11" }, id);
-    assert.ok(built.ok);
-    return { entry: built.entry, out: handle("POST", "/installments/preview", built.entry, "demo-mon").body as PreviewOut };
+    const entry = entryOf(form, id);
+    return { entry, out: handle("POST", "/installments/preview", entry, "demo-mon").body as PreviewOut };
   };
-  const fromMonthly = preview(typing(["price", "12000"], ["months", "6"], ["monthly", "2100"]), "two-way-1");
-  assert.deepEqual([fromMonthly.entry.item_price, fromMonthly.entry.monthly_amount, fromMonthly.entry.months], ["12600.00", "2100", 6]);
+  // Both typed: the saving is 10% of the 12,000 typed, not of the 12,600 paid in total.
+  const both = preview(typing(["price", "12000"], ["months", "6"], ["monthly", "2100"]), "two-way-1");
+  assert.equal(both.out.saving_if_recorded, "1200.00");
+  assert.equal(both.out.months.length, 6, "the candidate's six months");
+  // Only the monthly typed: the price is 2,100 x 6, and the saving follows it.
+  const fromMonthly = preview(typing(["months", "6"], ["monthly", "2100"]), "two-way-2");
+  assert.deepEqual([fromMonthly.entry.item_price, fromMonthly.entry.monthly_amount], ["12600.00", "2100"]);
   assert.equal(fromMonthly.out.saving_if_recorded, "1260.00");
-  assert.equal(fromMonthly.out.months.length, 6, "the candidate's six months");
-  // From the price: the price as typed, and the API's monthly amount.
-  const fromPrice = preview(typing(["months", "6"], ["monthly", "2100"], ["price", "12000"]), "two-way-2");
+  // Only the price typed: the API's monthly amount.
+  const fromPrice = preview(typing(["price", "12000"], ["months", "6"]), "two-way-3");
   assert.deepEqual([fromPrice.entry.item_price, fromPrice.entry.monthly_amount], ["12000", "2000.00"]);
   assert.equal(fromPrice.out.saving_if_recorded, "1200.00");
   // Every month total carries the monthly amount the form ended with: 100.00 apart in each.
-  const gaps = fromMonthly.out.months.map((m, i) => toSatang(m.total) - toSatang(fromPrice.out.months[i]?.total ?? "0"));
+  const gaps = both.out.months.map((m, i) => toSatang(m.total) - toSatang(fromPrice.out.months[i]?.total ?? "0"));
   assert.deepEqual(gaps, [10000n, 10000n, 10000n, 10000n, 10000n, 10000n]);
-  // Recording saves exactly what the preview said (both previews are made first: a
-  // recorded entry counts in every later month total).
-  const recorded = handle("POST", "/installments", fromMonthly.entry, "demo-mon").body as RecordedOut;
-  assert.equal(recorded.saved_amount, "1260.00");
+  // Recording saves exactly what the preview said (the previews come first: a recorded
+  // entry counts in every later month total).
+  const recorded = handle("POST", "/installments", both.entry, "demo-mon").body as RecordedOut;
+  assert.equal(recorded.saved_amount, "1200.00");
 });
 
 test("UI_72_a_calculated_price_too_large_shows_its_error_once_the_monthly_is_left", () => {
@@ -186,7 +251,7 @@ test("UI_72_a_calculated_price_too_large_shows_its_error_once_the_monthly_is_lef
   assert.deepEqual(shownErrors(huge, new Set()), {}, "not before the user leaves the monthly amount");
   assert.deepEqual(shownErrors(huge, new Set(["monthly"])), { price: MONEY_ERRORS.too_large });
   // A typed price shows its own error only once left, as before.
-  assert.deepEqual(shownErrors({ ...huge, source: "price", price: "1,5" }, new Set(["monthly"])), {});
+  assert.deepEqual(shownErrors({ ...huge, priceTyped: true, price: "1,5" }, new Set(["monthly"])), {});
 });
 
 test("UI_72_times_months_is_exact_in_satang", () => {
@@ -204,8 +269,8 @@ test("UI_72_times_months_is_exact_in_satang", () => {
 });
 
 test("UI_72_the_examples_monthly_amounts_are_the_apis_suggestion_for_their_price", () => {
-  // The demo strip fills price and monthly with the price as the input, so its note
-  // "คำนวณจากราคา ÷ จำนวนเดือน" must be true: each monthly amount is the API's answer.
+  // The demo strip fills the price as typed and the monthly amount as calculated, so its
+  // note "คำนวณจากราคา ÷ จำนวนเดือน" must be true: each monthly amount is the API's answer.
   for (const [name, s] of Object.entries(SCENARIOS)) {
     const form = typing(["price", s.item_price], ["months", String(s.months)]);
     assert.equal(form.monthly, s.monthly_amount, name);
@@ -233,34 +298,37 @@ const at = (html: string, text: string) => {
 const line = (text: string) => new RegExp(`<p id="([^"]+-help)" class="text-body text-ink-muted">${text.replace(/[()]/g, "\\$&")}</p>`);
 
 test("UI_72_the_note_sits_under_the_calculated_field_only", () => {
-  assert.equal(THINK.fromPrice, "คำนวณจากราคา ÷ จำนวนเดือน (ผ่อน 0%)");
+  assert.equal(THINK.fromPrice, "คำนวณจากราคา ÷ จำนวนเดือน (ผ่อน 0%) ถ้าแอปผ่อนแจ้งยอดต่างจากนี้ แก้ให้ตรงกับแอปได้");
   assert.equal(THINK.fromMonthly, "คำนวณจากค่างวด × จำนวนเดือน");
+  const notes = [THINK.fromPrice, THINK.fromMonthly, THINK.monthlyHelp];
+  const drawn = (html: string) => notes.filter((text) => html.includes(text));
 
   // Nothing calculated yet: the monthly amount keeps its usual help, and no note.
-  const empty = render(emptyForm());
-  assert.ok(empty.includes(THINK.monthlyHelp));
-  assert.ok(!empty.includes(THINK.fromPrice) && !empty.includes(THINK.fromMonthly));
+  assert.deepEqual(drawn(render(emptyForm())), [THINK.monthlyHelp]);
   assert.equal(calculatedNote(emptyForm()), null);
 
-  // From the price: the note under ค่างวดต่อเดือน, in place of its usual help.
+  // Only the price typed: the note under ค่างวดต่อเดือน, in place of its usual help.
   const fromPrice = render(typing(["price", "12000"], ["months", "6"]));
+  assert.deepEqual(drawn(fromPrice), [THINK.fromPrice]);
   const priceNote = line(THINK.fromPrice).exec(fromPrice);
   assert.ok(priceNote !== null);
   assert.ok(at(fromPrice, `>${THINK.monthly}</label>`) < priceNote.index && priceNote.index < at(fromPrice, `>${THINK.firstDue}</legend>`));
   assert.match(fromPrice, new RegExp(`aria-describedby="${priceNote[1]}"`));
-  assert.ok(!fromPrice.includes(THINK.monthlyHelp) && !fromPrice.includes(THINK.fromMonthly));
 
-  // From the monthly amount: the note under ราคาสินค้า, and none under the monthly amount.
+  // Only the monthly amount typed: the note under ราคาสินค้า, and none under the monthly amount.
   const fromMonthly = render(typing(["months", "6"], ["monthly", "2000"]));
+  assert.deepEqual(drawn(fromMonthly), [THINK.fromMonthly]);
   const monthlyNote = line(THINK.fromMonthly).exec(fromMonthly);
   assert.ok(monthlyNote !== null);
   assert.ok(at(fromMonthly, `>${THINK.price}</label>`) < monthlyNote.index && monthlyNote.index < at(fromMonthly, `>${THINK.months}</label>`));
-  assert.ok(!fromMonthly.includes(THINK.monthlyHelp) && !fromMonthly.includes(THINK.fromPrice));
-  // The price shows the calculated value.
   assert.match(fromMonthly, /value="12000.00"/);
 
+  // Both typed: no note and no help under either field.
+  assert.deepEqual(drawn(render(typing(["price", "12000"], ["months", "6"], ["monthly", "2100"]))), []);
+  assert.equal(calculatedNote(typing(["price", "12000"], ["months", "6"], ["monthly", "2100"])), null);
+
   // A price that cannot be calculated yet: no note claims it was.
-  assert.ok(!render(typing(["monthly", "2000"])).includes(THINK.fromMonthly));
+  assert.deepEqual(drawn(render(typing(["monthly", "2000"]))), []);
 });
 
 test("UI_72_the_screen_sends_the_price_months_chips_and_monthly_through_the_link", () => {

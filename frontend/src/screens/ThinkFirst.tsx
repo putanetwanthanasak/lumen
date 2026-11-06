@@ -3,8 +3,8 @@
  * Every field in view, in this order: the item name and the app (both optional), the
  * price (ยอดเงิน for a cash item), the months (with quick picks), the monthly amount
  * and the first due month (no default). The price and the monthly amount are linked
- * both ways: the one typed last is the input, the other is calculated and says so in
- * one line under it (UI-72). The kind is ผ่อนสินค้า unless the user opens "เป็นรายการเงินสด?",
+ * both ways: one typed, the other is calculated and says so in one line under it;
+ * both typed, neither changes (UI-72). The kind is ผ่อนสินค้า unless the user opens "เป็นรายการเงินสด?",
  * just above the price whose label it changes. The check sits in the bar above the
  * nav, always in view, disabled until the four required fields are valid. The preview
  * opens the result screen (screens/Result.tsx); the form survives the trip.
@@ -80,7 +80,8 @@ function formFor(scenario: Scenario, base: Form): Form {
     price: s.item_price,
     months: String(s.months),
     monthly: s.monthly_amount, // the API's 0% suggestion for this price (UI-72)
-    source: "price",
+    priceTyped: true,
+    monthlyTyped: false,
     firstDue: firstDueChoices(new Date()).nextMonth,
   };
 }
@@ -122,7 +123,7 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
     setForm((f) => ({ ...f, [key]: value }));
     changed([key]);
   };
-  // The price, the months or the monthly amount: the one of price and monthly not typed is recalculated (UI-72).
+  // The price, the months or the monthly amount: a field the user did not type is recalculated (UI-72).
   const type = (key: LinkedKey, value: string) => {
     setForm((f) => typeLinked(f, key, value));
     changed(changedBy(form, key, value));
@@ -130,7 +131,7 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
   // Leaving a field: from then on it shows its error, if it has one.
   const leave = (key: FieldKey) => setTouched((t) => (t === "all" ? t : new Set(t).add(key)));
 
-  // The 0% suggestion, from the API, while the price is the input (UI-72).
+  // The 0% suggestion, from the API, while the monthly amount is not typed (UI-72).
   const ask = suggestionRequest(form);
   const askKey = ask === null ? null : `${ask.price}|${ask.months}`;
   useEffect(() => {
@@ -217,9 +218,10 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
   const cash = form.kind !== "purchase";
   const errors = { ...shownErrors(form, touched), ...rejected };
   const ready = canPreview(form);
-  // One line under the calculated field; the monthly amount's usual help until then (UI-72).
+  // One line under the calculated field; none when both are typed. The monthly amount's
+  // usual help while it is neither typed nor calculated yet (UI-72).
   const note = calculatedNote(form);
-  const monthlyHelp = note?.field === "monthly" ? note.text : form.source === "price" ? THINK.monthlyHelp : undefined;
+  const monthlyHelp = note?.field === "monthly" ? note.text : !form.monthlyTyped && form.monthly === "" ? THINK.monthlyHelp : undefined;
   // Always in view, above the nav; disabled until the four required fields are valid.
   const actions = (
     <div className="flex flex-col gap-2">
