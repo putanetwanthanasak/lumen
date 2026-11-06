@@ -2,8 +2,9 @@
  * Screen 3: เช็กก่อนผ่อน, the form (DESIGN.md section 7.3, UI-37).
  * Every field in view, in this order: the item name and the app (both optional), the
  * price (ยอดเงิน for a cash item), the months (with quick picks), the monthly amount
- * (prefilled with the API's 0% suggestion until the user edits it) and the first due
- * month (no default). The kind is ผ่อนสินค้า unless the user opens "เป็นรายการเงินสด?",
+ * and the first due month (no default). The price and the monthly amount are linked
+ * both ways: the one typed last is the input, the other is calculated and says so in
+ * one line under it (UI-72). The kind is ผ่อนสินค้า unless the user opens "เป็นรายการเงินสด?",
  * just above the price whose label it changes. The check sits in the bar above the
  * nav, always in view, disabled until the four required fields are valid. The preview
  * opens the result screen (screens/Result.tsx); the form survives the trip.
@@ -22,6 +23,8 @@ import { thaiMonth } from "../thaiMonth.ts";
 import {
   answerPreview,
   applySuggestion,
+  calculatedField,
+  calculatedNote,
   canPreview,
   edit,
   emptyForm,
@@ -35,8 +38,10 @@ import {
   startPreview,
   suggestionRequest,
   toEntry,
+  typeLinked,
   type FieldKey,
   type Form,
+  type LinkedKey,
   type RejectedKey,
   type Stage,
 } from "../thinkFirstForm.ts";
@@ -73,8 +78,8 @@ function formFor(scenario: Scenario, base: Form): Form {
     platform: "ShopDemo",
     price: s.item_price,
     months: String(s.months),
-    monthly: s.monthly_amount,
-    monthlyEdited: true,
+    monthly: s.monthly_amount, // the API's 0% suggestion for this price (UI-72)
+    source: "price",
     firstDue: firstDueChoices(new Date()).nextMonth,
   };
 }
@@ -106,17 +111,25 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
   const kindsId = useId();
   const needsId = useId();
 
-  const set = <K extends keyof Form>(key: K, value: Form[K]) => {
-    setForm((f) => ({ ...f, [key]: value, ...(key === "monthly" ? { monthlyEdited: true } : {}) }));
-    setRejected((r) => (key in r ? Object.fromEntries(Object.entries(r).filter(([k]) => k !== key)) : r));
+  // Fields that changed: the API's refusal of them goes, and a pending verdict no longer applies.
+  const changed = (keys: readonly string[]) => {
+    setRejected((r) => (keys.some((key) => key in r) ? Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k))) : r));
     pending.current = null;
-    // A changed entry is a new entry: a pending verdict no longer applies.
     setStage((s) => (s.name === "checking" || s.name === "verdict" ? edit(s) : s));
+  };
+  const set = <K extends keyof Form>(key: K, value: Form[K]) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    changed([key]);
+  };
+  // The price, the months or the monthly amount: the one of price and monthly not typed is recalculated (UI-72).
+  const type = (key: LinkedKey, value: string) => {
+    setForm((f) => typeLinked(f, key, value));
+    changed([key, calculatedField(typeLinked(form, key, value))]);
   };
   // Leaving a field: from then on it shows its error, if it has one.
   const leave = (key: FieldKey) => setTouched((t) => (t === "all" ? t : new Set(t).add(key)));
 
-  // The 0% suggestion, from the API, until the user edits the monthly amount.
+  // The 0% suggestion, from the API, while the price is the input (UI-72).
   const ask = suggestionRequest(form);
   const askKey = ask === null ? null : `${ask.price}|${ask.months}`;
   useEffect(() => {
@@ -203,6 +216,9 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
   const cash = form.kind !== "purchase";
   const errors = { ...shownErrors(form, touched), ...rejected };
   const ready = canPreview(form);
+  // One line under the calculated field; the monthly amount's usual help until then (UI-72).
+  const note = calculatedNote(form);
+  const monthlyHelp = note?.field === "monthly" ? note.text : form.source === "price" ? THINK.monthlyHelp : undefined;
   // Always in view, above the nav; disabled until the four required fields are valid.
   const actions = (
     <div className="flex flex-col gap-2">
@@ -296,18 +312,19 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
           <Field
             label={cash ? THINK.cashAmount : THINK.price}
             value={form.price}
-            onChange={(v) => set("price", v)}
+            onChange={(v) => type("price", v)}
             onBlur={() => leave("price")}
             inputMode="decimal"
             suffix="บาท"
             placeholder="เช่น 12,000"
+            help={note?.field === "price" ? note.text : undefined}
             error={errors.price ?? null}
           />
           <div className="flex flex-col gap-2">
             <Field
               label={THINK.months}
               value={form.months}
-              onChange={(v) => set("months", v)}
+              onChange={(v) => type("months", v)}
               onBlur={() => leave("months")}
               inputMode="numeric"
               suffix="เดือน"
@@ -315,17 +332,17 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
               maxLength={3}
               error={errors.months ?? null}
             />
-            <MonthChips value={form.months} onPick={(months) => set("months", months)} />
+            <MonthChips value={form.months} onPick={(months) => type("months", months)} />
           </div>
           <Field
             label={THINK.monthly}
             value={form.monthly}
-            onChange={(v) => set("monthly", v)}
+            onChange={(v) => type("monthly", v)}
             onBlur={() => leave("monthly")}
             inputMode="decimal"
             suffix="บาท"
             placeholder="เช่น 1,200"
-            help={THINK.monthlyHelp}
+            help={monthlyHelp}
             error={errors.monthly ?? null}
           />
           <FirstDue value={form.firstDue} onChange={(v) => set("firstDue", v)} error={errors.firstDue ?? null} />

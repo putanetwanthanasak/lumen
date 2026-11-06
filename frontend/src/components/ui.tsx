@@ -79,7 +79,8 @@ type FieldProps = {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  help?: string;
+  /** A quiet line under the field; none when undefined (the form's calculated field, UI-72). */
+  help?: string | undefined;
   error?: string | null;
   suffix?: string;
   inputMode?: "decimal" | "numeric" | "text";
