@@ -126,6 +126,11 @@ test("UI_72_an_answer_for_the_price_is_dropped_once_the_monthly_is_typed", () =>
   assert.ok(ask !== null);
   const typed = typeLinked(waiting, "monthly", "2100");
   assert.deepEqual(linked(applySuggestion(typed, ask, "2000.00")), ["12600.00", "6", "2100", "installment"]);
+  // Even when the price it makes is the very price asked about: the typed monthly stays as typed.
+  const asked = typeLinked(typeLinked(emptyForm(), "price", "12000.00"), "months", "6");
+  const same = typeLinked(asked, "monthly", "2000");
+  assert.equal(same.price, "12000.00");
+  assert.deepEqual(linked(applySuggestion(same, { price: "12000.00", months: 6 }, "2000.00")), ["12000.00", "6", "2000", "installment"]);
 });
 
 test("UI_72_the_saving_and_the_months_use_the_price_the_form_ends_with", () => {
