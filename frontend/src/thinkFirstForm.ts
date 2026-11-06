@@ -192,6 +192,23 @@ export function calculatedField(form: Form): "price" | "monthly" {
   return form.source === "installment" ? "price" : "monthly";
 }
 
+/** The fields a keystroke in a linked field changes: that field and the one recalculated. */
+export function changedBy(form: Form, key: LinkedKey, value: string): LinkedKey[] {
+  return [key, calculatedField(typeLinked(form, key, value))];
+}
+
+/**
+ * The API's refusals (422) left once these fields changed: a changed field holds a new
+ * value, so its refusal goes, a recalculated field's too (review F3).
+ */
+export function withoutRejected(
+  rejected: Partial<Record<RejectedKey, string>>,
+  keys: readonly string[],
+): Partial<Record<RejectedKey, string>> {
+  if (!keys.some((key) => key in rejected)) return rejected;
+  return Object.fromEntries(Object.entries(rejected).filter(([key]) => !keys.includes(key)));
+}
+
 /**
  * The one line under the calculated field, while it holds a calculated value (UI-72):
  * "คำนวณจากราคา ÷ จำนวนเดือน (ผ่อน 0%)" or "คำนวณจากค่างวด × จำนวนเดือน". Null before

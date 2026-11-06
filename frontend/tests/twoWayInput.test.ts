@@ -16,7 +16,7 @@ import { beforeEach, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { PreviewOut, RecordedOut, SuggestedMonthlyOut } from "../src/api-types.ts";
-import { MONEY_ERRORS, THINK } from "../src/copy.ts";
+import { MONEY_ERRORS, REJECTED, THINK } from "../src/copy.ts";
 import { timesMonths, toSatang } from "../src/money.ts";
 import { PERSONA_SETTINGS, SCENARIOS } from "../src/mock/persona.ts";
 import { handle, resetMock } from "../src/mock/server.ts";
@@ -25,12 +25,14 @@ import {
   applySuggestion,
   calculatedNote,
   canPreview,
+  changedBy,
   emptyForm,
   setDraft,
   shownErrors,
   suggestionRequest,
   toEntry,
   typeLinked,
+  withoutRejected,
   type Form,
   type LinkedKey,
 } from "../src/thinkFirstForm.ts";
@@ -131,6 +133,25 @@ test("UI_72_an_answer_for_the_price_is_dropped_once_the_monthly_is_typed", () =>
   const same = typeLinked(asked, "monthly", "2000");
   assert.equal(same.price, "12000.00");
   assert.deepEqual(linked(applySuggestion(same, { price: "12000.00", months: 6 }, "2000.00")), ["12000.00", "6", "2000", "installment"]);
+});
+
+test("UI_72_a_keystroke_clears_the_apis_refusal_of_the_field_it_recalculates", () => {
+  // Review F3: the API refused the price (422); the user types the monthly amount, and
+  // the recalculated price is a new value, so its refusal goes too.
+  const fromPrice = typing(["price", "12000"], ["months", "6"]);
+  const fromMonthly = typing(["months", "6"], ["monthly", "2000"]);
+  assert.deepEqual(changedBy(fromPrice, "monthly", "2100"), ["monthly", "price"]);
+  assert.deepEqual(changedBy(fromPrice, "months", "10"), ["months", "monthly"]);
+  assert.deepEqual(changedBy(fromPrice, "price", "13000"), ["price", "monthly"]);
+  assert.deepEqual(changedBy(fromMonthly, "months", "10"), ["months", "price"]);
+  assert.deepEqual(changedBy(fromMonthly, "price", "12000"), ["price", "monthly"]);
+  const refused = { price: REJECTED, months: REJECTED };
+  assert.deepEqual(withoutRejected(refused, changedBy(fromPrice, "monthly", "2100")), { months: REJECTED });
+  assert.deepEqual(withoutRejected(refused, changedBy(fromMonthly, "months", "10")), {});
+  // Other fields keep theirs; nothing to drop gives the same object back.
+  assert.deepEqual(withoutRejected({ name: REJECTED }, ["price", "monthly"]), { name: REJECTED });
+  const same = { firstDue: REJECTED };
+  assert.equal(withoutRejected(same, ["price"]), same);
 });
 
 test("UI_72_the_saving_and_the_months_use_the_price_the_form_ends_with", () => {
@@ -247,6 +268,9 @@ test("UI_72_the_screen_sends_the_price_months_chips_and_monthly_through_the_link
   for (const key of ["price", "months", "monthly"]) assert.match(src, new RegExp(`onChange=\\{\\(v\\) => type\\("${key}", v\\)\\}`), key);
   assert.match(src, /onPick=\{\(months\) => type\("months", months\)\}/);
   assert.match(src, /setForm\(\(f\) => typeLinked\(f, key, value\)\)/);
+  // The refusals of the typed field and the recalculated one go (review F3).
+  assert.match(src, /changed\(changedBy\(form, key, value\)\)/);
+  assert.match(src, /setRejected\(\(r\) => withoutRejected\(r, keys\)\)/);
   // No linked field is set around the link.
   assert.doesNotMatch(src, /set\("(price|months|monthly)"/);
 });

@@ -23,9 +23,9 @@ import { thaiMonth } from "../thaiMonth.ts";
 import {
   answerPreview,
   applySuggestion,
-  calculatedField,
   calculatedNote,
   canPreview,
+  changedBy,
   edit,
   emptyForm,
   firstDueChoices,
@@ -39,6 +39,7 @@ import {
   suggestionRequest,
   toEntry,
   typeLinked,
+  withoutRejected,
   type FieldKey,
   type Form,
   type LinkedKey,
@@ -113,7 +114,7 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
 
   // Fields that changed: the API's refusal of them goes, and a pending verdict no longer applies.
   const changed = (keys: readonly string[]) => {
-    setRejected((r) => (keys.some((key) => key in r) ? Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k))) : r));
+    setRejected((r) => withoutRejected(r, keys));
     pending.current = null;
     setStage((s) => (s.name === "checking" || s.name === "verdict" ? edit(s) : s));
   };
@@ -124,7 +125,7 @@ export function ThinkFirst({ load, reload }: { load: Load<Awaited<ReturnType<typ
   // The price, the months or the monthly amount: the one of price and monthly not typed is recalculated (UI-72).
   const type = (key: LinkedKey, value: string) => {
     setForm((f) => typeLinked(f, key, value));
-    changed([key, calculatedField(typeLinked(form, key, value))]);
+    changed(changedBy(form, key, value));
   };
   // Leaving a field: from then on it shows its error, if it has one.
   const leave = (key: FieldKey) => setTouched((t) => (t === "all" ? t : new Set(t).add(key)));
