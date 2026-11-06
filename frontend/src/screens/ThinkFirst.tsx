@@ -28,6 +28,7 @@ import {
   changedBy,
   edit,
   emptyForm,
+  exampleForm,
   firstDueChoices,
   getDraft,
   MONTH_CHIPS,
@@ -71,19 +72,7 @@ function sceneFromUrl(): Scenario | null {
 
 /** A demo example fills every field, its first due month included (next month). */
 function formFor(scenario: Scenario, base: Form): Form {
-  const s = SCENARIOS[scenario];
-  return {
-    ...base,
-    kind: "purchase",
-    name: s.item_name,
-    platform: "ShopDemo",
-    price: s.item_price,
-    months: String(s.months),
-    monthly: s.monthly_amount, // the API's 0% suggestion for this price (UI-72)
-    priceTyped: true,
-    monthlyTyped: false,
-    firstDue: firstDueChoices(new Date()).nextMonth,
-  };
+  return exampleForm(base, SCENARIOS[scenario], firstDueChoices(new Date()).nextMonth);
 }
 
 /**

@@ -32,6 +32,7 @@ import {
   canPreview,
   changedBy,
   emptyForm,
+  exampleForm,
   setDraft,
   shownErrors,
   suggestionRequest,
@@ -55,9 +56,26 @@ function answered(form: Form): Form {
   return applySuggestion(form, ask, (res.body as SuggestedMonthlyOut).monthly_amount);
 }
 
-/** Type into the linked fields in this order, the API answering after each step, as on the screen. */
+/** The screen's ask key (ThinkFirst.tsx `askKey`): the screen asks the API only when it changes. */
+function askKey(form: Form): string | null {
+  const ask = suggestionRequest(form);
+  return ask === null ? null : `${ask.price}|${ask.months}`;
+}
+
+/**
+ * Type into the linked fields in this order, as on the screen: the API answers after a
+ * step only when the ask key changed (review round 2, F2: a harness that asked after
+ * every step hid a monthly amount the screen never asked for again).
+ */
 function typing(...steps: [LinkedKey, string][]): Form {
-  return steps.reduce((form, [key, value]) => answered(typeLinked(form, key, value)), emptyForm());
+  let key: string | null = null;
+  return steps.reduce((form, [field, value]) => {
+    const next = typeLinked(form, field, value);
+    const now = askKey(next);
+    const shown = now !== null && now !== key ? answered(next) : next;
+    key = now;
+    return shown;
+  }, emptyForm());
 }
 
 /** Which fields the user typed. */
@@ -174,6 +192,19 @@ test("UI_72_both_typed_monthly_cleared_asks_the_api_again", () => {
   assert.deepEqual(linked(answered(cleared)), ["12000", "6", "2000.00", "price"]);
 });
 
+test("UI_72_a_calculated_monthly_cleared_is_calculated_again_at_once", () => {
+  // Review round 2, F2: the price typed, and the API's 2000.00 selected and deleted. The
+  // screen asks the API only when the price or the months change, so the form keeps the
+  // answer it already has for them: cleared, it is calculated again at once (rule 5).
+  assert.deepEqual(linked(typing(["price", "12000"], ["months", "6"], ["monthly", ""])), ["12000", "6", "2000.00", "price"]);
+  assert.deepEqual(linked(typing(["price", "12000"], ["months", "6"], ["monthly", "  "])), ["12000", "6", "2000.00", "price"]);
+  // Still waiting for the answer: empty, and the answer on its way fills it.
+  const waiting = typeLinked(typeLinked(emptyForm(), "price", "12000"), "months", "6");
+  const cleared = typeLinked(waiting, "monthly", "");
+  assert.equal(cleared.monthly, "");
+  assert.equal(applySuggestion(cleared, { price: "12000", months: 6 }, "2000.00").monthly, "2000.00");
+});
+
 test("UI_72_clearing_the_only_typed_field_leaves_nothing_to_calculate_from", () => {
   assert.deepEqual(linked(typeLinked(typing(["price", "12000"], ["months", "6"]), "price", "")), ["", "6", "", "none"]);
   assert.deepEqual(linked(typeLinked(typing(["months", "6"], ["monthly", "2000"]), "monthly", "")), ["", "6", "", "none"]);
@@ -275,6 +306,27 @@ test("UI_72_the_examples_monthly_amounts_are_the_apis_suggestion_for_their_price
     const form = typing(["price", s.item_price], ["months", String(s.months)]);
     assert.equal(form.monthly, s.monthly_amount, name);
   }
+});
+
+test("UI_72_an_example_counts_its_price_as_typed_and_its_monthly_as_calculated", () => {
+  // Review round 2, F4: the strip's examples and the deep link fill through exampleForm.
+  // The 6-month chip (none of the examples is 6 months): the API answers 12,000 -> 2,000.00,
+  // 30,000 -> 5,000.00, 48,000 -> 8,000.00.
+  const sixth: Record<string, string> = { GREEN: "2000.00", YELLOW: "5000.00", RED: "8000.00" };
+  for (const [name, s] of Object.entries(SCENARIOS)) {
+    const example = exampleForm(emptyForm(), s, "2026-11");
+    assert.deepEqual(linked(example), [s.item_price, String(s.months), s.monthly_amount, "price"], name);
+    assert.equal(calculatedNote(example)?.field, "monthly", name);
+    // A month chip after the example: the price stays, and the monthly amount waits for the API.
+    const chip = typeLinked(example, "months", "6");
+    assert.deepEqual(linked(chip), [s.item_price, "6", "", "price"], name);
+    assert.equal(answered(chip).monthly, sixth[name], name);
+    // Its own months again (the picked chip tapped): the example's amount stays.
+    assert.equal(typeLinked(example, "months", String(s.months)).monthly, s.monthly_amount, name);
+  }
+  // The screen fills its examples this way.
+  const src = readFileSync(join("src", "screens", "ThinkFirst.tsx"), "utf8");
+  assert.match(src, /return exampleForm\(base, SCENARIOS\[scenario\], firstDueChoices\(new Date\(\)\)\.nextMonth\);/);
 });
 
 // ---- the screen: one quiet line under the calculated field ------------------------------

@@ -65,6 +65,30 @@ export function emptyForm(): Form {
   };
 }
 
+/** A demo example: what the strip's buttons and the deep link fill (mock/persona.ts SCENARIOS). */
+export type Example = { item_name: string; item_price: Money; months: number; monthly_amount: Money };
+
+/**
+ * The form an example fills: every field, from ShopDemo, with its first due month. The
+ * price counts as typed and the monthly amount as calculated (it is the API's 0%
+ * suggestion for the price), so a month chip after an example asks the API again
+ * (UI-72, review round 2, F4).
+ */
+export function exampleForm(base: Form, example: Example, firstDue: string): Form {
+  return {
+    ...base,
+    kind: "purchase",
+    name: example.item_name,
+    platform: "ShopDemo",
+    price: example.item_price,
+    months: String(example.months),
+    monthly: example.monthly_amount,
+    priceTyped: true,
+    monthlyTyped: false,
+    firstDue,
+  };
+}
+
 /** The two first-due choices: this month and next month ("YYYY-MM"). */
 export function firstDueChoices(today: Date): { thisMonth: string; nextMonth: string } {
   const thisMonth = monthOf(today);
@@ -190,7 +214,9 @@ function priceFromMonthly(form: Form): Money | null {
  *   it cannot be calculated;
  * - only the price typed: the monthly amount is emptied whenever the suggestion it held
  *   no longer answers the price and months, and the API's answer fills it again
- *   (applySuggestion); an old answer never stands for a new price;
+ *   (applySuggestion); an old answer never stands for a new price. While it still
+ *   answers them, it stays, even when the user clears it: the screen asks again only
+ *   when the price or the months change (review round 2, F2);
  * - neither typed: nothing to calculate from, so both are empty.
  */
 export function typeLinked(form: Form, key: LinkedKey, value: string): Form {
@@ -204,7 +230,7 @@ export function typeLinked(form: Form, key: LinkedKey, value: string): Form {
   if (next.monthlyTyped) return { ...next, price: priceFromMonthly(next) ?? "" };
   if (!next.priceTyped) return { ...next, price: "", monthly: "" };
   const stillAnswers = !form.monthlyTyped && sameAsk(suggestionRequest(form), suggestionRequest(next));
-  return stillAnswers ? next : { ...next, monthly: "" };
+  return { ...next, monthly: stillAnswers ? form.monthly : "" };
 }
 
 /** The fields a keystroke in a linked field changes: that field, and any it recalculated. */
