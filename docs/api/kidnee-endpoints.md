@@ -189,7 +189,7 @@ Model: `installments/suggest.py`. This is the 0% monthly amount the form prefill
 
 `?item_price=12000.00&months=10` gives `200 {"monthly_amount": "1200.00"}`, and `?item_price=1000.00&months=3` gives `{"monthly_amount": "333.34"}`.
 
-The form asks only while the price is the field the user typed in last. When the user types the monthly amount instead, the form fills the price as monthly x months, exact, without a call (Session 25, UI-72). The endpoint and its answer are unchanged.
+The form asks only while the user has not typed the monthly amount. When the user types only the monthly amount, the form fills the price as monthly x months, exact, without a call; when the user types both, neither is recalculated and both are sent as typed (Session 25, UI-72). The endpoint and its answer are unchanged.
 
 Errors are 422:
 - `item_price` breaks the money rules or is 0. For `item_price=12000.001`: `{"detail": [{"type": "value_error", "loc": ["item_price"]}]}`.
