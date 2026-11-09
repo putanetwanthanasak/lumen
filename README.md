@@ -198,10 +198,13 @@ The product and architecture specs (in Thai) are not published; `CLAUDE.md`,
 - The auto-save transfer still runs before the database commit. If the commit is lost, the retry records what the bank moved, but a request that is never retried leaves that transfer unrecorded. The planned fix, a transactional outbox, is not built.
 
 ## Context
-Built solo in about 5 weeks (October to November 2026) for the KBTG Kampus Hackathon
+Built solo in about 4 weeks (13 Oct to 9 Nov 2026) for the KBTG Kampus Hackathon
 2026, Track 1 Software Engineering & Quality; selected among 30 teams to pitch.
 Developed with Claude Code as an AI pair programmer; every change went through tests,
 review and my own merge.
+
+## License
+All rights reserved. Please contact me before reusing this code.
 
 ## Disclaimer
 A concept prototype built for a competition. It is not affiliated with or endorsed by
