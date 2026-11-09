@@ -8,9 +8,16 @@ was rewritten. This audit only reports.
 
 ## Recommendation
 
-**(a) Make this repository public as is, after this PR merges.** The history holds no
+The three options considered:
+- **(a)** make this repository public as is;
+- **(b)** first clean specific files in a commit (only if the history itself is harmless);
+- **(c)** publish a fresh public repository from a squashed snapshot (if anything sensitive is in history).
+
+**(a) Make this repository public as is, after this PR merges.** (b) is not needed: no
+file has to change before release. (c) is not needed for safety. The history holds no
 secrets, no third-party personal data, and no large or generated files. Every finding
-below is low risk, and none needs a history rewrite. No secret ever reached git, so no
+below is low risk except one rated low to medium (finding 11, a screen's look), and none
+needs a history rewrite. No secret ever reached git, so no
 key has to be rotated because of this release.
 
 One decision is yours: every commit carries the owner's name and personal email
@@ -41,7 +48,7 @@ No secret value was printed or written anywhere during the audit; gitleaks ran w
 | 2 | Working-tree scan hits: 3 `generic-api-key` in `.env`, 1 false positive in a mypy cache file | `.env`, `.mypy_cache/` (both untracked and git-ignored) | None for the repo | Keep `.env` out of git (`.gitignore:2`). Nothing in git to rotate. |
 | 3 | `.env` was never committed; `.env.example` never held a real value | `.env.example`, 7 versions | None | Nothing to do. |
 | 4 | The spec documents are local only (`docs/spec/` is git-ignored because they name third parties) and were never committed. CLAUDE.md, DESIGN.md and the logs still cite `docs/spec/03..05` | `.gitignore:7`, `CLAUDE.md`, `DESIGN.md`, `docs/progress/` | Low: dangling references for a reader, nothing leaked | The new README says the spec documents are not published. |
-| 5 | Every commit's author is the owner: 264 as "Putanet Wanthanasak", 55 GitHub web merges as "pumon", all with the owner's personal Gmail address | commit metadata | Low: the owner's own name and email become public | Acceptable for a portfolio. To hide the email in history, choose (c) with a noreply author. Either way, turn on GitHub's "Keep my email addresses private" for future web commits. |
+| 5 | Every commit's author is the owner: 264 as "Putanet Wanthanasak", 55 GitHub web merges under the GitHub display name (the same as the Linux username in finding 7), all with the owner's personal Gmail address | commit metadata | Low: the owner's own name and email become public | Acceptable for a portfolio. To hide the email in history, choose (c) with a noreply author. Either way, turn on GitHub's "Keep my email addresses private" for future web commits. |
 | 6 | The owner's GitHub username and the repo's earlier name (`buffer`) | `docs/progress/2026-10-13.md` | Low: the owner's own | Keep. |
 | 7 | A local path with the Linux username, `/home/<user>/Documents/Lumen-design` (this report does not repeat the username) | `docs/progress/2026-10-27-ui-design.md:5`; in history also `/home/<user>/Documents/Lumen/.env` as a test input in `.claude/hooks/check_reviewer_hook.py` (added in `6fb28b5`, removed in `4916be7`) | Low: reveals a username only | Optional: change the one line to `~/Documents/Lumen-design` in a later docs commit. The history copies are harmless. |
 | 8 | No third-party personal data: no other person's name, email or phone number, no screenshots of real posts. At `f95fcd6`, the only image ever committed is the app's own `frontend/public/favicon.svg`; this PR adds four PNG screenshots of mock data (`docs/images/`), checked: no text or EXIF chunks, only `IHDR`, `IDAT`, `IEND`. Personas are fictional (`demo-mon`, "ม่อน"); the only IP is a private test value (`backend/tests/test_trusted_host.py`). Email matches were file names such as `@2x.png` | all blobs | None | Nothing to do. |
