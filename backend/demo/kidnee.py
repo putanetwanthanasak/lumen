@@ -16,7 +16,9 @@ auto-save with consent, and leftover saving on. The buffer is what their real
 auto-saves gave:
 - demo-mon (ม่อน): in budget, 3,500.00 a month; saves 10%, a modest buffer (2,700.00);
 - demo-over: over budget this month and next (6,500.00), then back within it; saves
-  10%, so the buffer (5,700.00) clearly covers the 3,000.00 over budget;
+  10%, so the buffer (5,700.00) clearly covers the 3,000.00 over budget. Its main
+  account holds 5,000.00, and 6,500.00 (this month's total) once ใช้กันชน moves this
+  month's 1,500.00 back;
 - demo-consolidate: 9 months over budget from this month, consolidation is ELIGIBLE;
   saves 2%, so the small buffer (1,500.00) covers little of the 10,500.00 over budget.
 
@@ -102,13 +104,17 @@ MOTORBIKE = Item("motorbike", "มอเตอร์ไซค์", "48000.00", 1
 class Persona:
     items: list[Item]
     saving_percent: int = 10
+    # The main account before the seed's savings; serve opens it at this, less the rows.
+    opening: Decimal = DEFAULT_OPENING_BALANCE
 
 
 PERSONAS: dict[str, Persona] = {
     "demo-mon": Persona([earbuds(-3), FRIDGE]),
     # Earbuds end next month, so only this month and next are over budget: 2 months,
-    # not the 3 in a row that L70 (a) needs.
-    "demo-over": Persona([earbuds(-4), FRIDGE, LAPTOP]),
+    # not the 3 in a row that L70 (a) needs. 10,700.00 less 5,700.00 of savings leaves
+    # 5,000.00 on บัญชีหลัก; moving this month's 1,500.00 back makes it 6,500.00, exactly
+    # this month's total, so the demo ends able to pay the month.
+    "demo-over": Persona([earbuds(-4), FRIDGE, LAPTOP], opening=Decimal("10700.00")),
     # 2%: 240.00 + 300.00 + 960.00, a buffer far below the months over budget.
     "demo-consolidate": Persona([earbuds(-3), FRIDGE, MOTORBIKE], saving_percent=2),
 }
@@ -173,7 +179,11 @@ def seed(
 ) -> dict[str, list[str]]:
     """Each persona's settings and installments, one commit per write, then the alert
     delivered, as POST /installments does it. Returns what happened per persona, for
-    the console and the tests."""
+    the console and the tests.
+
+    A mock bank opens each persona where serve would (main_balances): its opening,
+    less what its rows already saved. So the 500.00 safety net (L63) decides each
+    saving from the balance บัญชีหลัก will show (Session 24 review F1)."""
     now = Month.of(day)
     report: dict[str, list[str]] = {}
     for user, persona in PERSONAS.items():
@@ -183,6 +193,8 @@ def seed(
         created = user_settings.create(session, user, settings) is not None
         session.commit()
         lines.append("settings created" if created else "settings kept")
+        if isinstance(bank, MockBankAccountProvider):
+            bank.set_balance(user, main_balances(session)[user])
         for item in persona.items:
             result = record(session, user_id=user, entry=entry(user, item, now), bank=bank)
             session.commit()
@@ -213,13 +225,21 @@ def personas_present(engine: Engine) -> list[str]:
         )
 
 
+def opening_balance(user: str) -> Decimal:
+    persona = PERSONAS.get(user)
+    return DEFAULT_OPENING_BALANCE if persona is None else persona.opening
+
+
 def main_balances(session: Session) -> dict[str, Decimal]:
-    """Each user's main account as its savings rows left it: the opening balance, less
-    every auto-save and leftover saving, plus every move back to main (Session 21).
+    """Each user's main account as its savings rows left it: the opening balance (the
+    persona's, else the mock bank's default), less every auto-save and leftover saving,
+    plus every move back to main (Session 21).
 
     The seed runs in its own process, and the mock bank lives in memory, so without
     this the served bank opens every persona at 10,000.00 while บัญชีหลัก lists their
-    savings under it (review F2). Decimal only; the SUM is over Numeric(12,2)."""
+    savings under it (review F2). Every persona is in the answer, at its opening when
+    it has no rows yet (a seed stopped before its first saving; Session 24 review F1).
+    Decimal only; the SUM is over Numeric(12,2)."""
     signed = case(
         (SavingsTransaction.type == SavingsType.WITHDRAWAL, SavingsTransaction.amount),
         else_=-SavingsTransaction.amount,
@@ -227,7 +247,9 @@ def main_balances(session: Session) -> dict[str, Decimal]:
     rows = session.execute(
         select(SavingsTransaction.user_id, func.sum(signed)).group_by(SavingsTransaction.user_id)
     ).all()
-    return {user: DEFAULT_OPENING_BALANCE + net for user, net in rows}
+    net: dict[str, Decimal] = dict(rows)  # user_id -> the SUM above
+    users = {*PERSONAS, *net}
+    return {user: opening_balance(user) + net.get(user, Decimal("0.00")) for user in users}
 
 
 def open_bank(session: Session, bank: MockBankAccountProvider) -> None:
@@ -274,16 +296,32 @@ def build(config: KidneeConfig, engine: Engine, dist: Path | None = FRONTEND_DIS
     return create_serving_app(api, dist)
 
 
+# serve reads the main account balances only when it starts (open_bank).
+RESTART_SERVE = (
+    "If serve is running, stop it and start it again: it reads the balances only when it starts."
+)
+
+
 def serve(config: KidneeConfig, *, port: int = PORT) -> None:
-    """The screens and the API on 127.0.0.1 only, against lumen_kidnee."""
+    """The screens and the API on 127.0.0.1 only, against lumen_kidnee.
+
+    It refuses to start until every persona has its settings row (seed writes it first):
+    the served bank opens from the rows once, at startup (open_bank), so a seed after
+    that would leave each main account balance out of step with its movements (Session
+    23 review F1). It checks the settings only: a seed stopped halfway leaves them with
+    some installments missing, and running seed again, which is idempotent, finishes it
+    (PR 2 review F1)."""
     _allowed(config)
     engine = make_engine(config.url(config.app_url))
-    served = build(config, engine)
-    missing = [u for u in PERSONAS if u not in personas_present(engine)]
-    if missing:
-        print(f"Not seeded yet: {', '.join(missing)}. Run: python -m demo.kidnee seed")
-    print(f"KidNee on http://{HOST}:{port} (API at /api). Ctrl+C stops it.")
     try:
+        missing = [u for u in PERSONAS if u not in personas_present(engine)]
+        if missing:
+            raise SystemExit(
+                f"Not seeded yet: {', '.join(missing)}. "
+                "Run python -m demo.kidnee seed first, then serve."
+            )
+        served = build(config, engine)
+        print(f"KidNee on http://{HOST}:{port} (API at /api). Ctrl+C stops it.")
         uvicorn.run(served, host="127.0.0.1", port=port, log_level="warning")
     finally:
         engine.dispose()
@@ -387,6 +425,7 @@ def main(argv: list[str] | None = None) -> None:
         create_if_missing(config)
         migrate(config)
     _print(seed_database(config, day=today()))
+    print(RESTART_SERVE)
 
 
 if __name__ == "__main__":

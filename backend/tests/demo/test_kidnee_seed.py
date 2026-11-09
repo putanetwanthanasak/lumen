@@ -5,6 +5,7 @@ reset, then seed through the app's services as lumen_app. "Today" is fixed at
 
 import contextlib
 import itertools
+import json
 from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
@@ -17,6 +18,8 @@ from sqlalchemy import Engine, func, select, text
 from sqlalchemy.orm import Session
 
 from app.assistant import service as assistant
+from app.buffer import service as buffer_service
+from app.buffer.schemas import MoveIn
 from app.config import get_settings
 from app.db import Base, make_engine
 from app.ledger import reconcile
@@ -25,10 +28,12 @@ from app.providers import get_bank_provider
 from app.providers.mock_bank import MockBankAccountProvider
 from app.providers.mock_push import MockPushProvider
 from app.savings.service import move_key
+from demo import kidnee as kidnee_cli
 from demo.kidnee import (
     KIDNEE_DB_NAME,
     PERSONAS,
     KidneeConfig,
+    Persona,
     ai_check,
     build,
     main_balances,
@@ -65,9 +70,15 @@ def kidnee(migration_engine: Any, test_db_url: str, test_migration_db_url: str) 
 
 
 @pytest.fixture(scope="module")
-def first_seed(kidnee: Engine) -> dict[str, list[str]]:
+def seed_bank() -> MockBankAccountProvider:
+    """The first seed's bank, as the seed process holds it when it ends."""
+    return MockBankAccountProvider()
+
+
+@pytest.fixture(scope="module")
+def first_seed(kidnee: Engine, seed_bank: MockBankAccountProvider) -> dict[str, list[str]]:
     with Session(kidnee) as session:
-        return seed(session, day=DAY, bank=MockBankAccountProvider(), push=MockPushProvider())
+        return seed(session, day=DAY, bank=seed_bank, push=MockPushProvider())
 
 
 def plan(kidnee: Engine, user: str) -> Any:
@@ -201,8 +212,9 @@ def test_KD_04_the_served_main_account_opens_at_what_the_seed_left(
     fresh_bank: None, kidnee: Engine, first_seed: Any, config: KidneeConfig
 ) -> None:
     # The seed ran in another process, whose in-memory bank is gone. Served, each
-    # persona's main account opens at 10,000.00 minus the savings its rows list, so
-    # the balance on บัญชีหลัก agrees with the movements under it (review F2, Session 21).
+    # persona's main account opens at its opening balance (10,000.00; demo-over
+    # 10,700.00) minus the savings its rows list, so the balance on บัญชีหลัก agrees
+    # with the movements under it (review F2, Session 21).
     served = build(config, kidnee, dist=None)
     with TestClient(served) as client:
         bodies = {
@@ -211,14 +223,42 @@ def test_KD_04_the_served_main_account_opens_at_what_the_seed_left(
         }
     assert {user: body["balance"] for user, body in bodies.items()} == {
         "demo-mon": "7300.00",  # 10,000.00 - 1,200.00 - 1,500.00
-        "demo-over": "4300.00",  # - 5,700.00
+        "demo-over": "5000.00",  # 10,700.00 - 5,700.00
         "demo-consolidate": "8500.00",  # - 1,500.00
     }
-    for body in bodies.values():
+    openings = {"demo-mon": "10000.00", "demo-over": "10700.00", "demo-consolidate": "10000.00"}
+    for user, body in bodies.items():
         listed = sum(Decimal(m["amount"]) for m in body["movements"])
-        assert Decimal(body["balance"]) == Decimal("10000.00") - listed
+        assert Decimal(body["balance"]) == Decimal(openings[user]) - listed
     # The one bank every path uses (a webhook's auto-save too) holds the opened balance.
-    assert get_bank_provider().get_balance("demo-over") == Decimal("4300.00")
+    assert get_bank_provider().get_balance("demo-over") == Decimal("5000.00")
+
+
+def test_KD_04_the_seed_saves_from_the_balance_serve_opens_at(
+    kidnee: Engine, first_seed: Any, seed_bank: MockBankAccountProvider
+) -> None:
+    # The seed's bank opened each persona at its opening, so the 500.00 safety net (L63)
+    # decided every saving from the balance บัญชีหลัก shows, and the seed ends where
+    # serve opens (Session 24 review F1). Without it, demo-over ended at 4,300.00.
+    with Session(kidnee) as session:
+        served = main_balances(session)
+    ended = {user: seed_bank.get_balance(user) for user in PERSONAS}
+    assert ended == {user: served[user] for user in PERSONAS}
+    assert ended == {
+        "demo-mon": Decimal("7300.00"),
+        "demo-over": Decimal("5000.00"),
+        "demo-consolidate": Decimal("8500.00"),
+    }
+
+
+def test_KD_04_a_persona_without_rows_yet_opens_at_its_opening(
+    kidnee: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A seed stopped after the settings and before the first saving: serve still opens
+    # that persona at its own opening, never the mock bank's default (review F1).
+    monkeypatch.setitem(PERSONAS, "kd-new", Persona([], opening=Decimal("1234.00")))
+    with Session(kidnee) as session:
+        assert main_balances(session)["kd-new"] == Decimal("1234.00")
 
 
 def test_KD_04_a_move_in_the_rows_is_not_credited_again_on_its_retry(kidnee: Engine) -> None:
@@ -324,6 +364,34 @@ def test_KD_05_over_is_over_this_month_and_its_buffer_clearly_covers_it(
     assert buffer.balance >= 2 * buffer.shortfall - Decimal("300.00")  # clearly, not just
 
 
+def test_KD_05_over_ends_able_to_pay_this_month_after_using_the_buffer(
+    kidnee: Engine, first_seed: Any
+) -> None:
+    # The demo's last scene: ใช้กันชน moves this month's shortfall back to บัญชีหลัก,
+    # which then holds exactly this month's total, not less (5,000.00 + 1,500.00).
+    this_month = shortfalls(kidnee, "demo-over").months[0]
+    total = plan(kidnee, "demo-over").rows[0].total
+    move = {"client_request_id": "kd-05-over", "amount": str(this_month.shortfall)}
+    with Session(kidnee) as session:
+        before = main_balances(session)["demo-over"]
+        moved = buffer_service.move_to_main(
+            session,
+            user_id="demo-over",
+            request=MoveIn.model_validate_json(json.dumps(move | {"for_month": "2026-11"})),
+        )
+        session.flush()
+        after = main_balances(session)["demo-over"]
+        session.rollback()  # the module's data stays as seeded
+    assert moved is not None
+    assert moved.outcome is buffer_service.Outcome.CREATED
+    assert (before, this_month.shortfall, after, total) == (
+        Decimal("5000.00"),
+        Decimal("1500.00"),
+        Decimal("6500.00"),
+        Decimal("6500.00"),
+    )
+
+
 def test_KD_05_consolidate_has_a_long_run_and_a_small_buffer(
     kidnee: Engine, first_seed: Any
 ) -> None:
@@ -423,3 +491,59 @@ def test_AI_25_ai_check_without_a_key_says_so_and_never_prints_a_key(
     lines = model_config_lines(with_key)
     assert lines[0] == "LLM_API_KEY: set"
     assert all(key not in line for line in lines)
+
+
+# ---- Session 23 review F1: serve opens the bank once, so it needs the seed first ----
+
+
+def _no_server(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Record build and uvicorn.run instead of starting anything."""
+    calls: list[str] = []
+    monkeypatch.setattr(kidnee_cli, "build", lambda *_a, **_k: calls.append("build"))
+    monkeypatch.setattr(
+        kidnee_cli.uvicorn, "run", lambda *_a, **k: calls.append(f"run {k['host']}")
+    )
+    return calls
+
+
+def test_KD_04_serve_refuses_to_start_before_the_personas_are_seeded(
+    config: KidneeConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The bank opens from the rows only in build: a seed after it would leave
+    # demo-over at 10,000.00 with 5,700.00 of savings in its movements.
+    calls = _no_server(monkeypatch)
+    monkeypatch.setattr(kidnee_cli, "personas_present", lambda _engine: ["demo-mon"])
+    with pytest.raises(
+        SystemExit, match=r"Not seeded yet: demo-over, demo-consolidate\. Run .* seed first"
+    ):
+        kidnee_cli.serve(config)
+    assert calls == []
+
+
+def test_KD_04_serve_starts_once_every_persona_is_seeded(
+    config: KidneeConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _no_server(monkeypatch)
+    monkeypatch.setattr(kidnee_cli, "personas_present", lambda _engine: sorted(PERSONAS))
+    kidnee_cli.serve(config)
+    assert calls == ["build", "run 127.0.0.1"]
+
+
+@pytest.mark.parametrize("argv", [["seed"], ["reset", "--yes"]])
+def test_KD_04_seed_and_reset_say_to_restart_a_running_serve(
+    argv: list[str],
+    config: KidneeConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    done: list[str] = []
+    monkeypatch.setattr(KidneeConfig, "from_env", classmethod(lambda _cls: config))
+    monkeypatch.setattr(kidnee_cli, "create_if_missing", lambda _c: done.append("create"))
+    monkeypatch.setattr(kidnee_cli, "migrate", lambda _c: done.append("migrate"))
+    monkeypatch.setattr(kidnee_cli, "reset_database", lambda _c, _n: done.append("reset"))
+    monkeypatch.setattr(kidnee_cli, "seed_database", lambda _c, day: {"demo-mon": ["seeded"]})
+    kidnee_cli.main(argv)
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1] == kidnee_cli.RESTART_SERVE
+    assert "stop it and start it again" in out
+    assert done == (["reset"] if argv[0] == "reset" else ["create", "migrate"])

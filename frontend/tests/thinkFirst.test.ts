@@ -143,14 +143,17 @@ test("UI_18_suggestion_is_asked_only_when_price_and_months_are_ready", () => {
   assert.equal(suggestionRequest(emptyForm()), null);
   assert.equal(suggestionRequest({ ...emptyForm(), price: "12000" }), null);
   assert.deepEqual(suggestionRequest({ ...emptyForm(), price: "1,000", months: "3" }), { price: "1000", months: 3 });
-  assert.equal(suggestionRequest({ ...emptyForm(), price: "1000", months: "3", monthlyEdited: true }), null);
+  // The monthly amount is the user's input (UI-72): nothing to ask.
+  assert.equal(suggestionRequest({ ...emptyForm(), price: "1000", months: "3", monthlyTyped: true }), null);
 });
 
-test("UI_18_a_value_the_user_edited_is_never_overwritten", () => {
+// Review F4: a typed monthly amount is never replaced by a suggestion; only clearing it
+// makes it calculated again (UI-72).
+test("UI_18_a_suggestion_never_replaces_a_typed_monthly_amount", () => {
   const typed = { ...emptyForm(), price: "1000", months: "3" };
   const asked = { price: "1000", months: 3 };
   assert.equal(applySuggestion(typed, asked, "333.34").monthly, "333.34");
-  const edited = { ...typed, monthly: "350", monthlyEdited: true };
+  const edited: Form = { ...typed, monthly: "350", monthlyTyped: true };
   assert.equal(applySuggestion(edited, asked, "333.34").monthly, "350");
   // An answer for inputs that changed since is dropped.
   assert.equal(applySuggestion({ ...typed, months: "4" }, asked, "333.34").monthly, "");
@@ -280,7 +283,7 @@ test("UI_37_money_fields_take_thousands_separators_only_in_valid_groups", () => 
     assert.equal(canPreview({ ...FORM, price: bad }), false, bad);
   }
   // The 0% suggestion asks with the separators removed, the digits as typed.
-  assert.deepEqual(suggestionRequest({ ...FORM, monthly: "", monthlyEdited: false, price: "12,000" }), { price: "12000", months: 10 });
+  assert.deepEqual(suggestionRequest({ ...FORM, monthly: "", price: "12,000" }), { price: "12000", months: 10 });
 });
 
 test("UI_37_a_field_shows_its_error_once_left_with_something_typed", () => {
@@ -364,7 +367,7 @@ test("UI_37_month_chips_are_3_6_10_12_and_fill_the_field", () => {
   assert.doesNotMatch(inputFor(html, THINK.months), /readonly/i);
   assert.ok(!render({ ...FORM, months: "24" }).includes('aria-pressed="true"'));
   // A tap puts the chip's number in the field, so the 0% suggestion asks for it.
-  assert.equal(suggestionRequest({ ...FORM, months: String(MONTH_CHIPS[1]), monthly: "", monthlyEdited: false })?.months, 6);
+  assert.equal(suggestionRequest({ ...FORM, months: String(MONTH_CHIPS[1]), monthly: "" })?.months, 6);
 });
 
 test("UI_37_the_check_sits_in_the_bar_above_the_nav_and_waits_for_the_four_fields", () => {

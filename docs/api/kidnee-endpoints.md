@@ -189,6 +189,8 @@ Model: `installments/suggest.py`. This is the 0% monthly amount the form prefill
 
 `?item_price=12000.00&months=10` gives `200 {"monthly_amount": "1200.00"}`, and `?item_price=1000.00&months=3` gives `{"monthly_amount": "333.34"}`.
 
+The form asks only while the user has not typed the monthly amount. When the user types only the monthly amount, the form fills the price as monthly x months, exact, without a call; when the user types both, neither is recalculated and both are sent as typed (Session 25, UI-72). The endpoint and its answer are unchanged.
+
 Errors are 422:
 - `item_price` breaks the money rules or is 0. For `item_price=12000.001`: `{"detail": [{"type": "value_error", "loc": ["item_price"]}]}`.
 - `months` is not plain digits from 1 to 600.
@@ -329,7 +331,7 @@ Model: `bank/schemas.py` (`MainAccountOut`, `MovementOut`). Read only: it writes
   {"id": "9e4d2c1b-7a6f-4e3d-8c2b-1a0f9e8d7c6b", "at": "2026-11-01T09:00:00+07:00", "kind": "auto_save", "direction": "out", "amount": "40.00", "for_month": null}],
  "movements_truncated": false}
 ```
-- `balance` is the main account as the bank provider holds it. The mock bank keeps it in memory: a user it has not seen opens at `"10000.00"`. `python -m demo.kidnee serve` opens each user at `"10000.00"` less their savings rows plus their moves back (`demo/kidnee.py` `open_bank`, Session 21), so the balance agrees with the movements after a restart too; a move already in the rows is marked credited, so its retry is not credited twice. There is no account number in the API; the screen shows its own masked placeholder.
+- `balance` is the main account as the bank provider holds it. The mock bank keeps it in memory: a user it has not seen opens at `"10000.00"`. `python -m demo.kidnee serve` opens each user at `"10000.00"` (demo-over at `"10700.00"`, so it shows `"5000.00"`, and `"6500.00"`, this month's total, after "ใช้กันชน" moves this month's 1,500.00) less their savings rows plus their moves back (`demo/kidnee.py` `open_bank`, Session 21), so the balance agrees with the movements after a restart too; a move already in the rows is marked credited, so its retry is not credited twice. It reads the rows only when it starts, so it refuses to start before every persona is seeded, and `seed` and `reset` end with a reminder to restart a running serve (Session 23). There is no account number in the API; the screen shows its own masked placeholder.
 - `movements` are the caller's own, newest first (`at`, then `id`), at most 20. `movements_truncated` is true when older ones exist.
 - `kind` is the stored `savings_transactions.type`:
   - `auto_save` (out): the saving when an installment was recorded;

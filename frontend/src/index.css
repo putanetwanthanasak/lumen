@@ -77,19 +77,26 @@
   --color-quiet-ink: #3f5166;
   --color-quiet-edge: #7a8a9d; /* the banner's edge against the page, at least 3:1 */
 
-  /* Host shell (#/account only, Sessions 21 and 22): a generic bank app's home around
+  /* Host shell (#/account only, Sessions 21 to 23): a generic bank app's home around
      KidNee, no real bank's colours. One deep green-teal, a subtle vertical gradient.
      Used only through src/accent.ts (HOST, UI-34). White and host-muted text are at
-     least 4.5:1 on every host colour, the passbook's rules and spine included; host-line
-     at least 3:1 against them (UI-35). */
+     least 4.5:1 on every host colour; host-line at least 3:1 against them (UI-35). */
   --color-host-from: #0c5d52; /* the page, top */
   --color-host-to: #094a43; /* the page, bottom: the same tone, a little deeper */
-  --color-host-card: #1a6b5f; /* the passbook card, the lightest point behind its text */
-  --color-host-rule: #155f54; /* the passbook's ruled lines, faint against the card */
-  --color-host-spine: #115a4f; /* the passbook's spine on its left edge */
-  --color-host-line: #7cc2b2; /* edges: the card, the shortcuts, the tabs */
+  --color-host-card: #1a6b5f; /* hover on the shortcuts, the tabs and the header icons */
+  --color-host-line: #7cc2b2; /* edges: the shortcuts, the tabs, the bar */
   --color-host-bar: #073c36; /* the bottom bar, the selected tab's ink and the note strip */
   --color-host-muted: #d4ece5; /* secondary text on every host colour */
+  /* The account card, a printed passbook page (Session 23): ink, ink-muted and leaf-800
+     text at least 4.5:1 on the darkest point of its pattern, the print ink on the printed
+     line's band over it (UI-35); the pattern and the band's rules stay faint. */
+  --color-host-paper: #edf5ef; /* the page */
+  --color-host-pattern: #d9e9de; /* its wavy security lines (.host-paper), the darkest point behind the text */
+  --color-host-binding: #0a3f35; /* the binding strip on the left */
+  --color-host-binding-edge: #2f7a66; /* the binding's 1px right edge */
+  --color-host-stitch: #8cc9b4; /* the binding's dashed stitch */
+  --color-host-band-rule: #c5d9cc; /* the rules above and below the printed line */
+  --color-host-print: #263e73; /* print ink, the printed line's text */
 
   /* Type scale. Body is 16px and every sentence uses it. Caption (14px) is only for
      short labels: the footer, nav labels, chart legend, "Demo" tags, list meta. Axis
@@ -107,6 +114,11 @@
   --text-title--line-height: 1.35;
   --text-display: 2rem;
   --text-display--line-height: 1.2;
+  --text-balance: 2.25rem; /* the passbook's balance */
+  --text-balance--line-height: 1.15;
+
+  /* The printed line: monospace, Thai falls back to the app's Thai fonts. */
+  --font-print: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, "Sukhumvit Set", "Noto Sans Thai", "Leelawadee UI", Tahoma, monospace;
 
   /* Radii and shadow. */
   --radius-field: 0.75rem;
@@ -114,6 +126,7 @@
   --radius-pill: 999px;
   --shadow-card: 0 1px 2px rgb(16 35 26 / 0.06), 0 4px 16px rgb(16 35 26 / 0.06);
   --shadow-phone: 0 24px 64px rgb(16 35 26 / 0.22);
+  --shadow-passbook: 0 14px 30px rgb(0 0 0 / 0.35);
 }
 
 @layer base {
@@ -154,9 +167,12 @@
 }
 
 /*
- * The passbook's ruled lines (#/account, Session 22): horizontal only, 1px every 28px,
- * in host-rule. Used only through HOST.rules in src/accent.ts (UI-34, UI-68).
+ * The passbook page (#/account, Session 23): the paper and its security pattern, three
+ * thin horizontal waves per 24px row in host-pattern (a data URI cannot read a CSS
+ * variable, so UI-68 checks that its stroke is that token). No image file. Used only
+ * through HOST.paper in src/accent.ts (UI-34, UI-68).
  */
-.host-rules {
-  background-image: repeating-linear-gradient(to bottom, transparent 0 27px, var(--color-host-rule) 27px 28px);
+.host-paper {
+  background-color: var(--color-host-paper);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' fill='none' stroke='%23d9e9de' stroke-width='.7'%3E%3Cpath d='M0 4Q6 1.5 12 4T24 4M0 12Q6 9.5 12 12T24 12M0 20Q6 17.5 12 20T24 20'/%3E%3C/svg%3E");
 }

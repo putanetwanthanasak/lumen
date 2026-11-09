@@ -180,6 +180,9 @@ export const THINK = {
   monthsError: "กรอกจำนวนเต็ม 1 ถึง 600",
   monthly: "ค่างวดต่อเดือน",
   monthlyHelp: "คิดแบบผ่อน 0% ถ้าแอปแจ้งยอดต่อเดือนไม่ตรงนี้ แก้ให้ตรงกับแอปได้",
+  // The one line under the field the form calculated (UI-72).
+  fromPrice: "คำนวณจากราคา ÷ จำนวนเดือน (ผ่อน 0%) ถ้าแอปผ่อนแจ้งยอดต่างจากนี้ แก้ให้ตรงกับแอปได้",
+  fromMonthly: "คำนวณจากค่างวด × จำนวนเดือน",
   platform: "แอปที่ผ่อน (ไม่บังคับ)",
   platformPlaceholder: "เช่น ShopDemo",
   platformTooLong: "ชื่อแอปยาวได้ไม่เกิน 60 ตัวอักษร",
@@ -428,6 +431,12 @@ export const ACCOUNT = {
     withdrawal: "ย้ายเงินจากกันชน KidNee",
   } satisfies Record<MovementKind, string>,
   forMonth: (month: string) => `สำหรับ ${month}`,
+  // The passbook's printed line (Session 23, UI-70): short, as a passbook prints them.
+  printed: {
+    auto_save: "กันเงินเข้ากันชน",
+    leftover_save: "เก็บงบเข้ากันชน",
+    withdrawal: "ย้ายจากกันชน",
+  } satisfies Record<MovementKind, string>,
   empty: "ยังไม่มีรายการ",
   nav: { menu: "เมนูบัญชี", home: "หน้าแรก", history: "ธุรกรรม", scan: "สแกน", kidnee: "KidNee", profile: "โปรไฟล์" },
 };

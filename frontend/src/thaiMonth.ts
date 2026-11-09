@@ -75,3 +75,18 @@ const CLOCK = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-dig
 export function thaiTime(at: Date): string {
   return CLOCK.format(at);
 }
+
+const PRINT_DAY = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "numeric", year: "numeric", timeZone: "Asia/Bangkok" });
+
+/**
+ * The Bangkok date of an instant as a passbook prints it, "DD ม.ค. YY" with the
+ * Buddhist year: "2026-11-04T09:00:00+07:00" -> "04 พ.ย. 69" (UI-71). Formatted in
+ * Asia/Bangkok whatever the offset the instant carries and the machine's time zone.
+ */
+export function printDate(at: string): string {
+  const instant = new Date(at);
+  if (!DAY.test(at) || Number.isNaN(instant.getTime())) throw new Error(`not a datetime string: ${JSON.stringify(at)}`);
+  const part = (type: string) => PRINT_DAY.formatToParts(instant).find((p) => p.type === type)?.value ?? "";
+  const year = (Number(part("year")) + BUDDHIST_ERA_OFFSET) % 100; // ui-06-allow: a date, not money
+  return `${part("day")} ${THAI_MONTHS[Number(part("month")) - 1]} ${year.toString().padStart(2, "0")}`; // ui-06-allow: a date
+}

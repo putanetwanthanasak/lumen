@@ -23,11 +23,24 @@ import { Footer } from "./Screen.tsx";
 
 const ShowNote = createContext<() => void>(() => undefined);
 
-/** A bank app feature the demo does not have: a press shows the note and nothing else (UI-64). */
-export function ExampleButton({ label, className, children }: { label?: string; className: string; children: ReactNode }) {
+/**
+ * A bank app feature the demo does not have: a press shows the note and nothing else
+ * (UI-64). `focus` is the ring: white on the page, `HOST.paperFocus` on the passbook.
+ */
+export function ExampleButton({
+  label,
+  className,
+  focus = HOST.focus,
+  children,
+}: {
+  label?: string;
+  className: string;
+  focus?: string;
+  children: ReactNode;
+}) {
   const show = useContext(ShowNote);
   return (
-    <button type="button" aria-label={label} onClick={() => show()} className={`cursor-pointer ${className} ${HOST.focus}`}>
+    <button type="button" aria-label={label} onClick={() => show()} className={`cursor-pointer ${className} ${focus}`}>
       {children}
     </button>
   );

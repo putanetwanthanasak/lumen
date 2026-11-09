@@ -98,7 +98,7 @@ up and `.env` holding `DATABASE_URL` and `MIGRATION_DATABASE_URL`:
 (cd frontend && npm ci && npm run build)        # writes frontend/dist
 cd backend
 uv run python -m demo.kidnee reset --yes        # drop, migrate and seed lumen_kidnee
-uv run python -m demo.kidnee serve              # http://127.0.0.1:8000
+uv run python -m demo.kidnee serve              # http://127.0.0.1:8000; after a seed or reset, restart it
 ```
 
 `seed` instead of `reset` migrates and adds the personas without dropping anything; it is

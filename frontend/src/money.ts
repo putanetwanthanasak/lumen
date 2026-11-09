@@ -6,7 +6,10 @@
  * - formats an API string for display, by string operations;
  * - checks what the user typed, before it is sent as a string (never rounded);
  * - turns two amounts into a bar height in per mille, exactly, with BigInt satang.
- *   The result is a drawing size, never shown as money.
+ *   The result is a drawing size, never shown as money;
+ * - multiplies a typed monthly amount by the months, exactly, with BigInt satang
+ *   (the form's price from the monthly amount, UI-72). The one product the client
+ *   makes; it never rounds, so it needs no rounding rule.
  */
 
 export type Money = string; // an API money string, e.g. "1500.00"
@@ -77,6 +80,25 @@ export function toSatang(value: Money): bigint {
   }
   const decimals = (match[2] ?? ".").slice(1).padEnd(2, "0");
   return BigInt(`${match[1] ?? "0"}${decimals}`);
+}
+
+/** 150050n -> "1500.50". Exact; the sign kept. */
+export function fromSatang(value: bigint): Money {
+  const negative = value < 0n;
+  const digits = (negative ? -value : value).toString().padStart(3, "0");
+  const text = `${digits.slice(0, -2)}.${digits.slice(-2)}`;
+  return negative ? `-${text}` : text;
+}
+
+/**
+ * The price from the monthly amount (the form's two-way input, UI-72): monthly x
+ * months, exact in BigInt satang, never rounded. "2000" x 6 -> "12000.00". The
+ * opposite way, price / months, rounds, so it stays the API's suggestion
+ * (GET /installments/suggested-monthly); the client never divides money.
+ */
+export function timesMonths(monthly: Money, months: number): Money {
+  if (!Number.isSafeInteger(months) || months < 1) throw new RangeError(`not a count of months: ${months}`);
+  return fromSatang(toSatang(monthly) * BigInt(months));
 }
 
 /**

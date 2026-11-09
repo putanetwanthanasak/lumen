@@ -7,12 +7,26 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { EDGE, SOLID } from "../src/accent.ts";
+import { EDGE, HOST, SOLID } from "../src/accent.ts";
 
 const TOKENS = new Map(
   [...readFileSync("src/index.css", "utf8").matchAll(/--color-([a-z0-9-]+):\s*(#[0-9a-f]{6});/g)].map((m) => [m[1] ?? "", m[2] ?? ""]),
 );
 TOKENS.set("white", "#ffffff");
+
+/** `fg` at `alpha` over `bg`, as the browser paints a translucent fill. */
+function over(fg: string, alpha: number, bg: string): string {
+  const [f, b] = [fg, bg].map((name) => {
+    const hex = TOKENS.get(name);
+    if (hex === undefined) throw new Error(`no token --color-${name}`);
+    return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  });
+  return `#${[0, 1, 2].map((i) => Math.round((f?.[i] ?? 0) * alpha + (b?.[i] ?? 0) * (1 - alpha)).toString(16).padStart(2, "0")).join("")}`;
+}
+// The printed line's band is white at 75% over the paper (HOST.band): over its pattern
+// (the darkest point behind the print) and over the bare paper.
+TOKENS.set("band-on-pattern", over("white", 0.75, "host-pattern"));
+TOKENS.set("band-on-paper", over("white", 0.75, "host-paper"));
 
 function luminance(name: string): number {
   const hex = TOKENS.get(name);
@@ -74,14 +88,21 @@ const TEXT: [string, string][] = [
   ["host-muted", "host-to"],
   ["host-muted", "host-card"],
   ["host-muted", "host-bar"],
-  // Session 22: the passbook card's text sits on the card and on its ruled lines (the
-  // spine carries no text, but is measured too); the selected tab is host-bar ink on
-  // white; the "ใหม่" badge and the note strip are white on host-bar.
-  ["white", "host-rule"],
-  ["white", "host-spine"],
-  ["host-muted", "host-rule"],
-  ["host-muted", "host-spine"],
+  // Session 22: the selected tab is host-bar ink on white; the "ใหม่" badge and the note
+  // strip are white on host-bar.
   ["host-bar", "card"],
+  // Session 23, the passbook page: every text on the paper and on its pattern's darkest
+  // point (the title, the number and the balance in ink; the labels, "บาท" and the demo
+  // line in ink-muted; the icon and the link in leaf-800), and the print ink on the band
+  // over the pattern and over the paper.
+  ["ink", "host-paper"],
+  ["ink", "host-pattern"],
+  ["ink-muted", "host-paper"],
+  ["ink-muted", "host-pattern"],
+  ["leaf-800", "host-paper"],
+  ["leaf-800", "host-pattern"],
+  ["host-print", "band-on-pattern"],
+  ["host-print", "band-on-paper"],
 ];
 
 const GRAPHICS: [string, string][] = [
@@ -112,20 +133,25 @@ const GRAPHICS: [string, string][] = [
   ["card", "host-from"],
   ["card", "host-to"],
   ["white", "host-bar"],
-  // Session 22: the passbook card's edge against its own fill, spine and rules. The
-  // tabs', the profile button's and the empty dots' edges against the page are the
-  // host-line on host-from and host-to rows above; the selected tab and the filled dot
-  // (white) are the card on host-from and host-to rows.
+  // Session 22: a shortcut's edge on its hover fill. The tabs', the profile button's and
+  // the empty dots' edges against the page are the host-line on host-from and host-to
+  // rows above; the selected tab and the filled dot (white) are the card on host-from
+  // and host-to rows.
   ["host-line", "host-card"],
-  ["host-line", "host-spine"],
-  ["host-line", "host-rule"],
+  // Session 23: the passbook page's edge against the page, and the ink focus ring on the
+  // paper and on its pattern.
+  ["host-paper", "host-from"],
+  ["host-paper", "host-to"],
+  ["ink", "host-paper"],
+  ["ink", "host-pattern"],
 ];
 
-// Decoration, not meaning: the passbook's rules and spine are meant to be faint against
-// the card (they must never compete with the text), so they stay under 1.5:1 (UI-68).
+// Decoration, not meaning: the passbook's pattern and the band's rules are meant to be
+// faint against the paper (they must never compete with the text), so they stay under
+// 1.5:1 (UI-68).
 const FAINT: [string, string][] = [
-  ["host-rule", "host-card"],
-  ["host-spine", "host-card"],
+  ["host-pattern", "host-paper"],
+  ["host-band-rule", "host-paper"],
 ];
 
 test("UI_35_every_accent_text_pair_is_at_least_4_5_to_1", () => {
@@ -141,6 +167,15 @@ test("UI_35_bars_meters_and_icons_are_at_least_3_to_1", () => {
 test("UI_35_the_passbook_decoration_stays_faint_behind_the_text", () => {
   const loud = FAINT.filter(([fg, bg]) => ratio(fg, bg) >= 1.5).map(([fg, bg]) => `${fg} on ${bg}: ${ratio(fg, bg).toFixed(2)}`);
   assert.deepEqual(loud, []);
+  // The pattern is the darkest point behind the text, so the pairs above measure the worst case.
+  assert.ok(luminance("host-pattern") < luminance("host-paper"));
+  // The band measured above is the band the card draws: white at 75%, print ink, and
+  // the paper's focus ring is ink.
+  for (const cls of ["bg-white/75", "text-host-print"]) assert.ok(HOST.band.split(" ").includes(cls), HOST.band);
+  assert.ok(HOST.paperFocus.split(" ").includes("focus-visible:outline-ink"), HOST.paperFocus);
+  // Guard the guard: the blend of white over black at 75% is #bfbfbf.
+  TOKENS.set("black", "#000000");
+  assert.equal(over("white", 0.75, "black"), "#bfbfbf");
 });
 
 // The colour token of a border class list: "border-2 border-bank-700" -> "bank-700".
