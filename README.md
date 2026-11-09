@@ -130,6 +130,17 @@ again at any time for a clean demo, then restart `serve`. Without an API key, th
 card shows its template; to try the model, add `LLM_PROVIDER=anthropic` and your own
 `LLM_API_KEY` to `.env`.
 
+To run the API alone, without the screens, against the `lumen` database (from `backend/`,
+with `serve` stopped):
+
+```bash
+uv run alembic upgrade head                                  # runs as the migration role
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000     # http://127.0.0.1:8000/health
+```
+
+There is no end-user authentication, so never use `--host 0.0.0.0`, and do not use
+`--reload` for a demo. `/docs` is served only with `DEBUG=true` in `.env`.
+
 The webhook path has its own terminal demo in six scenes (press Enter between them): a
 clean database, a signed ShopDemo purchase, the same webhook again (a duplicate, no second
 saving), a cash withdrawal with its strong alert, "Not me" on it, and the debt summary.
