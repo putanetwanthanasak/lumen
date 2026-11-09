@@ -24,9 +24,9 @@ A 61-second demo video is available on request.
 
 KidNee answers with two features:
 - **Check before you buy** (เช็กก่อนผ่อน): type the price and the months, or the monthly amount. KidNee shows every future month's total with the new installment against your budget and one third of your income: green (within budget), amber (over budget) or red (over a third of income, the central bank's financial-literacy guidance). It is advice only; recording always works.
-- **The buffer** (กันชน): each recorded installment moves a saving you choose (a percentage of the price or a fixed amount) from the main account into a buffer, skipped whole if the main account would fall below 500 THB. Months over budget show what the buffer covers, and you move that money back yourself; nothing moves automatically.
+- **The buffer** (กันชน): with auto-save on, each recorded purchase moves a saving you choose (a percentage of the price or a fixed amount) from the main account into a buffer. Cash withdrawals and loans never save, and a saving is skipped whole if the main account would fall below 500 THB. Months over budget show what the buffer covers, and you move that money back yourself; nothing moves automatically.
 
-The code also has new-debt alerts and a "Not me" report for debts that arrive by webhook; they are tested but not in the screens demo.
+Every recorded installment also raises a new-debt alert with your new monthly total (under the bell). Debts can also arrive from a BNPL platform by webhook, with a "Not me" report for ones you did not make; that path is tested but not in the screens demo.
 
 ## Architecture
 
@@ -66,7 +66,7 @@ In the demo, one loopback server mounts the API at `/api` and the built UI at `/
 | Tooling | uv and npm with lock files, GitHub Actions |
 
 ## Engineering decisions worth reading
-- **Money is `Decimal` and `Numeric(12,2)` end to end.** The API takes money only as a JSON string with at most 2 decimals; a JSON number or a third decimal is a 422, never rounded ([`backend/app/money.py`](backend/app/money.py), [`tests/db/test_money_types.py`](backend/tests/db/test_money_types.py)). The browser only formats and compares those strings, and a test fails if a screen adds amounts up ([`frontend/src/money.ts`](frontend/src/money.ts), UI-51 in [`frontend/tests/wiring.test.ts`](frontend/tests/wiring.test.ts)).
+- **Money is `Decimal` and `Numeric(12,2)` end to end.** The API takes money only as a JSON string with at most 2 decimals; a JSON number or a third decimal is a 422, never rounded ([`backend/app/money.py`](backend/app/money.py), [`tests/db/test_money_types.py`](backend/tests/db/test_money_types.py)). The browser formats and compares those strings. Its one calculation, the monthly amount times the months on the check form, is exact in BigInt satang, and a test fails if other screen code does arithmetic on amounts ([`frontend/src/money.ts`](frontend/src/money.ts), UI-51 in [`frontend/tests/wiring.test.ts`](frontend/tests/wiring.test.ts)).
 - **Webhooks: HMAC plus an idempotency key of `(vendor, event_id)`.** HMAC-SHA256 over `timestamp.body`, a constant-time compare and a 5-minute window ([`signature.py`](backend/app/webhooks/signature.py)). A body over 64 KB is a 413 before the signature is checked, a bad signature a 401, a bad payload a 422 ([`router.py`](backend/app/webhooks/router.py)). The same key with a different payload is a 409 with an audit row; the same payload again is a duplicate with no second saving or alert ([`processor.py`](backend/app/webhooks/processor.py)).
 - **Per-user row locking for concurrent money moves.** Every saving locks the user's balance row (`SELECT ... FOR UPDATE`) before it reads the bank balance, and every buffer move locks it before it reads the buffer, so two concurrent purchases cannot both pass the 500 THB safety net and two moves cannot overdraw the buffer ([`savings/service.py`](backend/app/savings/service.py), [`buffer/service.py`](backend/app/buffer/service.py)). The isolation level is pinned to READ COMMITTED ([`db.py`](backend/app/db.py)).
 - **A separate database role, so the app cannot alter the audit log.** The app connects as `lumen_app`: not a superuser, owns no table, no `DELETE` or `TRUNCATE` anywhere, and `audit_log` and `savings_transactions` are insert-only. Only migrations and the test clean-up use the superuser ([grants migration](backend/alembic/versions/20261018_a1c3e5f7b9d2_app_role_grants.py)). A test runs 18 tampering statements as the app role and expects each to be refused ([`tests/db/test_app_role.py`](backend/tests/db/test_app_role.py)).
@@ -79,7 +79,7 @@ From the latest CI run on `main` ([run 42561485817](https://github.com/putanetwa
 | Check | Result |
 |---|---|
 | Backend tests (pytest, real PostgreSQL) | 1,806 passed |
-| Backend coverage of `backend/app` | 100.00% of lines and branches (3,105 statements, 502 branches); CI fails below 80% overall or 90% in each money module |
+| Backend coverage of `backend/app` | 100.00% of lines and branches (3,105 statements, 502 branches); CI fails below 80% overall, or below 90% in the rules, webhooks, savings and ledger modules |
 | Frontend tests (node:test) | 300 passed, plus `tsc`, the build and `npm audit` |
 | Static checks | ruff, ruff format, mypy `--strict` clean |
 | Supply chain and secrets | pip-audit and npm audit clean; gitleaks over the full history, no findings |
@@ -95,23 +95,24 @@ From the latest CI run on `main` ([run 42561485817](https://github.com/putanetwa
 
 ## Run it locally
 
-You need Docker with Compose, [uv](https://docs.astral.sh/uv/) (it installs Python 3.14), and Node.js 22.18 or later with npm.
+You need Docker with Compose, [uv](https://docs.astral.sh/uv/) (it installs Python 3.14), Node.js 22.18 or later with npm, and `openssl`.
 
 ```bash
 git clone https://github.com/putanetwanthanasak/lumen.git
 cd lumen
 
-# Local-only settings. .env is git-ignored; change the passwords if you like.
-cat > .env <<'EOF'
+# Local settings with fresh random passwords. .env is git-ignored; an existing .env is kept.
+PG=$(openssl rand -hex 16); APP=$(openssl rand -hex 16); HOOK=$(openssl rand -hex 32)
+[ -e .env ] || cat > .env <<EOF
 POSTGRES_USER=lumen
-POSTGRES_PASSWORD=local-dev-only
+POSTGRES_PASSWORD=$PG
 POSTGRES_PORT=5432
-LUMEN_APP_PASSWORD=local-app-only
-DATABASE_URL=postgresql+psycopg://lumen_app:local-app-only@127.0.0.1:5432/lumen
-TEST_DATABASE_URL=postgresql+psycopg://lumen_app:local-app-only@127.0.0.1:5432/lumen_test
-MIGRATION_DATABASE_URL=postgresql+psycopg://lumen:local-dev-only@127.0.0.1:5432/lumen
-TEST_MIGRATION_DATABASE_URL=postgresql+psycopg://lumen:local-dev-only@127.0.0.1:5432/lumen_test
-WEBHOOK_SECRET_SHOPDEMO=local-demo-webhook-secret
+LUMEN_APP_PASSWORD=$APP
+DATABASE_URL=postgresql+psycopg://lumen_app:$APP@127.0.0.1:5432/lumen
+TEST_DATABASE_URL=postgresql+psycopg://lumen_app:$APP@127.0.0.1:5432/lumen_test
+MIGRATION_DATABASE_URL=postgresql+psycopg://lumen:$PG@127.0.0.1:5432/lumen
+TEST_MIGRATION_DATABASE_URL=postgresql+psycopg://lumen:$PG@127.0.0.1:5432/lumen_test
+WEBHOOK_SECRET_SHOPDEMO=$HOOK
 EOF
 
 docker compose up -d --wait                       # PostgreSQL 16 on 127.0.0.1:5432
@@ -123,6 +124,9 @@ uv run python -m demo.kidnee serve                # open http://127.0.0.1:8000
 ```
 
 If port 5432 is already in use, change `POSTGRES_PORT` and the port in the four URLs.
+PostgreSQL creates its roles with these passwords only on the volume's first start: if
+you change them later, or have a volume from an older checkout, `docker compose down -v`
+resets it (this deletes the local database, which holds only demo data).
 The demo uses its own database, `lumen_kidnee`. Use the **Demo** button to switch
 between the three personas: `demo-mon` (within budget), `demo-over` (over budget, and
 the buffer covers it) and `demo-consolidate` (a long run over budget). Run `reset --yes`
