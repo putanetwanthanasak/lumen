@@ -142,6 +142,7 @@ def process_event(
             item_price=event.contract.principal,
             installment_id=installment_id,
             source=(vendor, event.event_id),
+            transfer_key=savings.transfer_key(vendor, event.event_id),
             bank=bank,
         )
         _replay_pending(session, vendor=vendor, installment_id=installment_id)

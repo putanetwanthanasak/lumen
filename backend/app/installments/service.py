@@ -83,6 +83,7 @@ def record(
         item_price=entry.item_price,
         installment_id=installment_id,
         source=None,
+        transfer_key=savings.manual_transfer_key(user_id, entry.client_request_id),
         bank=bank,
     )
     notification_id = notifications.notify_manual_entry(
